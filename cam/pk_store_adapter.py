@@ -225,12 +225,19 @@ class PKStoreAdapter(nn.Module):
         hstart = len(b.bos) + len(b.header)
         mt = getattr(b, "multitoken", False)
         K = getattr(b, "cargo_tokens", 1)
-        voff = 1 + len(b.colon)                          # value block offset within a binding
+        # KEY / VALUE offsets WITHIN a binding block. Builders now declare these explicitly (key_off,
+        # val_off); fall back to the historic dict/manifest values (key@0, value@1+len(colon)) for any
+        # older builder that predates the attributes, so this path stays byte-identical for dict.
+        koff = getattr(b, "key_off", 0)
+        # value block offset within a binding. Builders now declare val_off; fall back to the historic
+        # dict/manifest value (1+len(colon)) ONLY for a builder that predates it (guard: natural phrasing
+        # has no .colon, so evaluate the fallback lazily rather than in getattr's default expression).
+        voff = b.val_off if hasattr(b, "val_off") else (1 + len(b.colon))
         keys_pos = []
         val_pos_list = []                                # per-binding list of value token offsets
         for m in range(b.M):
             base = hstart + m * b.bind_len
-            keys_pos.append(base)                       # KEY token (cargo single / name multi)
+            keys_pos.append(base + koff)                 # KEY token (cargo single / name multi / subj nat)
             if mt:
                 val_pos_list.append(list(range(base + voff, base + voff + K)))  # K cargo tokens
             else:

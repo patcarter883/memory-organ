@@ -212,6 +212,10 @@ class DocBuilder:
             assert len(self.cargo_word_tids) >= self.cargo_tokens + 2, \
                 "cargo word pool too small for the phrase length"
         self.bos = [tok.bos_token_id] if tok.bos_token_id is not None else []
+        # key_off / val_off: the KEY and VALUE token offsets WITHIN a constant-length binding block, read
+        # by the pk-store adapter (_write_episode) to locate the association's addressable key + stored
+        # value. dict/manifest keep KEY at offset 0 and the historic VALUE offset (1+len(colon)) so the
+        # adapter is byte-identical; natural phrasing sets its own (KEY=subject@0, VALUE=object@1+len(rel)).
         if phrasing == "manifest":
             # "<name> carries <cargo>." / "... Question : which ship carries <cargo> ? Answer :"
             self.header = piece(tok, " The manifest lists the following ships.")
@@ -221,6 +225,25 @@ class DocBuilder:
             self.qfix2 = piece(tok, " ? Answer :")
             self.bind_len = 1 + len(self.carries) + 1 + len(self.dot)   # name + carries + cargo + dot
             self.qfix_len = len(self.qfix1) + 1 + len(self.qfix2)       # +1 for cargo_q
+            self.key_off = 0                                            # name
+            self.val_off = 1 + len(self.carries)                       # cargo (after "<name> carries")
+        elif phrasing == "natural":
+            # NATURAL-LANGUAGE single-relation facts: "<Subject> lives in <Object>." Subject drawn from
+            # NAME_CANDIDATES (space-prefixed single token = KEY); Object from the single-token real-word
+            # pool (space-prefixed, mid-sentence = VALUE). Query "<Subject> lives in" -> answer " <Object>".
+            # This is the REALISM probe of issue #1: a coherent relation + real-word vocabulary phrased as
+            # a sentence, vs the terse "<cargo>: <name>" dict. no_memory stays ~0 because the (subject->
+            # object) pairing is still drawn at RANDOM per doc (the base cannot know a specific random
+            # binding), so the realism is the phrasing, not exotic entities.
+            assert not self.multitoken, "natural phrasing is single-token only"
+            self.header = piece(tok, "The following facts are given.\n")
+            self.rel = piece(tok, " lives in")                         # the single fixed relation
+            self.dot = piece(tok, ".")
+            self.nl = piece(tok, "\n")
+            self.bind_len = 1 + len(self.rel) + 1 + len(self.dot) + len(self.nl)  # subj rel obj . \n
+            self.qfix_len = 1 + len(self.rel)                          # "<Subject> lives in"
+            self.key_off = 0                                           # subject
+            self.val_off = 1 + len(self.rel)                          # object (after "<Subject> lives in")
         elif phrasing == "dict":
             # the basecheck-validated best format (acc 0.61): "Cargo to ship:\n<cargo>: <name>\n..." with
             # query "<cargo>:" -> answer " <name>". cargo is line-initial (NO-space single token),
@@ -234,6 +257,8 @@ class DocBuilder:
                 self.header = piece(tok, "Ship to cargo:\n")
                 self.bind_len = 1 + len(self.colon) + self.cargo_tokens + len(self.nl)  # name : <K> \n
                 self.qfix_len = 1 + len(self.colon)                     # name :
+                self.key_off = 0                                        # name
+                self.val_off = 1 + len(self.colon)                     # cargo phrase
             else:
                 # the basecheck-validated best format (acc 0.61): "Cargo to ship:\n<cargo>: <name>\n..."
                 # query "<cargo>:" -> answer " <name>". cargo line-initial (NO-space single token),
@@ -241,6 +266,8 @@ class DocBuilder:
                 self.header = piece(tok, "Cargo to ship:\n")
                 self.bind_len = 1 + len(self.colon) + 1 + len(self.nl)  # cargo : name \n  (=4)
                 self.qfix_len = 1 + len(self.colon)                     # cargo :          (=2)
+                self.key_off = 0                                        # cargo
+                self.val_off = 1 + len(self.colon)                     # name
         else:
             raise ValueError(f"unknown phrasing {phrasing!r}")
         pad = piece(tok, pad_word)
@@ -263,7 +290,12 @@ class DocBuilder:
         return tuple(self.cargo_word_tids[i] for i in idx)
 
     def _binding_ids(self, name_tid, cargo):
-        """cargo is an int (single-token) or a tuple of K ints (multi-token phrase)."""
+        """cargo is an int (single-token) or a tuple of K ints (multi-token phrase).
+
+        NATURAL: name_tid = the SUBJECT token (KEY), cargo = the OBJECT token (VALUE);
+        "<Subject> lives in <Object>.\\n"  (subject@0 = key, object@1+len(rel) = value)."""
+        if self.phrasing == "natural":
+            return [name_tid] + self.rel + [cargo] + self.dot + self.nl
         if self.phrasing == "manifest":
             return [name_tid] + self.carries + [cargo] + self.dot
         if self.multitoken:
@@ -271,6 +303,8 @@ class DocBuilder:
         return [cargo] + self.colon + [name_tid] + self.nl             # dict: "<cargo>: <name>\n"
 
     def _query_ids(self, name_tid, cargo):
+        if self.phrasing == "natural":
+            return [name_tid] + self.rel                               # "<Subject> lives in"
         if self.phrasing == "manifest":
             return self.qfix1 + [cargo] + self.qfix2
         if self.multitoken:
@@ -299,6 +333,8 @@ class DocBuilder:
             qa = self._query_ids(name_tids[q], cargos[q])           # query prefix (ends at ":")
             if self.multitoken:
                 answer_seq = list(cargos[q])                        # K-token cargo phrase = the answer
+            elif self.phrasing == "natural":
+                answer_seq = [cargos[q]]                            # natural: the OBJECT token is the answer
             else:
                 answer_seq = [name_tids[q]]                         # the single-token name = the answer
             bindings = []
@@ -476,7 +512,7 @@ def selftest(args):
     """Tokenizer-only: build a batch, decode it, assert the answer token(s) align. No 4B, no GPU."""
     from transformers import AutoTokenizer
     tok = AutoTokenizer.from_pretrained(MODEL)
-    cargo_prefix = "" if args.phrasing == "dict" else " "
+    cargo_prefix = "" if args.phrasing == "dict" else " "   # natural + manifest place cargo mid-sentence
     names = single_token_ids(tok, NAME_CANDIDATES)
     cargo = single_token_ids(tok, CARGO_CANDIDATES, prefix=cargo_prefix)
     K = args.cargo_tokens
@@ -522,8 +558,9 @@ def main():
     ap.add_argument("--seg-len", type=int, default=32, dest="seg_len")
     ap.add_argument("--qa-seg", type=int, default=2, dest="qa_seg", help="segment the query lands in")
     ap.add_argument("--M", type=int, default=3, help="bindings per doc")
-    ap.add_argument("--phrasing", default="dict", choices=["dict", "manifest"],
-                    help="doc format; dict (cargo: name) is the best base substrate per recall_basecheck")
+    ap.add_argument("--phrasing", default="dict", choices=["dict", "manifest", "natural"],
+                    help="doc format; dict (cargo: name) is the best base substrate per recall_basecheck; "
+                         "natural = '<Subject> lives in <Object>.' single-relation NL facts (issue #1)")
     ap.add_argument("--cargo-tokens", type=int, default=1, dest="cargo_tokens",
                     help="K: answer cargo phrase length in tokens (1=single-token byte-preserved path; "
                          ">1 = multi-token real-word cargo, role-swapped 'name: <K-token phrase>')")

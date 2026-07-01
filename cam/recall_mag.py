@@ -284,6 +284,7 @@ def save_ckpt(path, adapter, injector, tap_layer, args, d_carry):
         "sub_topk": getattr(args, "sub_topk", 4),
         "addr_sup_weight": getattr(args, "addr_sup_weight", 0.0),
         "pk_read_heads": getattr(args, "pk_read_heads", 0),
+        "phrasing": getattr(args, "phrasing", "dict"),      # doc format (v1 rebuilds the same builder)
         "cargo_tokens": getattr(args, "cargo_tokens", 1),   # multi-token answer length (v1 rebuilds K)
         "mt_value": getattr(args, "mt_value", "mean"),      # multi-token value mode (mean/perpos)
         "readout": getattr(args, "readout", "linear"),      # Stage-1 value readout (linear/decoder)
@@ -401,6 +402,10 @@ def main():
     ap.add_argument("--cargo-tokens", type=int, default=1, dest="cargo_tokens",
                     help="K: multi-token answer cargo phrase length (1=single-token; >1=role-swapped "
                          "'name: <K-token real-word phrase>', answer = the K-token sequence)")
+    ap.add_argument("--phrasing", type=str, default="dict", choices=["dict", "natural"],
+                    help="doc format: 'dict' (terse '<cargo>: <name>', default, byte-preserved) or "
+                         "'natural' (natural-language single-relation facts '<Subject> lives in <Object>.'; "
+                         "issue #1 realism probe — subject=KEY, object=VALUE, single-token, answer=object)")
     ap.add_argument("--readout", type=str, default="linear", choices=["linear", "decoder", "perpos"],
                     help="pk multi-token VALUE readout: 'linear' (default, byte-preserved: slot t -> "
                          "answer token t in one projection) or 'decoder' (tiny AR transformer-decoder "
@@ -448,9 +453,14 @@ def main():
     embed_weight = base.get_input_embeddings().weight.detach().float().clone()
 
     names = single_token_ids(tok, NAME_CANDIDATES)
-    cargo = single_token_ids(tok, CARGO_CANDIDATES, prefix="")
+    # natural phrasing places the object MID-SENTENCE (space-prefixed single token); dict places cargo
+    # line-initial (NO-space). Pick the object/cargo pool encoding to match the phrasing.
+    cargo_prefix = " " if args.phrasing == "natural" else ""
+    cargo = single_token_ids(tok, CARGO_CANDIDATES, prefix=cargo_prefix)
     cargo_words = single_token_ids(tok, MULTITOKEN_WORD_POOL) if args.cargo_tokens > 1 else None
-    builder = DocBuilder(tok, names, cargo, args.M, args.seg_len, args.qa_seg, phrasing="dict",
+    assert not (args.phrasing == "natural" and args.cargo_tokens > 1), \
+        "natural phrasing is single-token only (no multi-token cargo)"
+    builder = DocBuilder(tok, names, cargo, args.M, args.seg_len, args.qa_seg, phrasing=args.phrasing,
                          cargo_tokens=args.cargo_tokens, cargo_words=cargo_words)
     if args.cargo_tokens > 1:
         print(f"[mag] MULTI-TOKEN cargo: K={args.cargo_tokens} word_pool={len(cargo_words)} "
