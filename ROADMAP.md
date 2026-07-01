@@ -54,9 +54,16 @@ delivery, and translator behind a small surface; packaged, documented, examples.
 "for everyone" artifact. The current flat harness gets reorganized into `store / delivery / transfer`
 subpackages on the way here.
 
+## Tracking
+
+Live work is tracked in **[GitHub Issues](../../issues)**, grouped by
+**[Milestones](../../milestones)** (`v0.1 — real data & parity`, `v0.2 — scale & reuse`). The stages
+above are the narrative; the issues are the actual, current plan. Changes land via pull requests that
+reference the issue they close.
+
 ## Where help is wanted
 
 The most valuable contributions right now are **adversarial**: reproduce a number and tell us if it
-doesn't hold; run it on CUDA; design a real-knowledge probe that would actually break the mechanism if
-it's going to break. The corrections in [RESULTS.md](RESULTS.md) exist because controls caught our own
-errors — more controls, from more people, is exactly what this needs.
+doesn't hold; run it on CUDA (see the portability issue); design a real-knowledge probe that would
+actually break the mechanism if it's going to break. The corrections in [RESULTS.md](RESULTS.md) exist
+because controls caught our own errors — more controls, from more people, is exactly what this needs.
