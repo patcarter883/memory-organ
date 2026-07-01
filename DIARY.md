@@ -247,3 +247,34 @@ stands, and it is now the *only* one: these are **random bindings**. Subjects an
 random per document, so the base has no prior to override — the mechanism is proven to *store and retrieve*,
 not yet to *edit* a fact the model already believes. Real, named entities and counterfactual editing (where
 the base has a genuine prior) is the open capstone. Tracked in issue #1.
+
+## Phase 9 — Knowledge editing: overriding a fact the model already believes
+
+This is the capstone Phase 8 pointed at, and getting a *valid* result out of it took three attempts — the
+first two are worth recording honestly because they show how the validity control had to be earned.
+
+The idea is simple: instead of random bindings the model can't know, use real country→capital facts the
+frozen base **already knows**, put a **counterfactual** (deranged) capital in the memory, and test whether
+the memory makes the base emit the wrong capital — overriding its own prior. The catch is that "override" is
+only meaningful if the base actually held the prior. The **first two attempts were invalid**: they measured
+a counterfactual-acc that looked like an edit, but the base did *not* reliably hold the priors it was being
+tested on (no_mem prior-acc came out ~0.107 in one tangled run), so the "override" was measuring nothing —
+you can't override a belief that isn't there. The two attempts were also tangled: the fact set, the probe,
+and the eval weren't a single controlled pass, so it was impossible to say what the numbers meant.
+
+The clean re-run replaced all of that with **one orchestrator-driven PROBE → FILTER → EDIT pass** inside
+`recall_mag` when `--phrasing counterfactual`: probe the frozen base first (memory off), **keep only the
+facts it demonstrably answers correctly**, then derange the kept capitals (Sattolo single-cycle, no fixed
+point) and bind the counterfactuals on that filtered set. Now no_mem prior-acc is high *by construction* —
+the validity gate is a real control, not a hope. **Same-base result (M=8, frozen Qwen3.5-4B):** the probe
+found the base holds 39/40 priors (prior-acc 0.975), the kept-set no_mem PRIOR-acc maxed at **1.000**, mem-on
+counterfactual-acc hit **0.996**, and mem-on PRIOR-acc dropped to **0.004** — GATE VALID. The memory
+overrides the frozen base's own parametric knowledge (France→Paris becomes France→Tokyo). That is genuine
+knowledge *editing*, not insertion.
+
+**And the honest limit.** Cross-base transfer to Gemma *delivered* the edit (mem-on cf-acc 0.996), but the
+same validity gate that certified base-1 **fails on base-2**: Gemma's no_mem prior-acc came out **0.000**,
+because the transfer path reused base-1's kept set and format instead of re-probing and re-filtering to facts
+Gemma knows in Gemma's own format. So the override claim is **unproven on base-2** — the transfer moved the
+association, but we cannot yet call it a cross-base *edit*, and we don't. The fix (a base-2 probe/filter pass
+in the transfer path) is tracked as a follow-up under issue #1.

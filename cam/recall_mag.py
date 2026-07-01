@@ -25,7 +25,8 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 from m2_adapter import MODEL, DEV, load_frozen_base                       # noqa: E402
 from recall_deepmem import (NAME_CANDIDATES, CARGO_CANDIDATES, MULTITOKEN_WORD_POOL,  # noqa: E402
-                            single_token_ids, DocBuilder)
+                            single_token_ids, DocBuilder, counterfactual_single_token,
+                            derange_capitals, COUNTERFACTUAL_HEADER, COUNTERFACTUAL_REL)
 from recall_boltA import BoltAdapter, eval_direct                         # noqa: E402
 from pk_store_adapter import PKStoreAdapter                               # noqa: E402
 from gated_tap import MAGInjector                                         # noqa: E402
@@ -265,7 +266,7 @@ def eval_generative_mag(base, adapter, injector, builder, rng, args, n=512):
 # so v1 reuses ONE fixed memory across bases instead of re-binding it each run. The bank fed to the
 # taps ([B,K,mem_dim]) is base-AGNOSTIC (DeepMemory's own mem_dim space), so the same checkpoint drives
 # any base; only the per-base translator/tap geometry differs.
-def save_ckpt(path, adapter, injector, tap_layer, args, d_carry):
+def save_ckpt(path, adapter, injector, tap_layer, args, d_carry, cf_meta=None):
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     # drop the frozen tied embed/unembed (~3GB) — rebuilt from base-1's table on load
     asd = {k: v for k, v in adapter.state_dict().items()
@@ -292,6 +293,11 @@ def save_ckpt(path, adapter, injector, tap_layer, args, d_carry):
         "dec_heads": getattr(args, "dec_heads", 4),
         "dec_dim": getattr(args, "dec_dim", 256),
         "perpos_key": getattr(args, "perpos_key", "additive"),  # per-position key conditioning
+        # COUNTERFACTUAL: persist the FILTERED fact table (country/capital WORD strings — tokenizer
+        # agnostic) + the derangement index, so recall_v1 rebuilds the EXACT same kept-set + counterfactual
+        # mapping on base-2 (intersected with base-2's single-token facts for cross-base index alignment).
+        "cf_facts": ([(c, cap) for (c, cap, _ct, _kt) in cf_meta["kept"]] if cf_meta else None),
+        "cf_perm": (cf_meta["perm"] if cf_meta else None),
     }, path)
     print(f"[mag] saved v0 memory checkpoint -> {path} (tap L={tap_layer}, carry {d_carry:.3f})", flush=True)
 
@@ -363,6 +369,161 @@ def verdict(tag, d_carry, gen, chance):
     return m_acc, nm_acc
 
 
+# ---- COUNTERFACTUAL knowledge-editing: PROBE -> FILTER -> (derange) -> bind on the known set --------
+@torch.no_grad()
+def probe_and_filter(base, tok, facts, batch=16):
+    """PROBE the FROZEN base (NO memory, tap OFF) on each candidate fact and KEEP ONLY the facts it
+    answers correctly parametrically. Prompt = "The capital of <Country> is" (the exact query context the
+    counterfactual eval reconstructs), gold = the TRUE capital token. This is the fix that makes the
+    counterfactual probe VALID: a prior attempt was invalid because the base did NOT hold the priors it
+    was tested on (no_mem prior-acc 0.107); by filtering to demonstrably-known facts, no_mem prior-acc is
+    high BY CONSTRUCTION and the override test is meaningful.
+
+    Returns (kept_facts, prior_acc_full) where kept_facts is the filtered [(country,capital,ctid,ktid)]
+    list and prior_acc_full is the base's argmax accuracy over the WHOLE candidate table (diagnostic)."""
+    prefix = COUNTERFACTUAL_HEADER                                     # "...The capital of"
+    rel = COUNTERFACTUAL_REL                                           # " is"
+    pref_ids = tok(prefix, add_special_tokens=False).input_ids
+    rel_ids = tok(rel, add_special_tokens=False).input_ids
+    bos = [tok.bos_token_id] if tok.bos_token_id is not None else []
+    kept, correct = [], 0
+    done = 0
+    while done < len(facts):
+        chunk = facts[done:done + batch]
+        rows = [bos + pref_ids + [ctid] + rel_ids for (_c, _cap, ctid, _ktid) in chunk]  # ".. <Country> is"
+        gold = torch.tensor([ktid for (_c, _cap, _ctid, ktid) in chunk], dtype=torch.long, device=DEV)
+        ids = torch.tensor(rows, dtype=torch.long, device=DEV)        # constant length (all single-token)
+        logits = base(input_ids=ids).logits[:, -1].float()           # predict the capital token
+        pred = logits.argmax(-1)
+        for j, f in enumerate(chunk):
+            hit = bool(pred[j].item() == gold[j].item())
+            correct += int(hit)
+            if hit:
+                kept.append(f)
+        done += len(chunk)
+    return kept, correct / max(1, len(facts))
+
+
+def setup_counterfactual(base, tok, args):
+    """PROBE -> FILTER -> DERANGE -> DocBuilder for the counterfactual knowledge-editing run. Returns
+    (builder, kept_facts, prior_acc_full). The memory (bind loop) will teach the DERANGED capitals; the
+    eval scores both the counterfactual and the prior answer."""
+    candidates = counterfactual_single_token(tok)
+    print(f"[mag][cf] candidate facts (single-token country+capital): {len(candidates)}", flush=True)
+    kept, prior_acc_full = probe_and_filter(base, tok, candidates, batch=args.cf_probe_batch)
+    print(f"[mag][cf] PROBE/FILTER: base prior-acc over all {len(candidates)} candidates "
+          f"= {prior_acc_full:.3f}", flush=True)
+    print(f"[mag][cf] FILTERED-SET SIZE = {len(kept)} facts the base demonstrably knows "
+          f"(bind the counterfactual capitals on THESE)", flush=True)
+    assert len(kept) >= args.M, \
+        f"filtered set ({len(kept)}) < M ({args.M}); the base knows too few facts — lower --M"
+    # DERANGE the kept capitals: each country gets a counterfactual capital that is NOT its own true one
+    rng_d = np.random.default_rng(args.seed)
+    perm = derange_capitals(rng_d, len(kept))
+    cf_tid = [kept[perm[i]][3] for i in range(len(kept))]
+    builder = DocBuilder(tok, None, None, args.M, args.seg_len, args.qa_seg, phrasing="counterfactual",
+                         facts=kept)
+    builder.set_counterfactual(cf_tid)
+    # log a few edits so the run trace shows what the memory is being asked to override
+    ex = ", ".join(f"{kept[i][0]}: {kept[i][1]}->{tok.decode([cf_tid[i]]).strip()}" for i in range(min(4, len(kept))))
+    print(f"[mag][cf] example edits (true->counterfactual): {ex}", flush=True)
+    return builder, kept, perm, prior_acc_full
+
+
+@torch.no_grad()
+def eval_counterfactual(base, adapter, injector, builder, rng, args, n=512):
+    """Knowledge-editing delivery eval. For each held-out doc scores, at the SAME query position, the
+    logits under memory-on vs no-memory against BOTH the counterfactual capital (what the memory teaches)
+    AND the true prior capital (what the base natively recalls). Returns a dict with the 4 headline
+    accuracies + the ceiling and NLLs:
+      memory_cf_acc     : mem-on argmax == counterfactual capital  (did the edit take?)
+      no_memory_cf_acc  : no-mem argmax == counterfactual capital  (floor — should be ~0)
+      no_memory_prior_acc: no-mem argmax == TRUE capital           (VALIDITY gate — must be HIGH)
+      memory_prior_acc  : mem-on argmax == TRUE capital            (does delivery SUPPRESS the prior?)
+    """
+    base_embed = base.get_input_embeddings()
+    res = {"memory_cf": 0.0, "no_memory_cf": 0.0, "memory_prior": 0.0, "no_memory_prior": 0.0,
+           "ceiling_cf": 0.0, "nll_mem_cf": [], "nll_nomem_cf": [], "nll_nomem_prior": []}
+    injector.eval()
+    seen = 0
+    while seen < n:
+        eb = max(1, min(args.batch, EVAL_BATCH_CAP // max(1, args.M)))
+        cur = min(eb, n - seen)
+        ids, ans_cf, ans_prior, apos = builder.build_cf(rng, cur, local=False)
+        ids, ans_cf, ans_prior = ids.to(DEV), ans_cf.to(DEV), ans_prior.to(DEV)
+        torch.cuda.empty_cache() if torch.cuda.is_available() else None
+        # ceiling: the full in-context doc (bindings visible) — the base CAN read the counterfactual
+        # capital from context (upper bound on delivery through pure attention, tap off).
+        injector.set_bank(None)
+        lc = _answer_logits(base, base_embed(ids[:, :apos]), 1)
+        res["ceiling_cf"] += (lc.argmax(-1) == ans_cf).sum().item()
+        # leak-free query context: header ("...The capital of") + "<Country> is" -> predict capital
+        ctx_emb = _leakfree_ctx(base, builder, ids, apos)
+        for cond, carry in (("memory", True), ("no_memory", False)):
+            bank = memory_bank(adapter, ids, args.seg_len, builder.qa_start, apos, carry=carry)
+            injector.set_bank(bank)
+            lg = _answer_logits(base, ctx_emb, 1)
+            cf_hit = (lg.argmax(-1) == ans_cf).sum().item()
+            prior_hit = (lg.argmax(-1) == ans_prior).sum().item()
+            res[f"{cond}_cf"] += cf_hit
+            res[f"{cond}_prior"] += prior_hit
+            res[f"nll_{'mem' if carry else 'nomem'}_cf"].extend(_nll_bits(lg, ans_cf))
+            if not carry:
+                res["nll_nomem_prior"].extend(_nll_bits(lg, ans_prior))
+        injector.set_bank(None)
+        seen += cur
+        print(f"[mag][cf] eval progress {seen}/{n}", flush=True)     # heartbeat vs the watchdog
+    out = {
+        "memory_cf_acc": res["memory_cf"] / seen,
+        "no_memory_cf_acc": res["no_memory_cf"] / seen,
+        "memory_prior_acc": res["memory_prior"] / seen,
+        "no_memory_prior_acc": res["no_memory_prior"] / seen,
+        "ceiling_cf_acc": res["ceiling_cf"] / seen,
+        "nll_mem_cf": float(np.mean(res["nll_mem_cf"])),
+        "nll_nomem_cf": float(np.mean(res["nll_nomem_cf"])),
+        "nll_nomem_prior": float(np.mean(res["nll_nomem_prior"])),
+    }
+    return out
+
+
+def verdict_counterfactual(tag, cf, chance, valid_thresh=0.6):
+    """Report the 4 knowledge-editing metrics + a VALID/INVALID gate. The probe is VALID iff no_mem
+    prior-acc is HIGH (the base actually holds the priors it's tested on — the fix for the earlier
+    invalid 0.107 run). Given validity, the EDIT WORKS iff mem-on counterfactual-acc is high and >>
+    no_mem counterfactual-acc (the memory overrides the base's own prior)."""
+    m_cf = cf["memory_cf_acc"]; nm_cf = cf["no_memory_cf_acc"]
+    m_pr = cf["memory_prior_acc"]; nm_pr = cf["no_memory_prior_acc"]
+    print(f"\n[mag][{tag}] === COUNTERFACTUAL knowledge-editing (frozen base) ===", flush=True)
+    print(f"  (a) mem-on   counterfactual-acc : {m_cf:.3f}   (did the edit take? higher=memory "
+          f"overrode the prior)", flush=True)
+    print(f"  (b) no_mem   counterfactual-acc : {nm_cf:.3f}   (floor; ~0 expected — base never says "
+          f"the wrong capital on its own)", flush=True)
+    print(f"  (c) no_mem   PRIOR-acc          : {nm_pr:.3f}   (VALIDITY gate — must be HIGH; the base "
+          f"must hold the true priors)", flush=True)
+    print(f"  (d) mem-on   PRIOR-acc          : {m_pr:.3f}   (does delivery SUPPRESS the true prior? "
+          f"lower=stronger override)", flush=True)
+    print(f"  ceiling (in-context cf, tap off): {cf['ceiling_cf_acc']:.3f}   | chance {chance:.3f}",
+          flush=True)
+    print(f"  NLL bits: mem cf {cf['nll_mem_cf']:.3f} | no_mem cf {cf['nll_nomem_cf']:.3f} | "
+          f"no_mem prior {cf['nll_nomem_prior']:.3f}", flush=True)
+    valid = nm_pr >= valid_thresh
+    if not valid:
+        v = (f"INVALID — no_mem prior-acc {nm_pr:.3f} < {valid_thresh:.2f}: the base does NOT reliably "
+             f"hold the priors, so any override claim is meaningless. Widen the probe/filter or lower M.")
+    elif m_cf > nm_cf + 0.15 and m_cf > 0.5:
+        v = (f"VALID + EDIT WORKS — the base holds the priors (no_mem prior {nm_pr:.3f}) AND the memory "
+             f"overrides them to the counterfactual (mem cf {m_cf:.3f} >> no_mem cf {nm_cf:.3f}).")
+    elif m_cf > nm_cf + 0.10:
+        v = (f"VALID + PARTIAL edit — some override (mem cf {m_cf:.3f} vs {nm_cf:.3f}) but weak; "
+             f"escalate delivery (multi-layer / stronger tap).")
+    else:
+        v = (f"VALID but NO override — priors held (no_mem prior {nm_pr:.3f}) yet the memory did NOT "
+             f"flip the base to the counterfactual (mem cf {m_cf:.3f} ~ no_mem cf {nm_cf:.3f}). The "
+             f"delivery is the bottleneck, not validity.")
+    print(f"[mag][{tag}] GATE: {'VALID' if valid else 'INVALID'} | => {v}\n" + "=" * 64, flush=True)
+    return m_cf, nm_cf, nm_pr
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--bind-steps", type=int, default=3000, dest="bind_steps")
@@ -402,13 +563,21 @@ def main():
     ap.add_argument("--cargo-tokens", type=int, default=1, dest="cargo_tokens",
                     help="K: multi-token answer cargo phrase length (1=single-token; >1=role-swapped "
                          "'name: <K-token real-word phrase>', answer = the K-token sequence)")
-    ap.add_argument("--phrasing", type=str, default="dict", choices=["dict", "natural", "varied"],
+    ap.add_argument("--phrasing", type=str, default="dict",
+                    choices=["dict", "natural", "varied", "counterfactual"],
                     help="doc format: 'dict' (terse '<cargo>: <name>', default, byte-preserved) or "
                          "'natural' (natural-language single-relation facts '<Subject> lives in <Object>.'; "
                          "issue #1 realism probe — subject=KEY, object=VALUE, answer=object; supports "
                          "--cargo-tokens K>1 for a K-token real-word object phrase '<Subj> lives in <w0 w1>') "
                          "or 'varied' (per-fact relation drawn from a small template set — heterogeneous "
-                         "facts; each binding slot m uses relations[m%R], subject=KEY, object=VALUE)")
+                         "facts; each binding slot m uses relations[m%R], subject=KEY, object=VALUE) "
+                         "or 'counterfactual' (KNOWLEDGE EDITING: real country->capital facts the base "
+                         "KNOWS, with DERANGED capitals in memory. PROBE-FILTER-EDIT: probe the frozen "
+                         "base first, keep only facts it demonstrably knows, bind the counterfactual "
+                         "capitals on that filtered set; metrics = mem/no_mem counterfactual-acc AND "
+                         "mem/no_mem PRIOR-acc + a VALID/INVALID gate on no_mem prior-acc)")
+    ap.add_argument("--cf-probe-batch", type=int, default=16, dest="cf_probe_batch",
+                    help="counterfactual: batch size for the base prior-knowledge probe/filter forward")
     ap.add_argument("--readout", type=str, default="linear", choices=["linear", "decoder", "perpos"],
                     help="pk multi-token VALUE readout: 'linear' (default, byte-preserved: slot t -> "
                          "answer token t in one projection) or 'decoder' (tiny AR transformer-decoder "
@@ -465,8 +634,18 @@ def main():
     cargo_words = single_token_ids(tok, MULTITOKEN_WORD_POOL) if args.cargo_tokens > 1 else None
     assert not (args.phrasing == "varied" and args.cargo_tokens > 1), \
         "varied phrasing is single-token only (no multi-token cargo)"
-    builder = DocBuilder(tok, names, cargo, args.M, args.seg_len, args.qa_seg, phrasing=args.phrasing,
-                         cargo_tokens=args.cargo_tokens, cargo_words=cargo_words)
+    counterfactual = args.phrasing == "counterfactual"
+    cf_meta = None
+    if counterfactual:
+        assert args.cargo_tokens == 1, "counterfactual phrasing is single-token only"
+        # PROBE the frozen base -> FILTER to demonstrably-known facts -> DERANGE the memory capitals.
+        # (this is the GPU probe forward the orchestrator runs; the filtered set size + example edits
+        # are logged above the bind loop.)
+        builder, kept_facts, cf_perm, prior_acc_full = setup_counterfactual(base, tok, args)
+        cf_meta = {"kept": kept_facts, "perm": cf_perm}      # persisted in the ckpt for v1 transfer
+    else:
+        builder = DocBuilder(tok, names, cargo, args.M, args.seg_len, args.qa_seg, phrasing=args.phrasing,
+                             cargo_tokens=args.cargo_tokens, cargo_words=cargo_words)
     if args.cargo_tokens > 1:
         print(f"[mag] MULTI-TOKEN cargo: K={args.cargo_tokens} word_pool={len(cargo_words)} "
               f"(answer = K-token real-word phrase; acc = exact-match)", flush=True)
@@ -479,6 +658,9 @@ def main():
         injector.attach()
         gen = eval_generative_mag(base, adapter, injector, builder, rng, args)
         m_acc, nm_acc = verdict(str(L), ck.get("d_carry", float("nan")), gen, 1 / args.M)
+        if counterfactual:
+            cf = eval_counterfactual(base, adapter, injector, builder, rng, args)
+            verdict_counterfactual(str(L), cf, 1 / args.M)
         injector.detach()
         print("\n[mag] RELOAD SANITY (tap -> memory / no_memory / ceiling):", flush=True)
         print(f"  L={L:>8}  {m_acc:.3f} / {nm_acc:.3f} / {gen['local_control'][1]:.3f}", flush=True)
@@ -503,10 +685,15 @@ def main():
         train_taps(base, adapter, injector, builder, rng, args, tag)
         gen = eval_generative_mag(base, adapter, injector, builder, rng, args)
         m_acc, nm_acc = verdict(tag, d_carry, gen, 1 / args.M)
+        if counterfactual:
+            # the 4 knowledge-editing metrics + VALID/INVALID gate (scores mem/no_mem against BOTH the
+            # counterfactual capital and the true prior at the SAME query position).
+            cf = eval_counterfactual(base, adapter, injector, builder, rng, args)
+            verdict_counterfactual(tag, cf, 1 / args.M)
         summary.append((tag, m_acc, nm_acc, gen["local_control"][1]))
         # save the FIRST passing single-layer tap as the reusable v0 memory checkpoint
         if args.save_ckpt and len(cfg) == 1 and (args.save_anyway or (m_acc > nm_acc + 0.15 and m_acc > 0.5)):
-            save_ckpt(args.save_ckpt, adapter, injector, cfg[0], args, d_carry)
+            save_ckpt(args.save_ckpt, adapter, injector, cfg[0], args, d_carry, cf_meta=cf_meta)
             args.save_ckpt = ""  # save only once (the first passing depth)
         injector.detach()
 

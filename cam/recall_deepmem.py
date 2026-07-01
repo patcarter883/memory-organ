@@ -192,6 +192,79 @@ VARIED_RELATIONS = [
     " studies",
 ]
 
+# ---- COUNTERFACTUAL knowledge-editing facts (issue #1, real-knowledge-editing) -----------------
+# THE TEST this enables: real (country -> capital) facts the FROZEN BASE ALREADY KNOWS parametrically,
+# but the MEMORY holds a COUNTERFACTUAL (deranged) capital. Does the memory make the frozen base emit
+# the WRONG (counterfactual) capital, OVERRIDING its own prior? Unlike every other phrasing (where the
+# name<->cargo pairing is RANDOM so no_memory pins ~0 and the memory only has to teach a fact the base
+# cannot know), here the base HAS a prior — so the probe measures genuine knowledge EDITING (override),
+# not knowledge INSERTION.
+#
+# A prior attempt was INVALID because the base did NOT actually hold the priors it was tested on
+# (no_mem prior-acc 0.107). The fix (recall_mag runs it when --phrasing counterfactual): PROBE the
+# frozen base FIRST over the candidate facts (no memory, tap off), KEEP ONLY the facts it answers
+# correctly, and bind the counterfactual values on that FILTERED set. Then no_mem prior-acc is high
+# BY CONSTRUCTION (we kept only known facts) and the counterfactual-acc measures true override.
+#
+# CONTRACT (so the deterministic-position, single-token-KEY store machinery is reused byte-for-byte):
+#   - EVERY country encodes to a SINGLE space-prefixed token (the addressable KEY at qa_start), and
+#   - EVERY capital encodes to a SINGLE space-prefixed token (the VALUE / one-token answer),
+#     both verified at generation time against the live Qwen3.5-4B tokenizer (single_token_ids). Facts
+#     whose country OR capital is multi-token are dropped at startup (multi-token country names are
+#     "handled" by exclusion — they cannot be a single-token KEY). Capitals are all DISTINCT so a
+#     derangement exists. The doc format is natural-language "The capital of <Country> is <Capital>."
+#     with "The capital of" folded into the HEADER (the query FORMAT prefix), so the query region is
+#     "<Country> is" (KEY=country@qa_start, addr-sup intact) and the base context reconstructs
+#     "...The capital of <Country> is" -> predicts the capital. seg_len ~48 fits the doc-format that
+#     elicits the base's parametric recall (the value that worked in the prior agent's run).
+COUNTERFACTUAL_FACTS = [
+    ("France", "Paris"), ("Germany", "Berlin"), ("Italy", "Rome"), ("Spain", "Madrid"),
+    ("Austria", "Vienna"), ("Norway", "Oslo"), ("Egypt", "Cairo"), ("Japan", "Tokyo"),
+    ("Ireland", "Dublin"), ("Portugal", "Lisbon"), ("Poland", "Warsaw"), ("Greece", "Athens"),
+    ("Finland", "Helsinki"), ("Switzerland", "Bern"), ("Sweden", "Stockholm"),
+    ("Denmark", "Copenhagen"), ("Belgium", "Brussels"), ("Netherlands", "Amsterdam"),
+    ("Hungary", "Budapest"), ("Turkey", "Ankara"), ("Russia", "Moscow"), ("China", "Beijing"),
+    ("India", "Delhi"), ("Canada", "Ottawa"), ("Peru", "Lima"), ("Chile", "Santiago"),
+    ("Cuba", "Havana"), ("Iran", "Tehran"), ("Iraq", "Baghdad"), ("Israel", "Jerusalem"),
+    ("Kenya", "Nairobi"), ("Thailand", "Bangkok"), ("Bulgaria", "Sofia"), ("Tunisia", "Tunis"),
+    ("Venezuela", "Caracas"), ("Afghanistan", "Kabul"), ("Pakistan", "Islamabad"),
+    ("Indonesia", "Jakarta"), ("Philippines", "Manila"), ("Australia", "Canberra"),
+]
+
+# The natural-language fact format, factored so the store reuses the single-token-KEY natural machinery.
+# HEADER carries the query FORMAT prefix ("The capital of") so the query region starts AT the country
+# (the single-token KEY at qa_start, so addr-sup q_tok=ids[:,qa_start] is the country). REL=" is".
+COUNTERFACTUAL_HEADER = "The following facts are given.\nThe capital of"
+COUNTERFACTUAL_REL = " is"
+
+
+def counterfactual_single_token(tok):
+    """Filter COUNTERFACTUAL_FACTS to those whose country AND capital are each a single space-prefixed
+    token under `tok`. Returns [(country, capital, country_tid, capital_tid)] — the candidate table the
+    probe/filter narrows further. Multi-token country/capital facts are excluded (a multi-token country
+    cannot be the single-token addressable KEY)."""
+    out = []
+    for country, capital in COUNTERFACTUAL_FACTS:
+        c_ids = tok(" " + country, add_special_tokens=False).input_ids
+        k_ids = tok(" " + capital, add_special_tokens=False).input_ids
+        if len(c_ids) == 1 and len(k_ids) == 1:
+            out.append((country, capital, c_ids[0], k_ids[0]))
+    return out
+
+
+def derange_capitals(rng, n):
+    """A derangement of range(n): a permutation with NO fixed point (perm[i] != i for all i). Used to
+    assign each country a COUNTERFACTUAL capital that is NOT its true one. Sattolo-style single-cycle
+    shuffle guarantees no fixed point in one pass (requires n >= 2)."""
+    assert n >= 2, "derangement needs at least 2 facts"
+    perm = list(range(n))
+    # Sattolo's algorithm: produces a uniformly-random single cycle -> guaranteed derangement.
+    for i in range(n - 1, 0, -1):
+        j = int(rng.integers(0, i))     # 0 <= j < i (strictly below i -> no fixed point)
+        perm[i], perm[j] = perm[j], perm[i]
+    assert all(perm[i] != i for i in range(n)), "derangement produced a fixed point"
+    return perm
+
 
 def single_token_ids(tok, words, prefix=" "):
     """Keep words that encode to exactly one token when space-prefixed; return [(word, tid)]."""
@@ -212,7 +285,7 @@ class DocBuilder:
     name/cargo so every binding line is a constant token length)."""
 
     def __init__(self, tok, names, cargo, M, seg_len, qa_seg, pad_word=" and", phrasing="dict",
-                 cargo_tokens=1, cargo_words=None):
+                 cargo_tokens=1, cargo_words=None, facts=None):
         self.tok = tok
         self.names = names          # list[(word, tid)] — space-prefixed single tokens
         self.cargo = cargo          # dict: NO-space single tokens; manifest: space-prefixed
@@ -220,6 +293,13 @@ class DocBuilder:
         self.seg_len = seg_len
         self.qa_seg = qa_seg
         self.phrasing = phrasing
+        # COUNTERFACTUAL: a FIXED fact table (country -> capital) the base already knows. `facts` is a
+        # list of (country, capital, country_tid, capital_tid_TRUE); the counterfactual (memory) capital
+        # per fact is carried in self.cf_tid (set by set_counterfactual, filled by the probe/filter step).
+        # build() places the COUNTERFACTUAL capital as the binding VALUE (what the memory teaches) and
+        # returns it as the answer; build_cf() additionally returns the TRUE (prior) capital answer.
+        self.facts = facts
+        self.cf_tid = None          # per-fact counterfactual capital tid (parallel to self.facts)
         # MULTI-TOKEN cargo (cargo_tokens>1): the answer is a K-token real-word phrase. Only supported
         # for dict phrasing. We ROLE-SWAP — the single-token NAME is the lookup key, the K-token cargo
         # PHRASE is the value/answer: binding "<name>: <cargo phrase>\n", query "<name>:". cargo_words
@@ -314,6 +394,26 @@ class DocBuilder:
             # qfix_len (query "<Subject><rel>") and the answer position depend on the QUERIED slot,
             # which is drawn per build() and shared across the batch (self._q for this build).
             self.qfix_len = None                                     # set per-build in build()
+        elif phrasing == "counterfactual":
+            # COUNTERFACTUAL knowledge-editing facts: "<Country> is <Capital>." drawn from a FIXED fact
+            # table (self.facts). Structurally identical to `natural`, but the query FORMAT prefix
+            # "The capital of" is folded into the HEADER so the query region begins AT the country (the
+            # single-token KEY at qa_start -> addr-sup q_tok=ids[:,qa_start] is the country) while the
+            # base context reconstructs "...The capital of <Country> is" -> predicts the capital. The
+            # binding VALUE is the COUNTERFACTUAL capital (set via set_counterfactual); the true (prior)
+            # capital is returned by build_cf() for the prior-recall metrics. KEY=country@0, REL=" is",
+            # VALUE=capital@1+len(rel). All countries/capitals are single-token (constant bind_len).
+            assert not self.multitoken, "counterfactual phrasing is single-token only"
+            assert facts is not None and len(facts) >= M, \
+                "counterfactual phrasing needs a fact table with >= M facts (set via facts=)"
+            self.header = piece(tok, COUNTERFACTUAL_HEADER)            # "...The capital of"
+            self.rel = piece(tok, COUNTERFACTUAL_REL)                  # " is"
+            self.dot = piece(tok, ".")
+            self.nl = piece(tok, "\n")
+            self.bind_len = 1 + len(self.rel) + 1 + len(self.dot) + len(self.nl)  # ctry is cap . \n
+            self.qfix_len = 1 + len(self.rel)                         # "<Country> is"
+            self.key_off = 0                                          # country
+            self.val_off = 1 + len(self.rel)                         # capital (after "<Country> is")
         elif phrasing == "dict":
             # the basecheck-validated best format (acc 0.61): "Cargo to ship:\n<cargo>: <name>\n..." with
             # query "<cargo>:" -> answer " <name>". cargo is line-initial (NO-space single token),
@@ -392,6 +492,9 @@ class DocBuilder:
             # single-token: cargo is an int object; multi-token: cargo is a K-tuple object phrase.
             obj = list(cargo) if self.multitoken else [cargo]
             return [name_tid] + self.rel + obj + self.dot + self.nl    # "<Subj> lives in <Obj(s)>.\n"
+        if self.phrasing == "counterfactual":
+            # name_tid = country (KEY), cargo = capital tid (VALUE, the counterfactual capital in memory)
+            return [name_tid] + self.rel + [cargo] + self.dot + self.nl  # "<Country> is <Capital>.\n"
         if self.phrasing == "manifest":
             return [name_tid] + self.carries + [cargo] + self.dot
         if self.multitoken:
@@ -404,20 +507,81 @@ class DocBuilder:
             return [name_tid] + rel                                    # "<Subject><rel>"
         if self.phrasing == "natural":
             return [name_tid] + self.rel                               # "<Subject> lives in"
+        if self.phrasing == "counterfactual":
+            return [name_tid] + self.rel                               # "<Country> is"
         if self.phrasing == "manifest":
             return self.qfix1 + [cargo] + self.qfix2
         if self.multitoken:
             return [name_tid] + self.colon                             # "<name>:" (key=name)
         return [cargo] + self.colon                                    # dict: "<cargo>:"
 
+    def set_counterfactual(self, cf_tid):
+        """Install the per-fact COUNTERFACTUAL capital tids (parallel to self.facts) that build() places
+        as the binding VALUE / answer. cf_tid[i] is the (deranged) capital token for fact i; the TRUE
+        capital (self.facts[i][3]) is used only by build_cf() for the prior-recall answer. Called by
+        recall_mag AFTER the probe/filter narrows self.facts to the base-known set + deranges."""
+        assert self.phrasing == "counterfactual", "set_counterfactual is counterfactual-only"
+        assert len(cf_tid) == len(self.facts), "cf_tid must be parallel to self.facts"
+        self.cf_tid = list(cf_tid)
+
+    def _build_counterfactual(self, rng, batch, local=False):
+        """COUNTERFACTUAL doc builder. Each row draws M distinct facts from self.facts and queries one.
+        The binding VALUE = the COUNTERFACTUAL capital (self.cf_tid); the answer returned by build() is
+        that counterfactual capital. Also returns the parallel PRIOR (true) capital answer so build_cf()
+        can score both. Returns (ids[B,S], ans_cf[B], ans_prior[B], answer_pos)."""
+        assert self.cf_tid is not None, "call set_counterfactual(cf_tid) before building counterfactual docs"
+        rows, ans_cf, ans_prior = [], [], []
+        S = None
+        for _ in range(batch):
+            f_idx = rng.choice(len(self.facts), size=self.M, replace=False)
+            country_tids = [self.facts[i][2] for i in f_idx]        # KEY (country) tids
+            cf_caps = [self.cf_tid[i] for i in f_idx]               # counterfactual capital -> memory VALUE
+            true_caps = [self.facts[i][3] for i in f_idx]           # true capital -> prior answer
+            q = int(rng.integers(0, self.M))
+            qa = self._query_ids(country_tids[q], cf_caps[q], slot=q)   # "<Country> is"
+            bindings = []
+            for nt, ct in zip(country_tids, cf_caps):
+                bindings += self._binding_ids(nt, ct)              # "<Country> is <CF-Capital>.\n"
+            if not local:
+                pre = self.bos + self.header + bindings
+                assert len(pre) <= self.qa_start
+                pre = pre + [self.pad_tid] * (self.qa_start - len(pre))
+                seq = pre + qa
+                answer_pos = len(seq)
+            else:
+                pre = self.bos + [self.pad_tid] * (self.qa_start - len(self.bos))
+                seq = pre + bindings + qa
+                answer_pos = len(seq)
+            seq = seq + [cf_caps[q]]                                # gold = counterfactual capital
+            if S is None:
+                S = len(seq)
+            assert len(seq) == S, "row length mismatch — non-constant tokenization"
+            rows.append(seq)
+            ans_cf.append(cf_caps[q])
+            ans_prior.append(true_caps[q])
+        ids = torch.tensor(rows, dtype=torch.long)
+        return (ids, torch.tensor(ans_cf, dtype=torch.long),
+                torch.tensor(ans_prior, dtype=torch.long), len(rows[0]) - 1)
+
+    def build_cf(self, rng, batch, local=False):
+        """Counterfactual build exposing BOTH answers: (ids, ans_cf[B], ans_prior[B], answer_pos).
+        ans_cf = the counterfactual capital the memory teaches; ans_prior = the base's TRUE prior."""
+        assert self.phrasing == "counterfactual", "build_cf is counterfactual-only"
+        return self._build_counterfactual(rng, batch, local=local)
+
     def build(self, rng, batch, local=False):
         """Return (ids[B,S] long, answer[...] long, answer_pos int). Each row draws M distinct
         (name, cargo) bindings and queries one of them. local=True puts the bindings in the QA segment
         itself (base can see them via attention; tests scoring + in-context lookup).
 
+        counterfactual: draws from the fixed fact table; answer = the COUNTERFACTUAL capital (the value
+                        the memory teaches). build_cf() additionally returns the true prior capital.
         single-token: answer is [B] (the queried NAME token); answer_pos = its position.
         multi-token : answer is [B,K] (the queried cargo PHRASE token sequence); answer_pos = the
                       position of the FIRST answer token (the K answer tokens occupy apos..apos+K-1)."""
+        if self.phrasing == "counterfactual":
+            ids, ans_cf, _ans_prior, apos = self._build_counterfactual(rng, batch, local=local)
+            return ids, ans_cf, apos
         rows, ans = [], []
         S = None
         # VARIED: the queried slot must be BATCH-UNIFORM (its relation sets the query length, so all
@@ -611,10 +775,79 @@ def decode_probe(base, adapter, eval_b, eval_names, rng, args):
     return acc_m, acc_0, 1.0 / C
 
 
+def selftest_counterfactual(args, tok):
+    """Counterfactual doc-construction selftest: fact-table single-token verification, derangement (no
+    fixed point), doc building, per-binding KEY/VALUE position check, and build_cf's dual answer set.
+    Tokenizer only — no 4B, no GPU."""
+    facts = counterfactual_single_token(tok)
+    print(f"[selftest] phrasing=counterfactual candidate facts (single-token country+capital): "
+          f"{len(facts)} / {len(COUNTERFACTUAL_FACTS)} in table")
+    assert len(facts) >= args.M, f"need >= M={args.M} single-token facts, have {len(facts)}"
+    for country, capital, ctid, ktid in facts[:5]:
+        assert len(tok(" " + country, add_special_tokens=False).input_ids) == 1
+        assert len(tok(" " + capital, add_special_tokens=False).input_ids) == 1
+    # derangement: no country keeps its true capital
+    rng = np.random.default_rng(args.seed)
+    perm = derange_capitals(rng, len(facts))
+    cf_tid = [facts[perm[i]][3] for i in range(len(facts))]     # counterfactual capital tid per fact
+    for i in range(len(facts)):
+        assert cf_tid[i] != facts[i][3], f"fact {i} kept its true capital — not deranged"
+    print(f"[selftest] derangement OK: {len(facts)} facts, no fact keeps its true capital "
+          f"(e.g. {facts[0][0]}->{tok.decode([cf_tid[0]]).strip()} instead of {facts[0][1]})")
+    b = DocBuilder(tok, None, None, args.M, args.seg_len, args.qa_seg, phrasing="counterfactual",
+                   facts=facts)
+    b.set_counterfactual(cf_tid)
+    print(f"[selftest] bind_len={b.bind_len} qfix_len={b.qfix_len} qa_start={b.qa_start} "
+          f"header_len={len(b.header)} rel={b.rel}")
+    fact_ctids = {f[2] for f in facts}
+    ctid2cf = {facts[i][2]: cf_tid[i] for i in range(len(facts))}     # country tid -> counterfactual cap
+    ctid2true = {facts[i][2]: facts[i][3] for i in range(len(facts))}  # country tid -> TRUE capital
+    for local in (False, True):
+        r = np.random.default_rng(0)
+        ids, ans_cf, ans_prior, apos = b.build_cf(r, 2, local=local)
+        print(f"\n[selftest] local={local} ids.shape={tuple(ids.shape)} apos={apos} "
+              f"(seg {apos // args.seg_len})")
+        # per-binding KEY(country)/VALUE(counterfactual capital) positions (non-local addressing layout)
+        if not local:
+            hstart = len(b.bos) + len(b.header)
+            for row in range(ids.shape[0]):
+                for m in range(b.M):
+                    base = hstart + m * b.bind_len
+                    kt = ids[row, base + b.key_off].item()
+                    vt = ids[row, base + b.val_off].item()
+                    assert kt in fact_ctids, f"row{row} slot{m}: KEY@{base+b.key_off} not a country token"
+                    rel_ids = ids[row, base + 1:base + 1 + len(b.rel)].tolist()
+                    assert rel_ids == b.rel, f"row{row} slot{m}: rel {rel_ids} != {b.rel}"
+                    # VALUE must be THIS country's counterfactual capital, and NOT its true one
+                    assert vt == ctid2cf[kt], "VALUE is not the counterfactual capital for this country"
+                    assert vt != ctid2true[kt], "VALUE equals the TRUE capital — derangement leaked"
+            print(f"[selftest] counterfactual KEY(country)/VALUE(cf-capital) positions VERIFIED "
+                  f"for all M={b.M} slots (VALUE = deranged capital != true capital)")
+        for row in range(ids.shape[0]):
+            assert ids[row, apos].item() == ans_cf[row].item(), "answer token not at answer_pos"
+            # queried country: the token at qa_start (the KEY position of the query region)
+            q_country = ids[row, b.qa_start].item()
+            assert q_country in fact_ctids, "query key at qa_start is not a country token"
+            print(f"  row{row} query='{tok.decode([q_country]).strip()}' "
+                  f"cf_ans='{tok.decode([ans_cf[row].item()]).strip()}' "
+                  f"prior_ans='{tok.decode([ans_prior[row].item()]).strip()}' :: {tok.decode(ids[row])!r}")
+    # round-trip stability
+    r = np.random.default_rng(1)
+    ids, _, _, _ = b.build_cf(r, 1, local=False)
+    row = ids[0].tolist()
+    body = row[1:] if (b.bos and row[0] == b.bos[0]) else row
+    retok = tok(tok.decode(body), add_special_tokens=False).input_ids
+    assert retok == body, (f"piece-concat NOT round-trip-stable:\n  built={body}\n  retok={retok}")
+    print("\n[selftest] OK — counterfactual answer aligns (cf + prior) AND piece-concat is round-trip-stable.")
+
+
 def selftest(args):
     """Tokenizer-only: build a batch, decode it, assert the answer token(s) align. No 4B, no GPU."""
     from transformers import AutoTokenizer
     tok = AutoTokenizer.from_pretrained(MODEL)
+    if args.phrasing == "counterfactual":
+        selftest_counterfactual(args, tok)
+        return
     cargo_prefix = "" if args.phrasing == "dict" else " "   # natural + manifest place cargo mid-sentence
     names = single_token_ids(tok, NAME_CANDIDATES)
     cargo = single_token_ids(tok, CARGO_CANDIDATES, prefix=cargo_prefix)
@@ -687,10 +920,14 @@ def main():
     ap.add_argument("--seg-len", type=int, default=32, dest="seg_len")
     ap.add_argument("--qa-seg", type=int, default=2, dest="qa_seg", help="segment the query lands in")
     ap.add_argument("--M", type=int, default=3, help="bindings per doc")
-    ap.add_argument("--phrasing", default="dict", choices=["dict", "manifest", "natural", "varied"],
+    ap.add_argument("--phrasing", default="dict",
+                    choices=["dict", "manifest", "natural", "varied", "counterfactual"],
                     help="doc format; dict (cargo: name) is the best base substrate per recall_basecheck; "
                          "natural = '<Subject> lives in <Object>.' single-relation NL facts (issue #1); "
-                         "varied = per-fact relation drawn from a small template set (heterogeneous facts)")
+                         "varied = per-fact relation drawn from a small template set (heterogeneous facts); "
+                         "counterfactual = real (country->capital) facts the base KNOWS with DERANGED "
+                         "capitals in memory — knowledge-editing override probe (recall_mag runs the "
+                         "probe/filter; the deepmem selftest checks the fact table + derangement + doc)")
     ap.add_argument("--cargo-tokens", type=int, default=1, dest="cargo_tokens",
                     help="K: answer cargo phrase length in tokens (1=single-token byte-preserved path; "
                          ">1 = multi-token real-word cargo, role-swapped 'name: <K-token phrase>')")

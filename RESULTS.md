@@ -190,6 +190,48 @@ document, so the base cannot know any specific fact. Editing real, named entitie
 (where the base has a prior) is the open capstone, tracked in
 [#1](https://github.com/patcarter883/memory-organ/issues/1).
 
+## 7. Knowledge editing — overriding a frozen model's real knowledge
+
+Every result up to here is knowledge **insertion**: the bindings are random, so the frozen base cannot know
+any specific fact, `no_memory` pins at 0.000, and the memory only has to teach an association the base could
+never have. The harder claim is knowledge **editing** — take a fact the frozen base *already knows*
+parametrically (a real country → capital), put a **counterfactual** capital in the memory, and ask whether
+the memory makes the base emit the *wrong* capital, overriding its own prior. Enable with
+`--phrasing counterfactual`.
+
+The trap here is validity: you can only claim an *override* if the base actually held the prior you are
+overriding. So `recall_mag` runs a **PROBE → FILTER → EDIT** pipeline in one run: first probe the frozen
+base (memory off, tap off) on 40 curated country→capital facts (both sides single-token under the Qwen3.5-4B
+tokenizer), **keep only the facts it answers correctly**, then derange the kept capitals (Sattolo
+single-cycle — no country keeps its true capital) and bind those counterfactual capitals on the filtered
+set. Four metrics are scored at the same query position (`"The capital of <Country> is"`): mem-on and
+no_mem accuracy against the **counterfactual** capital, and against the **true prior** capital. A
+VALID/INVALID gate fires on no_mem prior-acc — if the base didn't hold the priors, the run is INVALID by
+construction.
+
+**Same-base result (M=8, frozen Qwen3.5-4B) — the valid, strong result:**
+
+| metric | value | reading |
+|---|---|---|
+| probe prior-acc (all 40 facts) | **0.975** | base holds the priors → 39 facts kept |
+| no_mem PRIOR-acc (kept set) | **1.000** | validity gate maxed — the base reliably knows these |
+| mem-on counterfactual-acc | **0.996** | the edit takes: base emits the deranged capital |
+| mem-on PRIOR-acc | **0.004** | the true prior is suppressed |
+
+**GATE: VALID.** With the base demonstrably holding the priors (no_mem prior-acc 1.000), the memory flips
+mem-on output to the counterfactual capital (0.996) and drives the true prior to 0.004. This is genuine
+knowledge **editing** — the memory overrides the frozen base's own parametric knowledge (France → Paris
+becomes France → Tokyo), not just injection of a fact the base could not know.
+
+**Cross-base transfer — the edit delivered, but the override claim is UNPROVEN on base-2.** Running the
+saved memory through the translator onto frozen Gemma *did* deliver the counterfactual (mem-on cf-acc
+0.996). But the validity gate failed on base-2: Gemma's no_mem prior-acc came out **0.000**, because the
+transfer path did not re-probe and re-filter to facts Gemma knows *in Gemma's own format* — it reused
+base-1's kept set and format. With base-2's priors unestablished, the override claim is **INVALID on
+base-2** by the same gate that validates base-1. So cross-base *override* is **unproven**, tracked as a
+follow-up under [#1](https://github.com/patcarter883/memory-organ/issues/1) (add a base-2 probe/filter pass
+in the transfer path). We do **not** claim cross-base editing.
+
 ## 5. Still open
 
 - **Multi-token cross-base transfer** — translator-bound (see §4); higher-capacity translator in progress.

@@ -112,6 +112,11 @@ python -m cam.recall_v1  --load-ckpt ckpt/mt.pt --M 8 --cargo-tokens 2 --xlator 
 # real knowledge (first cut): natural-language facts "<Subject> lives in <Object>." (phrasing survives)
 python -m cam.recall_mag --store pk --addr-sup-weight 1.0 --M 8 --phrasing natural --save-ckpt ckpt/nat.pt
 python -m cam.recall_v1  --load-ckpt ckpt/nat.pt --M 8 --base2 unsloth/gemma-3-4b-pt
+
+# knowledge editing: probe the frozen base for real country->capital priors it KNOWS, keep those, put a
+# DERANGED capital in memory, and override the base's own prior (mem-on flips France->Paris to France->Tokyo).
+# PROBE -> FILTER -> EDIT runs in one pass; the VALID/INVALID gate fires on no_mem prior-acc (same-base valid).
+python -m cam.recall_mag --store pk --addr-sup-weight 1.0 --M 8 --phrasing counterfactual --save-ckpt ckpt/cf.pt
 ```
 
 ## License & credit
