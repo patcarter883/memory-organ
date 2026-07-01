@@ -221,14 +221,18 @@ def main():
     # override else inherit from the checkpoint metadata (cheap metadata peek; embed/unembed are not
     # in the ckpt). cargo_words for base-1; base-2's pool is intersected below for index alignment.
     K = args.cargo_tokens
+    _meta = torch.load(args.load_ckpt, map_location="cpu", weights_only=False)
     if K == 0:
-        _meta = torch.load(args.load_ckpt, map_location="cpu", weights_only=False)
-        K = int(_meta.get("cargo_tokens", 1)); del _meta
+        K = int(_meta.get("cargo_tokens", 1))
+    phrasing = _meta.get("phrasing", "dict")   # rebuild the SAME doc format the memory was bound on
+    del _meta
     # base-1 DocBuilder must exist BEFORE load_ckpt: a pk-store ckpt needs the builder (bind-block
     # positions) at construction. Bolt ckpts ignore it. (builder2 is built after base-2 loads, below.)
-    names1 = single_token_ids(tok1, NAME_CANDIDATES); cargo1 = single_token_ids(tok1, CARGO_CANDIDATES, prefix="")
+    # natural phrasing puts the object mid-sentence (space-prefixed); dict is line-initial (no-space).
+    cargo_prefix = " " if phrasing == "natural" else ""
+    names1 = single_token_ids(tok1, NAME_CANDIDATES); cargo1 = single_token_ids(tok1, CARGO_CANDIDATES, prefix=cargo_prefix)
     cargo_words1 = single_token_ids(tok1, MULTITOKEN_WORD_POOL) if K > 1 else None
-    builder1 = DocBuilder(tok1, names1, cargo1, args.M, args.seg_len, args.qa_seg, phrasing="dict",
+    builder1 = DocBuilder(tok1, names1, cargo1, args.M, args.seg_len, args.qa_seg, phrasing=phrasing,
                           cargo_tokens=K, cargo_words=cargo_words1)
 
     # Build the v0 memory front-end (adapter + tap) against base-1's embedding, THEN free base-1's full
@@ -264,7 +268,7 @@ def main():
 
     # base-2 DocBuilder (builder1 was built above, before load_ckpt). Same single-token NAME/CARGO
     # words, each tokenized in its own base's vocab.
-    names2 = single_token_ids(tok2, NAME_CANDIDATES); cargo2 = single_token_ids(tok2, CARGO_CANDIDATES, prefix="")
+    names2 = single_token_ids(tok2, NAME_CANDIDATES); cargo2 = single_token_ids(tok2, CARGO_CANDIDATES, prefix=cargo_prefix)
     cargo_words2 = None
     if K > 1:
         # CRITICAL for cross-base alignment: builder1/builder2 draw cargo words by INDEX under a shared
@@ -281,7 +285,7 @@ def main():
         builder1.cargo_word_tids = [t for (_w, t) in cargo_words1]   # re-point builder1 to the shared set
         print(f"[v1] multi-token cargo: K={K} shared word pool={len(shared)} (aligned base-1/base-2)",
               flush=True)
-    builder2 = DocBuilder(tok2, names2, cargo2, args.M, args.seg_len, args.qa_seg, phrasing="dict",
+    builder2 = DocBuilder(tok2, names2, cargo2, args.M, args.seg_len, args.qa_seg, phrasing=phrasing,
                           cargo_tokens=K, cargo_words=cargo_words2)
 
     Kc_x = _kc(builder2)                            # answer length for the per-position translator

@@ -119,9 +119,36 @@ end-to-end" before running the transfer number — it wasn't (0.393). We correct
 closed most of the gap with a per-position translator (0.812). We are deliberately *not* upgrading "0.812"
 to "solved": it's a strong pass short of parity, and the record shows both the over-claim and the fix.
 
+## 6. Real knowledge — natural-language phrasing
+
+The dict format (`"<cargo>: <name>"`) is terse and unlike real text. The first real-knowledge cut asks
+whether the mechanism survives when the same associations are phrased as **prose**: single-relation facts
+`"<Subject> lives in <Object>."`, query `"<Subject> lives in"` → answer ` <Object>`. Subject = KEY,
+object = VALUE, both single real-word tokens — coherent English sentences, not the terse dictionary.
+Enable with `--phrasing natural`.
+
+M=8, single-token, `no_memory` = 0.000 at bind, delivery, and transfer:
+
+| stage | natural | dict | chance | ceiling |
+|---|---|---|---|---|
+| Stage-1 carry | **0.903** | 0.929 | 0.125 | — |
+| Stage-2 delivery (frozen Qwen) | **0.918** | — | 0.125 | 0.994 |
+| transfer → frozen Gemma | **0.645** | — | 0.125 | 0.865 |
+
+**Verdict: the mechanism is phrasing-invariant.** It holds on facts phrased as prose, not just the terse
+dict — natural carry 0.903 sits just under dict's 0.929, delivery 0.918 reaches 92% of its 0.994 ceiling,
+and transfer 0.645 is 75% of its 0.865 ceiling. `no_memory` stays pinned at 0.000 at bind, delivery, and
+transfer, so this is genuine memory, not the base guessing from the sentence template.
+
+This is a **first cut**: a single fixed relation (`lives in`) with single-token objects. Varied relations,
+real-dataset facts, and multi-token natural-language objects remain open (tracked in
+[#1](https://github.com/patcarter883/memory-organ/issues/1)).
+
 ## 5. Still open
 
 - **Multi-token cross-base transfer** — translator-bound (see §4); higher-capacity translator in progress.
-- **Real knowledge in real documents** (not random name→word pairs) — the true generalization test.
+- **Real knowledge in real documents** (not random name→word pairs) — the true generalization test; a
+  first natural-language cut is in §6 (single relation, single-token objects); varied relations,
+  real-dataset facts, and multi-token natural objects remain (tracked in #1).
 - **N-scaling** the store toward useful sizes (thousands of facts, not 8–128 per doc).
 - **Backend portability** — pure PyTorch, CPU/CUDA expected but unverified.

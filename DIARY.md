@@ -192,3 +192,24 @@ it's no longer a single-seed claim.
 
 Somewhere in here we also pulled the work out of the research monorepo into this standalone, public repo —
 which is why you're reading this.
+
+## Phase 7 — Real knowledge (first cut)
+
+**Does the mechanism care how the facts are written?** Everything to here bound the terse dictionary
+format `"<cargo>: <name>"` — nothing like real text. So we added a `--phrasing natural` mode that states
+the same associations as prose: single-relation facts `"<Subject> lives in <Object>."`, queried with
+`"<Subject> lives in"` and answered with ` <Object>` (subject = key, object = value, both single real-word
+tokens). Plumbing it through was mostly bookkeeping — declared KEY/VALUE offsets on the builder so the
+store adapter locates the association by where it actually sits in a prose sentence rather than assuming
+the dict layout, and persisting the phrasing in the checkpoint so the transfer stage rebuilds the same
+doc format the memory was bound on. The offsets keep the dict path byte-identical.
+
+**It held.** M=8, single-token: natural carry **0.903** (dict 0.929), delivery **0.918** (92% of its 0.994
+ceiling), transfer → Gemma **0.645** (75% of its 0.865 ceiling). `no_memory` stayed pinned at 0.000 at
+bind, delivery, *and* transfer, so it's genuine memory, not the base guessing from the sentence template —
+the (subject → object) pairing is still random per doc, so the realism is the phrasing, not the vocabulary.
+The mechanism is phrasing-invariant: it works on prose, not just the dictionary.
+
+**Honest scope.** This is a *first* cut — one fixed relation (`lives in`) with single-token objects. Varied
+relations, facts drawn from a real dataset, and multi-token natural-language objects are all still open.
+Tracked in issue #1.

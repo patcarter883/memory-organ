@@ -108,6 +108,10 @@ python -m cam.recall_mag --store pk --readout perpos --perpos-key disjoint --car
     --addr-sup-weight 1.0 --pk-read-heads 8 --M 8 --save-ckpt ckpt/mt.pt
 python -m cam.recall_v1  --load-ckpt ckpt/mt.pt --M 8 --cargo-tokens 2 --xlator perpos-mlp \
     --base2 unsloth/gemma-3-4b-pt
+
+# real knowledge (first cut): natural-language facts "<Subject> lives in <Object>." (phrasing survives)
+python -m cam.recall_mag --store pk --addr-sup-weight 1.0 --M 8 --phrasing natural --save-ckpt ckpt/nat.pt
+python -m cam.recall_v1  --load-ckpt ckpt/nat.pt --M 8 --base2 unsloth/gemma-3-4b-pt
 ```
 
 ## License & credit
