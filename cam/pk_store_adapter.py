@@ -235,13 +235,22 @@ class PKStoreAdapter(nn.Module):
         voff = b.val_off if hasattr(b, "val_off") else (1 + len(b.colon))
         keys_pos = []
         val_pos_list = []                                # per-binding list of value token offsets
-        for m in range(b.M):
-            base = hstart + m * b.bind_len
-            keys_pos.append(base + koff)                 # KEY token (cargo single / name multi / subj nat)
-            if mt:
-                val_pos_list.append(list(range(base + voff, base + voff + K)))  # K cargo tokens
-            else:
-                val_pos_list.append([base + voff])      # single name token
+        if getattr(b, "phrasing", None) == "varied":
+            # VARIED-RELATION: bind blocks have DIFFERENT lengths (per-relation), so the constant
+            # bind_len arithmetic does not hold. The builder hands us the exact per-binding KEY
+            # (subject) and VALUE (object) absolute positions; single-token only (mt is False here).
+            assert not mt, "varied phrasing is single-token only"
+            vk_pos, vv_pos = b.binding_positions(hstart)
+            keys_pos = list(vk_pos)
+            val_pos_list = [[vp] for vp in vv_pos]
+        else:
+            for m in range(b.M):
+                base = hstart + m * b.bind_len
+                keys_pos.append(base + koff)             # KEY token (cargo single / name multi / subj nat)
+                if mt:
+                    val_pos_list.append(list(range(base + voff, base + voff + K)))  # K cargo tokens
+                else:
+                    val_pos_list.append([base + voff])   # single name token
         keys = mem_emb[:, keys_pos]                     # [B,M,mem_dim] (name in multi, cargo in single)
         if mt and self.mt_value == "perpos" and self.perpos_key == "disjoint":
             # DISJOINT (Thrust 1 #4): position t writes its M associations into ITS OWN store

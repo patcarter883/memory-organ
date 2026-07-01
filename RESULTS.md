@@ -140,15 +140,62 @@ dict — natural carry 0.903 sits just under dict's 0.929, delivery 0.918 reache
 and transfer 0.645 is 75% of its 0.865 ceiling. `no_memory` stays pinned at 0.000 at bind, delivery, and
 transfer, so this is genuine memory, not the base guessing from the sentence template.
 
-This is a **first cut**: a single fixed relation (`lives in`) with single-token objects. Varied relations,
-real-dataset facts, and multi-token natural-language objects remain open (tracked in
-[#1](https://github.com/patcarter883/memory-organ/issues/1)).
+### Heterogeneous facts — varied relations
+
+Prose with ONE fixed relation is still M repetitions of a single template. `--phrasing varied` mixes fact
+**structures** within a document: each fact independently draws from a small set of relation templates —
+` lives in` / ` works as` / ` was born in` / ` owns a` / ` studies` — so one document contains diverse fact
+shapes, not one repeated skeleton. The relations have different token lengths, so binding blocks are no
+longer constant-length; per-slot key/value positions (subject = KEY, object = VALUE) are handed to the
+store via `binding_positions()`, keeping the deterministic addressing exact.
+
+M=8, single-token objects, `no_memory` = 0.000 everywhere:
+
+| stage | varied | (natural, for ref.) | chance |
+|---|---|---|---|
+| Stage-1 carry | **0.938** | 0.903 | 0.125 |
+| Stage-2 delivery (frozen Qwen) | **0.932** | 0.918 | 0.125 |
+| transfer → frozen Gemma | **0.631** | 0.645 | 0.125 |
+
+Mixing five relation shapes in one document does not degrade the mechanism — carry 0.938 and delivery 0.932
+are on par with (slightly above) the single-relation natural numbers, and transfer 0.631 holds.
+
+### Multi-token natural — K-token objects in prose
+
+Real facts are often multi-token (`"lives in New York"`). `--phrasing natural --cargo-tokens K` extends the
+prose path so the OBJECT is a K-token real-word phrase (`"<Subject> lives in <w0 w1>."`); the subject stays
+the single-token KEY, the K-token object phrase is the VALUE (answer). The store needed no change — only
+lifting the "single-token only" guards — because each object word is verified single-token and
+space-prefixed, so a K-word phrase is deterministically exactly K tokens and the constant-length binding
+contract still holds. K=1 is byte-identical to single-token natural.
+
+M=8, `no_memory` = 0.000 everywhere:
+
+| stage | multi-token natural | per-token | chance |
+|---|---|---|---|
+| Stage-1 carry | **0.973** | 0.986 | — |
+| Stage-2 delivery (frozen Qwen) | **0.928** | — | — |
+| transfer → frozen Gemma | **0.824** | 0.908 | — |
+
+The full-phrase carry (all K tokens exact) is 0.973 (per-token 0.986); delivery 0.928; and transfer 0.824
+**exceeds its own in-context ceiling of 0.607** (per-token 0.908) — the memory delivers the multi-token
+answer through the transfer base *better* than that base can reproduce the same facts when they are placed
+directly in its context window.
+
+**Verdict: the mechanism holds across prose, varied relations, AND multi-token answers.** Phrasing-invariance
+is not fragile to one template — it survives five mixed relation shapes and K-token phrase answers, with
+`no_memory` pinned at 0.000 throughout, so every result is genuine memory rather than the base guessing from
+sentence structure. **Caveat:** these are still *random bindings* — subjects and objects paired at random per
+document, so the base cannot know any specific fact. Editing real, named entities and counterfactual facts
+(where the base has a prior) is the open capstone, tracked in
+[#1](https://github.com/patcarter883/memory-organ/issues/1).
 
 ## 5. Still open
 
 - **Multi-token cross-base transfer** — translator-bound (see §4); higher-capacity translator in progress.
-- **Real knowledge in real documents** (not random name→word pairs) — the true generalization test; a
-  first natural-language cut is in §6 (single relation, single-token objects); varied relations,
-  real-dataset facts, and multi-token natural objects remain (tracked in #1).
+- **Real knowledge in real documents** (not random name→word pairs) — the true generalization test. §6 now
+  covers prose (single relation), **varied relations** (five mixed templates per doc), and **multi-token
+  natural objects** (K-token phrase answers), all with `no_memory` = 0.000. What remains is real, named
+  entities and counterfactual editing — where the base has a prior — the open capstone (tracked in #1).
 - **N-scaling** the store toward useful sizes (thousands of facts, not 8–128 per doc).
 - **Backend portability** — pure PyTorch, CPU/CUDA expected but unverified.
