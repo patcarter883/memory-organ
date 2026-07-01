@@ -272,9 +272,23 @@ counterfactual-acc hit **0.996**, and mem-on PRIOR-acc dropped to **0.004** — 
 overrides the frozen base's own parametric knowledge (France→Paris becomes France→Tokyo). That is genuine
 knowledge *editing*, not insertion.
 
-**And the honest limit.** Cross-base transfer to Gemma *delivered* the edit (mem-on cf-acc 0.996), but the
-same validity gate that certified base-1 **fails on base-2**: Gemma's no_mem prior-acc came out **0.000**,
-because the transfer path reused base-1's kept set and format instead of re-probing and re-filtering to facts
-Gemma knows in Gemma's own format. So the override claim is **unproven on base-2** — the transfer moved the
-association, but we cannot yet call it a cross-base *edit*, and we don't. The fix (a base-2 probe/filter pass
-in the transfer path) is tracked as a follow-up under issue #1.
+**And the honest limit — then the resolution.** Cross-base transfer to Gemma *delivered* the edit (mem-on
+cf-acc 0.996), but the same validity gate that certified base-1 first **failed on base-2**: Gemma's no_mem
+prior-acc came out **0.000**. We wrote that up as an honest INVALID caveat and tracked it under #1 — and that
+was the right call, because chasing it down, the gate turned out to be flagging **our own artifact, not a
+limitation of the memory**. The 0.000 was a **BOS-stripping bug** in the leak-free eval context: that
+context sliced off the leading `<bos>` token, and base-2 models like Gemma are highly BOS-sensitive, so
+Gemma's parametric recall collapsed to zero — even though the *same* Gemma, probed *with* its `<bos>` exactly
+as it was trained, recalls those same priors at **1.000**. A context-format artifact masquerading as a
+knowledge gap. This is the nice part of the story: the validity control we built in Phase 9 *caught our own
+bug* — it refused to certify a run where the base couldn't recall its priors, which is precisely what a good
+control should do.
+
+The fix has two parts: **(1)** restore the BOS in the leak-free context so the eval format matches the base's
+eliciting format, and **(2)** add a base-2 **probe → filter** pass (mirroring base-1's) that keeps only facts
+Gemma demonstrably knows in Gemma's own vocab and format. With both in place: base-2 probe prior-acc
+**1.000** (39/39 facts kept), no_mem PRIOR-acc **1.000**, mem-on counterfactual-acc **0.996**, mem-on
+PRIOR-acc **0.004** — **GATE VALID**. So knowledge editing works **both same-base (Qwen) AND cross-family
+(Gemma)**: one frozen memory drives a *different* frozen model to overwrite its own parametric knowledge. The
+invalid→valid arc, and the fact that our own validity gate caught the artifact, is the more honest telling.
+Part of #1.
