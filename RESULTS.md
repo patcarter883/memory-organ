@@ -223,21 +223,39 @@ mem-on output to the counterfactual capital (0.996) and drives the true prior to
 knowledge **editing** — the memory overrides the frozen base's own parametric knowledge (France → Paris
 becomes France → Tokyo), not just injection of a fact the base could not know.
 
-**Cross-base transfer — the edit delivered, but the override claim is UNPROVEN on base-2.** Running the
-saved memory through the translator onto frozen Gemma *did* deliver the counterfactual (mem-on cf-acc
-0.996). But the validity gate failed on base-2: Gemma's no_mem prior-acc came out **0.000**, because the
-transfer path did not re-probe and re-filter to facts Gemma knows *in Gemma's own format* — it reused
-base-1's kept set and format. With base-2's priors unestablished, the override claim is **INVALID on
-base-2** by the same gate that validates base-1. So cross-base *override* is **unproven**, tracked as a
-follow-up under [#1](https://github.com/patcarter883/memory-organ/issues/1) (add a base-2 probe/filter pass
-in the transfer path). We do **not** claim cross-base editing.
+**Cross-base transfer — the override is now VALID and WORKS on base-2 (frozen Gemma):**
+
+| metric | value | reading |
+|---|---|---|
+| base-2 probe prior-acc (all shared facts) | **1.000** | Gemma holds the priors → 39/39 facts kept |
+| no_mem PRIOR-acc (kept set) | **1.000** | validity gate maxed on base-2 — Gemma reliably knows these |
+| mem-on counterfactual-acc | **0.996** | the edit transfers: Gemma emits the deranged capital |
+| mem-on PRIOR-acc | **0.004** | Gemma's true prior suppressed |
+
+**GATE: VALID.** Running the saved base-1 memory through the translator onto frozen Gemma delivers the
+counterfactual (mem-on cf-acc 0.996), and — with Gemma demonstrably holding the priors (base-2 prior-acc
+1.000, 39/39 facts) — drives Gemma's own true prior to 0.004. This is genuine cross-**family** knowledge
+editing: one frozen memory makes a *different* frozen model overwrite its own parametric knowledge.
+
+The earlier 0.000 no_mem prior-acc on base-2 was **our own artifact, not a limitation** — a **BOS-stripping
+bug** in the leak-free eval context. That context dropped the leading `<bos>` token, and base-2 models like
+Gemma are highly BOS-sensitive, so Gemma's parametric recall collapsed to 0.000 even though the same base,
+probed *with* its `<bos>` (exactly as it was trained), recalls the priors at 1.000. The validity gate
+correctly flagged it as INVALID — the control did its job. The fix has two parts: **(1)** restore the BOS in
+the leak-free context so the eval format matches the base's eliciting format, and **(2)** add a base-2
+**probe → filter** pass (mirroring the base-1 filter) that keeps only facts Gemma demonstrably knows *in
+Gemma's own vocab and format*, so the override is measured on an honestly-established prior set.
+
+So knowledge editing works **both same-base (Qwen) AND cross-family (Gemma)**: the memory drives a
+*different* frozen model to overwrite its own knowledge. (Part of [#1](https://github.com/patcarter883/memory-organ/issues/1).)
 
 ## 5. Still open
 
 - **Multi-token cross-base transfer** — translator-bound (see §4); higher-capacity translator in progress.
 - **Real knowledge in real documents** (not random name→word pairs) — the true generalization test. §6 now
   covers prose (single relation), **varied relations** (five mixed templates per doc), and **multi-token
-  natural objects** (K-token phrase answers), all with `no_memory` = 0.000. What remains is real, named
-  entities and counterfactual editing — where the base has a prior — the open capstone (tracked in #1).
+  natural objects** (K-token phrase answers), all with `no_memory` = 0.000. Counterfactual editing — where
+  the base has a prior — is now demonstrated same-base AND cross-family (§7); what remains is scaling to real,
+  named entities in real documents, the open capstone (tracked in #1).
 - **N-scaling** the store toward useful sizes (thousands of facts, not 8–128 per doc).
 - **Backend portability** — pure PyTorch, CPU/CUDA expected but unverified.

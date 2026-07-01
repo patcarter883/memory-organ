@@ -33,7 +33,7 @@ from m2_adapter import MODEL, DEV                                          # noq
 from recall_deepmem import (NAME_CANDIDATES, CARGO_CANDIDATES, MULTITOKEN_WORD_POOL,  # noqa: E402
                             single_token_ids, DocBuilder, derange_capitals)
 from recall_mag import (memory_bank, load_ckpt, EVAL_BATCH_CAP,  # noqa: E402
-                        _kc, _answer_logits, _seq_ce, _seq_metrics, _nll_bits)        # noqa: E402
+                        _kc, _answer_logits, _seq_ce, _seq_metrics, _nll_bits, probe_and_filter)  # noqa: E402
 from translator import TranslatedInjector, save_translator                # noqa: E402
 
 LN2 = math.log(2.0)
@@ -80,13 +80,20 @@ def load_base(model_id):
 
 
 def _leakfree_ctx(base2, builder2, ids2, apos2, end=None):
-    """header (FORMAT only, no bindings) + query tokens -> base-2 inputs_embeds (base-2 vocab).
+    """BOS + header (FORMAT only, no bindings) + query tokens -> base-2 inputs_embeds (base-2 vocab).
     Multi-token teacher-forcing: end=apos2+Kc-1 also includes the first Kc-1 gold answer tokens so the
-    last Kc base-2 logit positions predict the full answer sequence. end=None = single-token."""
+    last Kc base-2 logit positions predict the full answer sequence. end=None = single-token.
+
+    KEEP THE BOS. A prior version stripped it (slice started at len(bos)); base-2's like Gemma are
+    highly BOS-sensitive — without the leading <bos> the frozen base's PARAMETRIC next-token recall
+    collapses, so the no_memory PRIOR-acc(base-2) validity gate read ~0.000 even though the base-2
+    PROBE (which includes bos, exactly as it was trained) recalls the same priors at ~1.000. That was
+    a context-format artifact, not a base-2 knowledge gap. Include the bos so the leak-free eval
+    context matches the probe's eliciting format and the validity gate is measured honestly."""
     if end is None:
         end = apos2
     hlen = len(builder2.bos) + len(builder2.header)
-    ctx_ids = torch.cat([ids2[:, len(builder2.bos):hlen], ids2[:, builder2.qa_start:end]], dim=1)
+    ctx_ids = torch.cat([ids2[:, :hlen], ids2[:, builder2.qa_start:end]], dim=1)   # bos + header + query
     return base2.get_input_embeddings()(ctx_ids)
 
 
@@ -284,6 +291,9 @@ def main():
     ap.add_argument("--seed", type=int, default=20260629)
     ap.add_argument("--cargo-tokens", type=int, default=0, dest="cargo_tokens",
                     help="K multi-token answer length; 0 = inherit from the loaded checkpoint")
+    ap.add_argument("--cf-probe-batch", type=int, default=16, dest="cf_probe_batch",
+                    help="batch size for the BASE-2 counterfactual probe/filter (the cross-base "
+                         "validity gate: keeps only facts base-2 demonstrably knows)")
     ap.add_argument("--xlator", type=str, default="affine",
                     choices=["affine", "perpos", "mlp", "perpos-mlp"],
                     help="translator variant: affine (shared linear, byte-preserved baseline); "
@@ -385,6 +395,28 @@ def main():
         shared = [(c, cap) for (c, cap) in cf_facts if c in w1 and c in w2]   # saved order, both-single
         assert len(shared) >= args.M, \
             f"cross-base shared CF facts ({len(shared)}) < M ({args.M}); pick a closer base-2 or lower M"
+        # ---- BASE-2 PROBE -> FILTER (the cross-base validity fix) -----------------------------------
+        # Mirror the base-1 probe that MADE the same-base test valid: BEFORE fitting/measuring, run a
+        # NO-MEMORY forward of the FROZEN BASE-2 over the shared candidate facts in base-2's OWN best
+        # eliciting format (the SAME "The following facts are given.\nThe capital of <Country> is"
+        # context the eval reconstructs on base-2, tokenized in base-2's vocab), and KEEP ONLY the facts
+        # base-2 demonstrably knows (predicts the TRUE capital). Without this, the shared set only proved
+        # single-token-ness in base-2, NOT that base-2 HOLDS the prior — so no_mem prior-acc(base-2) came
+        # out 0.000 and the override claim on base-2 was meaningless. probe_and_filter uses tok2's own
+        # single-token capital ids, so it measures base-2's genuine parametric recall.
+        shared_facts2 = _cf_facts_single_token(tok2, shared)  # (country,capital,ctid2,ktid2) in base-2 vocab
+        kept2, prior_acc_b2_full = probe_and_filter(base2, tok2, shared_facts2,
+                                                    batch=getattr(args, "cf_probe_batch", 16))
+        print(f"[v1][cf] BASE-2 PROBE/FILTER: base-2 prior-acc over all {len(shared_facts2)} shared "
+              f"candidates = {prior_acc_b2_full:.3f}", flush=True)
+        print(f"[v1][cf] BASE-2 FILTERED-SET SIZE = {len(kept2)} facts base-2 demonstrably knows "
+              f"(measure the override on THESE)", flush=True)
+        assert len(kept2) >= args.M, \
+            (f"base-2 filtered CF facts ({len(kept2)}) < M ({args.M}): base-2 knows too few of the "
+             f"shared priors in ANY single-token format — the editing transfer cannot be validly "
+             f"tested on this base-2 (report honestly / pick a closer base-2 / lower --M).")
+        kept2_countries = {c for (c, _cap, _ct, _kt) in kept2}
+        shared = [(c, cap) for (c, cap) in shared if c in kept2_countries]    # base-2-KNOWN subset only
         facts1 = _cf_facts_single_token(tok1, shared)
         facts2 = _cf_facts_single_token(tok2, shared)
         assert [f[0] for f in facts1] == [f[0] for f in facts2], "cross-base CF fact misalignment"
