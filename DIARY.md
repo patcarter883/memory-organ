@@ -213,3 +213,37 @@ The mechanism is phrasing-invariant: it works on prose, not just the dictionary.
 **Honest scope.** This is a *first* cut — one fixed relation (`lives in`) with single-token objects. Varied
 relations, facts drawn from a real dataset, and multi-token natural-language objects are all still open.
 Tracked in issue #1.
+
+## Phase 8 — Heterogeneous facts, and multi-token answers in prose
+
+Phase 7 left two of its own caveats open: prose was still **one** repeated relation, and answers were still
+single tokens. Phase 8 closes both — separately, so each is a clean isolate.
+
+**Varied relations (`--phrasing varied`).** One fixed relation means the document is M copies of the same
+skeleton; a real page mixes fact *shapes*. So each fact now draws independently from a small template set —
+` lives in` / ` works as` / ` was born in` / ` owns a` / ` studies` — assigned deterministically per binding
+slot (`slot m → relations[m % R]`) so the token positions stay batch-uniform and identical across
+tokenizers. The relations have **different token lengths**, which broke the one assumption the store leaned
+on: constant-length binding blocks. The fix was to stop computing positions by `m * bind_len` arithmetic and
+instead have the builder hand the store the exact per-binding key/value positions (`binding_positions()`) —
+subject = KEY, object = VALUE, wherever they land in a variable-length sentence. Everything else was
+untouched. **It held:** M=8, carry **0.938**, delivery **0.932**, transfer **0.631** — on par with (slightly
+above) single-relation natural. Mixing five fact shapes in one document does not confuse the store.
+
+**Multi-token answers in prose (`--phrasing natural --cargo-tokens K`).** Real facts are multi-token ("lives
+in New York"). We already had a multi-token *dict* path; the question was whether prose could carry a K-token
+object phrase (`"<Subject> lives in <w0 w1>."`) with the subject still the single-token key. The store needed
+**no** change — only lifting the "single-token only" guards — because every object word is verified
+single-token and space-prefixed, so a K-word phrase is deterministically exactly K tokens and the
+constant-length contract survives; K=1 stays byte-identical to single-token natural. **The strongest result
+of the phase:** M=8, full-phrase carry **0.973** (per-token 0.986), delivery **0.928**, and transfer
+**0.824** (per-token 0.908) — which *exceeds its own in-context ceiling of 0.607*. The memory delivers the
+multi-token answer through the transfer base **better than that base reproduces the same facts when they sit
+directly in its context**. `no_memory` = 0.000 throughout both experiments.
+
+**Where this leaves the realism frontier.** Phrasing-invariance is not a fragile property of one template —
+it survives five mixed relation shapes and K-token phrase answers. But the honest caveat from Phase 7 still
+stands, and it is now the *only* one: these are **random bindings**. Subjects and objects are paired at
+random per document, so the base has no prior to override — the mechanism is proven to *store and retrieve*,
+not yet to *edit* a fact the model already believes. Real, named entities and counterfactual editing (where
+the base has a genuine prior) is the open capstone. Tracked in issue #1.

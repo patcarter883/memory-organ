@@ -169,6 +169,29 @@ MULTITOKEN_WORD_POOL = [
     "loyal", "north", "south", "grand", "stout", "sharp", "keen", "bold", "pure", "vast", "lone",
 ]
 
+# ---- VARIED-RELATION natural phrasing (issue #1, heterogeneous facts) --------------------------
+# The `natural` phrasing uses ONE fixed relation (" lives in") for every fact — so the document is M
+# repetitions of the same template. `varied` extends it: each fact independently draws from a SMALL
+# SET of relation templates, so one document mixes fact STRUCTURES (subject lives-in / works-as /
+# was-born-in / owns-a / studies an object). This tests whether the memory handles diverse fact
+# shapes in a single document, not just one repeated template.
+#
+# CONTRACT each relation string must satisfy so the deterministic-position addressing holds:
+#   - space-prefixed (the SUBJECT that precedes it is a space-prefixed single token = KEY@offset 0);
+#   - the OBJECT immediately follows the relation (space-prefixed single token = VALUE@offset
+#     1+len(rel)), then "." and "\n". A binding block is [subj, *rel, obj, ".", "\n"], whose length
+#     is 1+len(rel)+1+len(dot)+len(nl) and VARIES per relation (hence per-binding positions, below).
+# Relations are assigned DETERMINISTICALLY per binding slot (slot m -> relations[m % R]) so the
+# per-binding token positions are batch-uniform (the store reads keys/values by a single [B,pos]
+# gather) AND identical across tokenizers (cross-base transfer draws the same fact structure).
+VARIED_RELATIONS = [
+    " lives in",
+    " works as",
+    " was born in",
+    " owns a",
+    " studies",
+]
+
 
 def single_token_ids(tok, words, prefix=" "):
     """Keep words that encode to exactly one token when space-prefixed; return [(word, tid)]."""
@@ -205,7 +228,8 @@ class DocBuilder:
         self.cargo_tokens = int(cargo_tokens)
         self.multitoken = self.cargo_tokens > 1
         if self.multitoken:
-            assert phrasing == "dict", "multi-token cargo only implemented for dict phrasing"
+            assert phrasing in ("dict", "natural"), \
+                "multi-token cargo implemented for dict + natural phrasing (not manifest/varied)"
             assert cargo_words is not None, "multi-token cargo needs cargo_words (single-token word pool)"
             # cargo_words: list[(word, tid)] verified single-token space-prefixed (see single_token_ids)
             self.cargo_word_tids = [t for (_w, t) in cargo_words]
@@ -229,21 +253,67 @@ class DocBuilder:
             self.val_off = 1 + len(self.carries)                       # cargo (after "<name> carries")
         elif phrasing == "natural":
             # NATURAL-LANGUAGE single-relation facts: "<Subject> lives in <Object>." Subject drawn from
-            # NAME_CANDIDATES (space-prefixed single token = KEY); Object from the single-token real-word
-            # pool (space-prefixed, mid-sentence = VALUE). Query "<Subject> lives in" -> answer " <Object>".
+            # NAME_CANDIDATES (space-prefixed single token = KEY); Object from the real-word pool
+            # (space-prefixed, mid-sentence = VALUE). Query "<Subject> lives in" -> answer " <Object>".
             # This is the REALISM probe of issue #1: a coherent relation + real-word vocabulary phrased as
             # a sentence, vs the terse "<cargo>: <name>" dict. no_memory stays ~0 because the (subject->
             # object) pairing is still drawn at RANDOM per doc (the base cannot know a specific random
             # binding), so the realism is the phrasing, not exotic entities.
-            assert not self.multitoken, "natural phrasing is single-token only"
+            #
+            # MULTI-TOKEN natural (cargo_tokens=K>1): the OBJECT is a K-token real-word phrase drawn from
+            # the same verified single-token, space-prefixed word pool the disjoint DICT experiments used
+            # ("<Subject> lives in <w0 w1>."). The subject stays the single-token KEY; the K-token object
+            # phrase is the VALUE (answer). Because each object word is verified single-token and
+            # space-prefixed at generation time, a K-word phrase is DETERMINISTICALLY exactly K tokens, so
+            # the binding block "<Subject> lives in <K-token object>.\n" is constant length (bind_len holds)
+            # and the disjoint per-position store reads object token t at val_off+t — the SAME generic
+            # (key_off, val_off, bind_len, cargo_tokens) contract the DICT multi-token path uses. This
+            # combines natural phrasing (issue #1 realism) with multi-token answers (real facts are often
+            # multi-token: "lives in New York"). K==1 keeps the byte-identical single-token natural path.
             self.header = piece(tok, "The following facts are given.\n")
             self.rel = piece(tok, " lives in")                         # the single fixed relation
             self.dot = piece(tok, ".")
             self.nl = piece(tok, "\n")
-            self.bind_len = 1 + len(self.rel) + 1 + len(self.dot) + len(self.nl)  # subj rel obj . \n
+            if self.multitoken:
+                # OBJECT is a K-token phrase drawn from the single-token word pool (like DICT multi-token);
+                # self.cargo_word_tids was already validated+set in the common multitoken block above.
+                # subj rel <K object tokens> . \n
+                self.bind_len = 1 + len(self.rel) + self.cargo_tokens + len(self.dot) + len(self.nl)
+            else:
+                self.bind_len = 1 + len(self.rel) + 1 + len(self.dot) + len(self.nl)  # subj rel obj . \n
             self.qfix_len = 1 + len(self.rel)                          # "<Subject> lives in"
             self.key_off = 0                                           # subject
             self.val_off = 1 + len(self.rel)                          # object (after "<Subject> lives in")
+        elif phrasing == "varied":
+            # VARIED-RELATION natural facts: each binding slot m draws a relation from VARIED_RELATIONS
+            # DETERMINISTICALLY (slot m -> relations[m % R]) so per-binding positions are batch-uniform
+            # and tokenizer-agnostic. A binding is "<Subject><rel> <Object>.\n" with the subject the
+            # KEY (offset 0 within its block) and the object the VALUE (offset 1+len(rel_m)). Because
+            # rel length VARIES, bind blocks have DIFFERENT lengths -> we precompute per-binding token
+            # lengths and cumulative bases; the constant `bind_len` no longer applies (the pk-store
+            # adapter reads per-binding key/val positions via builder.binding_positions()).
+            assert not self.multitoken, "varied phrasing is single-token only"
+            self.header = piece(tok, "The following facts are given.\n")
+            self.dot = piece(tok, ".")
+            self.nl = piece(tok, "\n")
+            self.rels = [piece(tok, r) for r in VARIED_RELATIONS]     # per-relation token pieces
+            self.R = len(self.rels)
+            # per binding SLOT m: which relation, its token piece, its block length, its val offset
+            self.slot_rel = [m % self.R for m in range(M)]
+            self.bind_lens = [1 + len(self.rels[r]) + 1 + len(self.dot) + len(self.nl)
+                              for r in self.slot_rel]                  # subj rel obj . \n  (per slot)
+            self.bind_vals = [1 + len(self.rels[r]) for r in self.slot_rel]  # object offset per slot
+            # cumulative base offset of slot m WITHIN the binding block (after bos+header)
+            self.bind_bases = [sum(self.bind_lens[:m]) for m in range(M)]
+            self.bind_total = sum(self.bind_lens)                     # total binding-block token length
+            # key_off/val_off kept for API compat (fixed-length fallbacks); the varied path uses the
+            # PER-BINDING positions from binding_positions(). key is always subject@0 within a block.
+            self.key_off = 0
+            self.val_off = None                                        # varies per slot -> not scalar
+            self.bind_len = None                                      # NOT constant for varied
+            # qfix_len (query "<Subject><rel>") and the answer position depend on the QUERIED slot,
+            # which is drawn per build() and shared across the batch (self._q for this build).
+            self.qfix_len = None                                     # set per-build in build()
         elif phrasing == "dict":
             # the basecheck-validated best format (acc 0.61): "Cargo to ship:\n<cargo>: <name>\n..." with
             # query "<cargo>:" -> answer " <name>". cargo is line-initial (NO-space single token),
@@ -274,12 +344,19 @@ class DocBuilder:
         assert len(pad) == 1, f"pad_word {pad_word!r} must be a single token (got {pad})"
         self.pad_tid = pad[0]
         self.qa_start = qa_seg * seg_len
-        # sanity on the construction
-        assert len(self.bos) + len(self.header) + M * self.bind_len <= self.qa_start, \
+        # sanity on the construction. varied has PER-BINDING lengths (bind_len is None) -> use the
+        # precomputed total; the query length is the LONGEST possible queried relation (worst case).
+        if self.phrasing == "varied":
+            bind_block = len(self.bos) + len(self.header) + self.bind_total
+            worst_qfix = 1 + max(len(r) for r in self.rels)          # "<Subject><rel>" (longest rel)
+        else:
+            bind_block = len(self.bos) + len(self.header) + M * self.bind_len
+            worst_qfix = self.qfix_len
+        assert bind_block <= self.qa_start, \
             "binding block does not fit before the QA segment — raise --qa-seg or seg-len"
         # the QA block (query prefix + the K answer tokens) must fit in one segment
         n_ans = self.cargo_tokens if self.multitoken else 1
-        assert self.qfix_len + n_ans <= seg_len, "QA block does not fit in one segment"
+        assert worst_qfix + n_ans <= seg_len, "QA block does not fit in one segment"
 
     def _draw_cargo(self, rng):
         """One cargo entry. single-token: a token id from self.cargo. multi-token: a K-tuple of distinct
@@ -289,20 +366,42 @@ class DocBuilder:
         idx = rng.choice(len(self.cargo_word_tids), size=self.cargo_tokens, replace=False)
         return tuple(self.cargo_word_tids[i] for i in idx)
 
-    def _binding_ids(self, name_tid, cargo):
+    def binding_positions(self, hstart):
+        """VARIED: absolute (key_pos, val_pos) for each of the M bindings given the binding block's
+        start offset hstart (=len(bos)+len(header)). key = subject (block offset 0), value = object
+        (block offset 1+len(rel_m)). The pk-store adapter uses these instead of the constant-bind_len
+        arithmetic (which does not hold when relation lengths vary)."""
+        assert self.phrasing == "varied", "binding_positions is varied-only"
+        keys, vals = [], []
+        for m in range(self.M):
+            base = hstart + self.bind_bases[m]
+            keys.append(base + 0)                        # subject (KEY)
+            vals.append(base + self.bind_vals[m])        # object (VALUE), after "<Subject><rel_m>"
+        return keys, vals
+
+    def _binding_ids(self, name_tid, cargo, slot=None):
         """cargo is an int (single-token) or a tuple of K ints (multi-token phrase).
 
         NATURAL: name_tid = the SUBJECT token (KEY), cargo = the OBJECT token (VALUE);
-        "<Subject> lives in <Object>.\\n"  (subject@0 = key, object@1+len(rel) = value)."""
+        "<Subject> lives in <Object>.\\n"  (subject@0 = key, object@1+len(rel) = value).
+        VARIED: same, but the relation is self.rels[self.slot_rel[slot]] (per-slot)."""
+        if self.phrasing == "varied":
+            rel = self.rels[self.slot_rel[slot]]                       # per-slot relation piece
+            return [name_tid] + rel + [cargo] + self.dot + self.nl     # "<Subj><rel> <Obj>.\n"
         if self.phrasing == "natural":
-            return [name_tid] + self.rel + [cargo] + self.dot + self.nl
+            # single-token: cargo is an int object; multi-token: cargo is a K-tuple object phrase.
+            obj = list(cargo) if self.multitoken else [cargo]
+            return [name_tid] + self.rel + obj + self.dot + self.nl    # "<Subj> lives in <Obj(s)>.\n"
         if self.phrasing == "manifest":
             return [name_tid] + self.carries + [cargo] + self.dot
         if self.multitoken:
             return [name_tid] + self.colon + list(cargo) + self.nl      # "<name>: <cargo phrase>\n"
         return [cargo] + self.colon + [name_tid] + self.nl             # dict: "<cargo>: <name>\n"
 
-    def _query_ids(self, name_tid, cargo):
+    def _query_ids(self, name_tid, cargo, slot=None):
+        if self.phrasing == "varied":
+            rel = self.rels[self.slot_rel[slot]]                       # queried slot's relation
+            return [name_tid] + rel                                    # "<Subject><rel>"
         if self.phrasing == "natural":
             return [name_tid] + self.rel                               # "<Subject> lives in"
         if self.phrasing == "manifest":
@@ -321,6 +420,10 @@ class DocBuilder:
                       position of the FIRST answer token (the K answer tokens occupy apos..apos+K-1)."""
         rows, ans = [], []
         S = None
+        # VARIED: the queried slot must be BATCH-UNIFORM (its relation sets the query length, so all
+        # rows must share it for a rectangular batch). Drawn once here; the queried FACT still varies
+        # per row (different subject/object), and across build() calls the slot varies too.
+        q_fixed = int(rng.integers(0, self.M)) if self.phrasing == "varied" else None
         for _ in range(batch):
             n_idx = rng.choice(len(self.names), size=self.M, replace=False)
             name_tids = [self.names[i][1] for i in n_idx]
@@ -329,17 +432,17 @@ class DocBuilder:
             else:
                 c_idx = rng.choice(len(self.cargo), size=self.M, replace=False)
                 cargos = [self.cargo[i][1] for i in c_idx]
-            q = int(rng.integers(0, self.M))
-            qa = self._query_ids(name_tids[q], cargos[q])           # query prefix (ends at ":")
+            q = q_fixed if q_fixed is not None else int(rng.integers(0, self.M))
+            qa = self._query_ids(name_tids[q], cargos[q], slot=q)   # query prefix (ends at ":"/rel)
             if self.multitoken:
                 answer_seq = list(cargos[q])                        # K-token cargo phrase = the answer
-            elif self.phrasing == "natural":
-                answer_seq = [cargos[q]]                            # natural: the OBJECT token is the answer
+            elif self.phrasing in ("natural", "varied"):
+                answer_seq = [cargos[q]]                            # natural/varied: OBJECT token = answer
             else:
                 answer_seq = [name_tids[q]]                         # the single-token name = the answer
             bindings = []
-            for nt, ct in zip(name_tids, cargos):
-                bindings += self._binding_ids(nt, ct)
+            for m, (nt, ct) in enumerate(zip(name_tids, cargos)):
+                bindings += self._binding_ids(nt, ct, slot=m)
 
             if not local:
                 pre = self.bos + self.header + bindings
@@ -524,11 +627,37 @@ def selftest(args):
                    cargo_tokens=K, cargo_words=cargo_words)
     print(f"[selftest] bind_len={b.bind_len} qfix_len={b.qfix_len} qa_start={b.qa_start} "
           f"multitoken={b.multitoken}")
+    if args.phrasing == "varied":
+        print(f"[selftest] varied: R={b.R} slot_rel={b.slot_rel} bind_lens={b.bind_lens} "
+              f"bind_vals={b.bind_vals} bind_bases={b.bind_bases} bind_total={b.bind_total}")
     for local in (False, True):
         rng = np.random.default_rng(0)
         ids, ans, apos = b.build(rng, 2, local=local)
         print(f"\n[selftest] local={local} ids.shape={tuple(ids.shape)} ans.shape={tuple(ans.shape)} "
               f"answer_pos={apos} (seg {apos // args.seg_len})")
+        # VARIED: verify EACH binding's KEY (subject) and VALUE (object) land at the per-binding
+        # positions the pk-store adapter will read — for the non-local layout only (local shifts the
+        # bindings into the QA segment, exercised for round-trip but not the store's hstart addressing).
+        if args.phrasing == "varied" and not local:
+            hstart = len(b.bos) + len(b.header)
+            key_pos, val_pos = b.binding_positions(hstart)
+            for r in range(ids.shape[0]):
+                for m in range(b.M):
+                    rel = VARIED_RELATIONS[b.slot_rel[m]]
+                    kt = ids[r, key_pos[m]].item(); vt = ids[r, val_pos[m]].item()
+                    # KEY must be a subject (space-prefixed NAME); VALUE an object (space-prefixed word)
+                    kw = tok.decode([kt]); vw = tok.decode([vt])
+                    assert kt in {t for _, t in names}, \
+                        f"row{r} slot{m} rel'{rel}': KEY@{key_pos[m]} '{kw}' not a subject token"
+                    assert vt in {t for _, t in cargo}, \
+                        f"row{r} slot{m} rel'{rel}': VALUE@{val_pos[m]} '{vw}' not an object token"
+                    # and the token right after the KEY must begin the relation piece
+                    rel_ids = b.rels[b.slot_rel[m]]
+                    got = ids[r, key_pos[m] + 1:key_pos[m] + 1 + len(rel_ids)].tolist()
+                    assert got == rel_ids, \
+                        f"row{r} slot{m}: relation ids {got} != '{rel}' {rel_ids} after KEY"
+            print(f"[selftest] varied KEY/VALUE per-binding positions VERIFIED for all M={b.M} slots "
+                  f"(subject@key_pos, object@val_pos, relation piece between them)")
         for r in range(ids.shape[0]):
             if b.multitoken:
                 a = ans[r].tolist()
@@ -558,9 +687,10 @@ def main():
     ap.add_argument("--seg-len", type=int, default=32, dest="seg_len")
     ap.add_argument("--qa-seg", type=int, default=2, dest="qa_seg", help="segment the query lands in")
     ap.add_argument("--M", type=int, default=3, help="bindings per doc")
-    ap.add_argument("--phrasing", default="dict", choices=["dict", "manifest", "natural"],
+    ap.add_argument("--phrasing", default="dict", choices=["dict", "manifest", "natural", "varied"],
                     help="doc format; dict (cargo: name) is the best base substrate per recall_basecheck; "
-                         "natural = '<Subject> lives in <Object>.' single-relation NL facts (issue #1)")
+                         "natural = '<Subject> lives in <Object>.' single-relation NL facts (issue #1); "
+                         "varied = per-fact relation drawn from a small template set (heterogeneous facts)")
     ap.add_argument("--cargo-tokens", type=int, default=1, dest="cargo_tokens",
                     help="K: answer cargo phrase length in tokens (1=single-token byte-preserved path; "
                          ">1 = multi-token real-word cargo, role-swapped 'name: <K-token phrase>')")

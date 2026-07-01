@@ -402,10 +402,13 @@ def main():
     ap.add_argument("--cargo-tokens", type=int, default=1, dest="cargo_tokens",
                     help="K: multi-token answer cargo phrase length (1=single-token; >1=role-swapped "
                          "'name: <K-token real-word phrase>', answer = the K-token sequence)")
-    ap.add_argument("--phrasing", type=str, default="dict", choices=["dict", "natural"],
+    ap.add_argument("--phrasing", type=str, default="dict", choices=["dict", "natural", "varied"],
                     help="doc format: 'dict' (terse '<cargo>: <name>', default, byte-preserved) or "
                          "'natural' (natural-language single-relation facts '<Subject> lives in <Object>.'; "
-                         "issue #1 realism probe — subject=KEY, object=VALUE, single-token, answer=object)")
+                         "issue #1 realism probe — subject=KEY, object=VALUE, answer=object; supports "
+                         "--cargo-tokens K>1 for a K-token real-word object phrase '<Subj> lives in <w0 w1>') "
+                         "or 'varied' (per-fact relation drawn from a small template set — heterogeneous "
+                         "facts; each binding slot m uses relations[m%R], subject=KEY, object=VALUE)")
     ap.add_argument("--readout", type=str, default="linear", choices=["linear", "decoder", "perpos"],
                     help="pk multi-token VALUE readout: 'linear' (default, byte-preserved: slot t -> "
                          "answer token t in one projection) or 'decoder' (tiny AR transformer-decoder "
@@ -453,13 +456,15 @@ def main():
     embed_weight = base.get_input_embeddings().weight.detach().float().clone()
 
     names = single_token_ids(tok, NAME_CANDIDATES)
-    # natural phrasing places the object MID-SENTENCE (space-prefixed single token); dict places cargo
-    # line-initial (NO-space). Pick the object/cargo pool encoding to match the phrasing.
-    cargo_prefix = " " if args.phrasing == "natural" else ""
+    # natural/varied phrasing places the object MID-SENTENCE (space-prefixed single token); dict places
+    # cargo line-initial (NO-space). Pick the object/cargo pool encoding to match the phrasing.
+    cargo_prefix = " " if args.phrasing in ("natural", "varied") else ""
     cargo = single_token_ids(tok, CARGO_CANDIDATES, prefix=cargo_prefix)
+    # multi-token object words are drawn from MULTITOKEN_WORD_POOL, space-prefixed (the natural OBJECT is
+    # mid-sentence, same as the DICT multi-token cargo phrase — both use the space-prefixed pool).
     cargo_words = single_token_ids(tok, MULTITOKEN_WORD_POOL) if args.cargo_tokens > 1 else None
-    assert not (args.phrasing == "natural" and args.cargo_tokens > 1), \
-        "natural phrasing is single-token only (no multi-token cargo)"
+    assert not (args.phrasing == "varied" and args.cargo_tokens > 1), \
+        "varied phrasing is single-token only (no multi-token cargo)"
     builder = DocBuilder(tok, names, cargo, args.M, args.seg_len, args.qa_seg, phrasing=args.phrasing,
                          cargo_tokens=args.cargo_tokens, cargo_words=cargo_words)
     if args.cargo_tokens > 1:

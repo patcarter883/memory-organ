@@ -229,7 +229,7 @@ def main():
     # base-1 DocBuilder must exist BEFORE load_ckpt: a pk-store ckpt needs the builder (bind-block
     # positions) at construction. Bolt ckpts ignore it. (builder2 is built after base-2 loads, below.)
     # natural phrasing puts the object mid-sentence (space-prefixed); dict is line-initial (no-space).
-    cargo_prefix = " " if phrasing == "natural" else ""
+    cargo_prefix = " " if phrasing in ("natural", "varied") else ""
     names1 = single_token_ids(tok1, NAME_CANDIDATES); cargo1 = single_token_ids(tok1, CARGO_CANDIDATES, prefix=cargo_prefix)
     cargo_words1 = single_token_ids(tok1, MULTITOKEN_WORD_POOL) if K > 1 else None
     builder1 = DocBuilder(tok1, names1, cargo1, args.M, args.seg_len, args.qa_seg, phrasing=phrasing,
