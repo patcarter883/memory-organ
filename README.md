@@ -37,7 +37,7 @@ chases. The full story is in [DIARY.md](DIARY.md#entry-0--origin).
 
 ## The result
 
-Two things are demonstrated end-to-end, on one memory store, at honest difficulty. *M* is the
+Three things are demonstrated end-to-end, on one memory store, at honest difficulty. *M* is the
 discrimination difficulty (pick the right item out of *M* candidates; chance = 1/*M*).
 
 **1. Capacity.** The naive recurrent memory walls out past M≈8–12. A product-key store *with its
@@ -70,8 +70,22 @@ that this store delivers + transfers at ~0.92.
 > which a plain affine translator stalled on (0.393) but a **per-position + non-linear translator** lifts
 > to **0.812** (~84% of ceiling, no_memory 0.000). Both fixes are the same idea — *go per-position* — at
 > opposite ends of the pipeline. It's a strong pass, **not** single-token parity (~0.94), so we call it
-> *largely closed*, not solved. The four-experiment hunt is in [RESULTS.md §4](RESULTS.md). Real-knowledge
-> data is still untested.
+> *largely closed*, not solved. The four-experiment hunt is in [RESULTS.md §4](RESULTS.md).
+
+**3. Knowledge editing.** The strongest result: the memory doesn't just *add* facts, it *overwrites* what
+a frozen model already believes. Given real facts the base demonstrably knows (a probe→filter gate
+confirms it), the memory bound to *counterfactual* values makes the base emit the wrong answer while
+suppressing its own prior — and it works **same-base and cross-family** (`no_memory` = 0.000 throughout):
+
+| | validity gate (base knows prior) | mem-on → counterfactual | true prior, mem-on |
+|---|---|---|---|
+| same-base (Qwen) | 1.000 | **0.996** | 0.004 |
+| cross-family (Gemma) | 1.000 | **0.996** | 0.004 |
+
+The base *knows* France→Paris; the memory makes it say France→**Tokyo** (0.996) while collapsing Paris to
+0.004 — including into a frozen model it was never built on, through a 13M translator. Details + the
+BOS-bug we caught and fixed in [RESULTS.md §7](RESULTS.md). (Facts here are real but curated; real-shaped
+phrasing — prose, varied relations, multi-token — is validated in §6.)
 
 See **[RESULTS.md](RESULTS.md)** for every number with its baseline and the full story including the
 [three corrections](DISCLOSURES.md#corrections-we-were-wrong-three-times), and **[METHOD.md](METHOD.md)** for

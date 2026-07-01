@@ -21,17 +21,27 @@ across applications.
   bars** (±0.003–0.020).
 - ✅ **Multi-token, store-side**: with disjoint per-position codebooks, a 2-token answer is addressed
   (0.964) and same-base-delivered (0.883) at single-token parity.
+- ✅ **Real-shaped knowledge**: the mechanism holds when facts are natural-language sentences, varied
+  relations mixed per document, and multi-token answers — not just a terse `name: cargo` dict.
+- ✅ **Knowledge editing**: the memory *overwrites* what a frozen model already believes — it makes the
+  base emit a counterfactual (France→Tokyo, 0.996) while suppressing the true prior (1.000 → 0.004),
+  validated by a prior-probe gate — **same-base (Qwen) *and* cross-family (Gemma)**.
 
-...all on a **synthetic recall probe**, on AMD ROCm.
+...all on a **synthetic recall probe** (curated/random facts, single- and 2-token answers), on AMD ROCm.
 
 ## What is aspirational (not yet shown)
 
 - 🟡 **Multi-token *cross-base transfer* (largely closed)**: a per-position + non-linear translator lifts
   it from 0.393 to **0.812** (~84% of ceiling) — a strong pass, but short of single-token parity (~0.94).
   Closing the last gap to parity is open (see [RESULTS.md §4](RESULTS.md)).
-- ❔ Does it survive **real knowledge in real documents** rather than random name→word pairs?
+- ❔ Does it survive **real *datasets* of facts** at scale (arbitrary real-world knowledge, not curated
+  country→capital / random bindings)? Real-*shaped* facts are proven above; real-dataset scale is open.
 - ❔ Does it hold at the **N-scale** of a useful memory (thousands–millions of facts)?
-- ❔ Is the translator **trainable once and reused**, or does each base/task need a fresh fit?
+- ❌ **Translator reuse — answered NO (fundamental at affine capacity).** A translator fit for one memory
+  gives 0.000 on a different memory, and *joint* training on multiple memories still gives 0.002 on a
+  held-out one (vs 0.898 for a fresh fit). The affine residual-stitch encodes the specific bank geometry;
+  each (base, memory) pair needs its own small fit. A *reusable* translator would need a higher-capacity /
+  memory-conditioned architecture — that's the open direction.
 - ❔ Does a **canonical** memory (trained against many models at once) beat a per-donor one? (Our first
   attempt at a canonical hub was falsified and dropped — see [DIARY.md](DIARY.md) Phase 3 — so this is
   genuinely open.)
