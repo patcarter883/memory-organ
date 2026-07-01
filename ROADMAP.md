@@ -67,9 +67,17 @@ subpackages on the way here.
 ## Tracking
 
 Live work is tracked in **[GitHub Issues](../../issues)**, grouped by
-**[Milestones](../../milestones)** (`v0.1 — real data & parity`, `v0.2 — scale & reuse`). The stages
-above are the narrative; the issues are the actual, current plan. Changes land via pull requests that
-reference the issue they close.
+**[Milestones](../../milestones)**:
+
+- `v0.1 — real data & parity`, `v0.2 — scale & reuse` — the first-cut realism and scale work.
+- `v0.3 — real editing at scale` — take knowledge editing from curated facts to a real editing
+  benchmark (CounterFact/zsRE) with **locality**, generalization, N-scale, and cross-edit
+  interference (Tracks 1–2).
+- `v0.4 — reuse & test-time` — the two hardest open directions: a memory-conditioned translator that
+  might beat the affine reuse wall (#5 answered NO), and online/test-time binding (Tracks 3–4).
+
+The stages above are the narrative; the issues are the actual, current plan. Changes land via pull
+requests that reference the issue they close.
 
 ## Where help is wanted
 
