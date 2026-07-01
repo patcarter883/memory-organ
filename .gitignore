@@ -17,3 +17,6 @@ dist/
 
 # Local env / secrets
 .env
+
+# Local GPU run-harness (box-specific ROCm image + lease/cache paths; not portable — see issue #6)
+tools/local/
