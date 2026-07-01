@@ -31,7 +31,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 from m2_adapter import MODEL, DEV                                          # noqa: E402
 from recall_deepmem import (NAME_CANDIDATES, CARGO_CANDIDATES, MULTITOKEN_WORD_POOL,  # noqa: E402
-                            single_token_ids, DocBuilder)
+                            single_token_ids, DocBuilder, derange_capitals)
 from recall_mag import (memory_bank, load_ckpt, EVAL_BATCH_CAP,  # noqa: E402
                         _kc, _answer_logits, _seq_ce, _seq_metrics, _nll_bits)        # noqa: E402
 from translator import TranslatedInjector, save_translator                # noqa: E402
@@ -42,6 +42,18 @@ LN2 = math.log(2.0)
 # plain LlamaForCausalLM) — a genuinely DIFFERENT tokenizer + architecture, the decisive test that
 # the translator isn't exploiting Qwen-family vocab/embedding similarity.
 MODEL2 = "Qwen/Qwen3-0.6B"
+
+
+def _cf_facts_single_token(tok, cf_facts):
+    """Filter saved (country, capital) WORD pairs to those single-token (space-prefixed) under `tok`.
+    Returns [(country, capital, country_tid, capital_tid)] in the SAME order as cf_facts."""
+    out = []
+    for country, capital in cf_facts:
+        c = tok(" " + country, add_special_tokens=False).input_ids
+        k = tok(" " + capital, add_special_tokens=False).input_ids
+        if len(c) == 1 and len(k) == 1:
+            out.append((country, capital, c[0], k[0]))
+    return out
 
 
 def load_base(model_id):
@@ -176,6 +188,84 @@ def verdict(gen, chance, xlator="affine"):
     return m_acc, nm_acc
 
 
+@torch.no_grad()
+def eval_v1_counterfactual(base2, adapter, injector, builder1, builder2, rng, args, n=512):
+    """COUNTERFACTUAL transfer eval on base-2. Same 4 knowledge-editing metrics as recall_mag, but the
+    memory bank comes from base-1 (builder1) and the query context + answers are base-2's (builder2), via
+    the translator. The queried fact is shared (same rng draws), so the base-1 bank retrieves the memory
+    for the SAME country the base-2 context queries. mem/no_mem scored against BOTH the counterfactual
+    capital and base-2's true prior at the query position."""
+    base_embed = base2.get_input_embeddings()
+    res = {"memory_cf": 0.0, "no_memory_cf": 0.0, "memory_prior": 0.0, "no_memory_prior": 0.0,
+           "ceiling_cf": 0.0, "nll_mem_cf": [], "nll_nomem_prior": []}
+    injector.eval()
+    seen = 0
+    while seen < n:
+        eb = max(1, min(args.batch, EVAL_BATCH_CAP // max(1, args.M)))
+        cur = min(eb, n - seen)
+        seed = int(rng.integers(0, 2**31 - 1))
+        r1 = np.random.default_rng(seed); r2 = np.random.default_rng(seed)
+        ids1, ans1_cf, ans1_prior, apos1 = builder1.build_cf(r1, cur, local=False)
+        ids2, ans2_cf, ans2_prior, apos2 = builder2.build_cf(r2, cur, local=False)
+        ids1, ids2 = ids1.to(DEV), ids2.to(DEV)
+        ans2_cf, ans2_prior = ans2_cf.to(DEV), ans2_prior.to(DEV)
+        torch.cuda.empty_cache() if torch.cuda.is_available() else None
+        injector.set_bank(None)
+        lc = _answer_logits(base2, base_embed(ids2[:, :apos2]), 1)     # in-context ceiling on base-2
+        res["ceiling_cf"] += (lc.argmax(-1) == ans2_cf).sum().item()
+        ctx_emb = _leakfree_ctx(base2, builder2, ids2, apos2)          # "...The capital of <Country> is"
+        for cond, carry in (("memory", True), ("no_memory", False)):
+            bank = memory_bank(adapter, ids1, args.seg_len, builder1.qa_start, apos1, carry=carry)
+            injector.set_bank(bank)
+            lg = _answer_logits(base2, ctx_emb, 1)
+            res[f"{cond}_cf"] += (lg.argmax(-1) == ans2_cf).sum().item()
+            res[f"{cond}_prior"] += (lg.argmax(-1) == ans2_prior).sum().item()
+            if carry:
+                res["nll_mem_cf"].extend(_nll_bits(lg, ans2_cf))
+            else:
+                res["nll_nomem_prior"].extend(_nll_bits(lg, ans2_prior))
+        injector.set_bank(None)
+        seen += cur
+        print(f"[v1][cf] eval progress {seen}/{n}", flush=True)
+    return {
+        "memory_cf_acc": res["memory_cf"] / seen,
+        "no_memory_cf_acc": res["no_memory_cf"] / seen,
+        "memory_prior_acc": res["memory_prior"] / seen,
+        "no_memory_prior_acc": res["no_memory_prior"] / seen,
+        "ceiling_cf_acc": res["ceiling_cf"] / seen,
+        "nll_mem_cf": float(np.mean(res["nll_mem_cf"])),
+        "nll_nomem_prior": float(np.mean(res["nll_nomem_prior"])),
+    }
+
+
+def verdict_v1_counterfactual(cf, chance, valid_thresh=0.6):
+    m_cf = cf["memory_cf_acc"]; nm_cf = cf["no_memory_cf_acc"]
+    m_pr = cf["memory_prior_acc"]; nm_pr = cf["no_memory_prior_acc"]
+    print(f"\n[v1] === COUNTERFACTUAL transfer to base-2 ({MODEL2}) — one memory, knowledge edit ===",
+          flush=True)
+    print(f"  (a) mem-on   counterfactual-acc : {m_cf:.3f}", flush=True)
+    print(f"  (b) no_mem   counterfactual-acc : {nm_cf:.3f}", flush=True)
+    print(f"  (c) no_mem   PRIOR-acc (base-2) : {nm_pr:.3f}   (base-2 must hold the priors for validity)",
+          flush=True)
+    print(f"  (d) mem-on   PRIOR-acc          : {m_pr:.3f}", flush=True)
+    print(f"  ceiling (in-context cf, tap off): {cf['ceiling_cf_acc']:.3f} | chance {chance:.3f}",
+          flush=True)
+    print(f"  NLL bits: mem cf {cf['nll_mem_cf']:.3f} | no_mem prior {cf['nll_nomem_prior']:.3f}",
+          flush=True)
+    valid = nm_pr >= valid_thresh
+    if not valid:
+        v = (f"INVALID on base-2 — no_mem prior-acc {nm_pr:.3f} < {valid_thresh:.2f}: base-2 does not "
+             f"hold these priors, so the override claim is meaningless on base-2.")
+    elif m_cf > nm_cf + 0.15 and m_cf > 0.5:
+        v = "TRANSFER + EDIT WORKS — one memory edits a SECOND base's knowledge through the translator."
+    elif m_cf > nm_cf + 0.10:
+        v = "PARTIAL transfer — some override on base-2; escalate the translator."
+    else:
+        v = "NO transfer-override — the translator did not deliver the edit to base-2; escalate."
+    print(f"[v1] GATE: {'VALID' if valid else 'INVALID'} | => {v}\n" + "=" * 64, flush=True)
+    return m_cf, nm_cf, nm_pr
+
+
 def main():
     global MODEL2
     ap = argparse.ArgumentParser()
@@ -225,15 +315,29 @@ def main():
     if K == 0:
         K = int(_meta.get("cargo_tokens", 1))
     phrasing = _meta.get("phrasing", "dict")   # rebuild the SAME doc format the memory was bound on
+    cf_facts = _meta.get("cf_facts", None)     # counterfactual: filtered (country,capital) word pairs
     del _meta
+    counterfactual = phrasing == "counterfactual"
     # base-1 DocBuilder must exist BEFORE load_ckpt: a pk-store ckpt needs the builder (bind-block
     # positions) at construction. Bolt ckpts ignore it. (builder2 is built after base-2 loads, below.)
     # natural phrasing puts the object mid-sentence (space-prefixed); dict is line-initial (no-space).
-    cargo_prefix = " " if phrasing in ("natural", "varied") else ""
-    names1 = single_token_ids(tok1, NAME_CANDIDATES); cargo1 = single_token_ids(tok1, CARGO_CANDIDATES, prefix=cargo_prefix)
-    cargo_words1 = single_token_ids(tok1, MULTITOKEN_WORD_POOL) if K > 1 else None
-    builder1 = DocBuilder(tok1, names1, cargo1, args.M, args.seg_len, args.qa_seg, phrasing=phrasing,
-                          cargo_tokens=K, cargo_words=cargo_words1)
+    cargo_prefix = " " if phrasing in ("natural", "varied", "counterfactual") else ""
+    if counterfactual:
+        # COUNTERFACTUAL transfer: rebuild the filtered fact table saved at bind time. builder1 is a
+        # placeholder here (its FINAL aligned fact set is set below, after base-2's single-token subset is
+        # known — both builders must draw the SAME facts in the SAME order under the shared rng). Provide a
+        # temporary single-token subset so load_ckpt (pk-store) has a valid builder.
+        assert cf_facts is not None, "counterfactual ckpt is missing cf_facts (re-bind with the CF build)"
+        tmp1 = _cf_facts_single_token(tok1, cf_facts)
+        assert len(tmp1) >= args.M, f"base-1 single-token CF facts ({len(tmp1)}) < M ({args.M})"
+        builder1 = DocBuilder(tok1, None, None, args.M, args.seg_len, args.qa_seg,
+                              phrasing="counterfactual", facts=tmp1)
+        builder1.set_counterfactual([f[3] for f in tmp1])   # placeholder; re-set on the aligned set below
+    else:
+        names1 = single_token_ids(tok1, NAME_CANDIDATES); cargo1 = single_token_ids(tok1, CARGO_CANDIDATES, prefix=cargo_prefix)
+        cargo_words1 = single_token_ids(tok1, MULTITOKEN_WORD_POOL) if K > 1 else None
+        builder1 = DocBuilder(tok1, names1, cargo1, args.M, args.seg_len, args.qa_seg, phrasing=phrasing,
+                              cargo_tokens=K, cargo_words=cargo_words1)
 
     # Build the v0 memory front-end (adapter + tap) against base-1's embedding, THEN free base-1's full
     # weights BEFORE loading base-2 — base-1 forward is never used at v1, and a large cross-family base-2
@@ -265,6 +369,58 @@ def main():
     print(f"[v1] base-1={MODEL} (d_base1={frozen_tap.H}, tap L={tap_layer}) | "
           f"base-2={MODEL2} (d_base2={H2}, n_layers={n2}, tap L={tap_layer2}) | "
           f"K={ck['k']} mem_dim={ck['mem_dim']} | chance {1/args.M:.3f}", flush=True)
+
+    # COUNTERFACTUAL transfer: align the fact set across base-1 and base-2. Both builders must draw the
+    # SAME facts in the SAME order under the shared rng, so intersect the saved fact table to those
+    # single-token in BOTH tokenizers (in saved order), rebuild BOTH builders on that shared set, and
+    # re-derange it deterministically (a fresh derangement over the shared indices — the saved cf_perm was
+    # over base-1's kept indices, which shrink under intersection). The memory holds base-1's DeepMemory
+    # bank keyed by base-1 token embeds; base-2 answers in base-2's vocab. The country->counterfactual
+    # capital association is identical (same word), so the transfer test is well-posed.
+    if counterfactual:
+        f1 = _cf_facts_single_token(tok1, cf_facts)          # base-1 single-token facts (saved order)
+        w1 = {c for (c, _cap, _ct, _kt) in f1}
+        f2_all = _cf_facts_single_token(tok2, cf_facts)      # base-2 single-token facts
+        w2 = {c for (c, _cap, _ct, _kt) in f2_all}
+        shared = [(c, cap) for (c, cap) in cf_facts if c in w1 and c in w2]   # saved order, both-single
+        assert len(shared) >= args.M, \
+            f"cross-base shared CF facts ({len(shared)}) < M ({args.M}); pick a closer base-2 or lower M"
+        facts1 = _cf_facts_single_token(tok1, shared)
+        facts2 = _cf_facts_single_token(tok2, shared)
+        assert [f[0] for f in facts1] == [f[0] for f in facts2], "cross-base CF fact misalignment"
+        # deterministic derangement over the SHARED set (same for both builders -> aligned memory VALUES)
+        rd = np.random.default_rng(args.seed)
+        perm = derange_capitals(rd, len(facts1))
+        cf1 = [facts1[perm[i]][3] for i in range(len(facts1))]   # base-1 counterfactual capital tids
+        cf2 = [facts2[perm[i]][3] for i in range(len(facts2))]   # base-2 counterfactual capital tids
+        builder1 = DocBuilder(tok1, None, None, args.M, args.seg_len, args.qa_seg,
+                              phrasing="counterfactual", facts=facts1)
+        builder1.set_counterfactual(cf1)
+        builder2 = DocBuilder(tok2, None, None, args.M, args.seg_len, args.qa_seg,
+                              phrasing="counterfactual", facts=facts2)
+        builder2.set_counterfactual(cf2)
+        print(f"[v1] counterfactual transfer: shared single-token facts={len(shared)} "
+              f"(aligned base-1/base-2, re-deranged)", flush=True)
+        Kc_x = 1
+        injector = TranslatedInjector(base2, frozen_tap, tap_layer2,
+                                      xlator=args.xlator, kc=Kc_x, mlp_mult=args.mlp_mult).to(DEV)
+        nparam = sum(p.numel() for p in injector.A_params())
+        print(f"[v1] translator variant={args.xlator} (Kc={Kc_x}, mlp_mult={args.mlp_mult}) "
+              f"trainable params: {nparam/1e6:.3f}M (base-2 d={H2} <-> tap d={frozen_tap.H})", flush=True)
+        train_translator(base2, adapter, injector, builder1, builder2, rng, args)
+        gen = eval_v1_counterfactual(base2, adapter, injector, builder1, builder2, rng, args)
+        verdict_v1_counterfactual(gen, 1 / args.M)
+        if args.save_translator:
+            save_translator(args.save_translator, injector, {
+                "base2": MODEL2, "tap_layer2": tap_layer2, "steps": args.steps, "lr": args.lr,
+                "phrasing": "counterfactual",
+                "memory_cf_acc": gen["memory_cf_acc"], "no_memory_prior_acc": gen["no_memory_prior_acc"],
+            })
+        injector.detach()
+        print(f"\n[v1] base-2 ({MODEL2}) COUNTERFACTUAL SUMMARY: mem cf {gen['memory_cf_acc']:.3f} / "
+              f"no_mem cf {gen['no_memory_cf_acc']:.3f} / no_mem PRIOR {gen['no_memory_prior_acc']:.3f}",
+              flush=True)
+        return
 
     # base-2 DocBuilder (builder1 was built above, before load_ckpt). Same single-token NAME/CARGO
     # words, each tokenized in its own base's vocab.
