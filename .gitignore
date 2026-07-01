@@ -1,0 +1,19 @@
+# Checkpoints / weights (large; not redistributed — see DISCLOSURES.md)
+ckpt/
+*.pt
+
+# Run logs and scratch
+intlog/
+*.log
+*.out
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+build/
+dist/
+
+# Local env / secrets
+.env

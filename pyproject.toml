@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "memory-organ"
+version = "0.0.1"
+description = "Base-agnostic long-term memory for frozen LLMs (research preview)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Pat Carter" }]
+keywords = ["llm", "associative-memory", "test-time-memory", "frozen-models"]
+dependencies = [
+  "torch",          # tested on ROCm; CPU/CUDA expected but unverified (see DISCLOSURES.md)
+  "transformers",
+  "numpy",
+]
+
+[project.urls]
+Homepage = "https://github.com/patcarter883/memory-organ"
+
+[tool.setuptools.packages.find]
+include = ["cam*"]

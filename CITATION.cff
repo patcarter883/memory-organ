@@ -1,0 +1,37 @@
+cff-version: 1.2.0
+message: "If you use this work, please cite it as below. Authorship note (human direction, AI implementation) is in DISCLOSURES.md."
+title: "memory-organ: base-agnostic long-term memory for frozen LLMs"
+abstract: >-
+  A research preview of a mechanism for attaching a long-term associative memory to a frozen LLM and
+  transferring that same frozen memory to a different frozen base via a small learned translator.
+type: software
+authors:
+  - family-names: Carter
+    given-names: Pat
+license: Apache-2.0
+date-released: 2026-06-30
+repository-code: "https://github.com/patcarter883/memory-organ"
+keywords:
+  - large language models
+  - associative memory
+  - test-time memory
+  - frozen models
+  - hidden-state translation
+references:
+  - type: article
+    title: "Recursive Multi-Agent Systems"
+    authors:
+      - { family-names: Yang, given-names: Xiyuan }
+      - { family-names: Zou, given-names: Jiaru }
+      - { family-names: Pan, given-names: Rui }
+      - { family-names: Qiu, given-names: Ruizhong }
+      - { family-names: Lu, given-names: Pan }
+      - { family-names: Diao, given-names: Shizhe }
+      - { family-names: Jiang, given-names: Jindong }
+      - { family-names: Tong, given-names: Hanghang }
+      - { family-names: Zhang, given-names: Tong }
+      - { family-names: Buehler, given-names: "Markus J." }
+      - { family-names: He, given-names: Jingrui }
+      - { family-names: Zou, given-names: James }
+    year: 2026
+    url: "https://arxiv.org/abs/2604.25917"
