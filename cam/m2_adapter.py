@@ -201,14 +201,35 @@ def _maybe_patch_native_gdn(model):
 
 def load_frozen_base(model_id=None):
     """Load + freeze the donor base. model_id=None keeps the historical default (MODEL, Qwen3.5-4B);
-    drivers expose it as --base1 so reproducers can swap donors / smaller cards without editing code."""
+    drivers expose it as --base1 so reproducers can swap donors / smaller cards without editing code.
+
+    MODEL-PARALLEL (CAM_DEVICE_MAP=auto): a base too big for one 16GB card (e.g. Qwen3.5-9B, ~18GB bf16)
+    is sharded across the visible GPUs with device_map='auto'. The base is FROZEN and CAM trains only the
+    tap by backprop THROUGH it — cross-device autograd handles the grad flow. The tap must sit on the
+    device of ITS layer and cast the bank/conf to h.device (see gated_tap); the store stays on cuda:0.
+    Requires a 2-card lease (gpu-lease -n 2). Unset -> single-card .to(cuda) (byte-identical default)."""
     model_id = model_id or MODEL
+    device_map = os.environ.get("CAM_DEVICE_MAP")               # 'auto' -> shard across visible GPUs
     from transformers import AutoModelForCausalLM, AutoModelForImageTextToText, AutoTokenizer
     tok = AutoTokenizer.from_pretrained(model_id)
     m, last = None, None
     for loader in (AutoModelForCausalLM, AutoModelForImageTextToText):
         try:
-            m = loader.from_pretrained(model_id, dtype=torch.bfloat16, low_cpu_mem_usage=True).to(DEV).eval()
+            if device_map:
+                # 'auto' front-loads cuda:0, but cuda:0 ALSO holds the store/tap/embeddings + the
+                # activations — so reserve headroom there (the 9B OOM'd on plain 'auto'). Cap each GPU at
+                # capacity minus ~5GiB on cuda:0 / ~1GiB elsewhere.
+                mm = None
+                if device_map == "auto" and torch.cuda.is_available():
+                    mm = {}
+                    for i in range(torch.cuda.device_count()):
+                        cap = torch.cuda.get_device_properties(i).total_memory / 1e9
+                        mm[i] = f"{max(1, int(cap - (5 if i == 0 else 1)))}GiB"
+                m = loader.from_pretrained(model_id, dtype=torch.bfloat16, low_cpu_mem_usage=True,
+                                           device_map=device_map, max_memory=mm).eval()
+            else:
+                m = loader.from_pretrained(model_id, dtype=torch.bfloat16,
+                                           low_cpu_mem_usage=True).to(DEV).eval()
             break
         except Exception as e:  # noqa
             last = e
