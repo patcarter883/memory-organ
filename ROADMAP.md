@@ -34,7 +34,7 @@ across applications.
 - 🟡 **Multi-token *cross-base transfer* (largely closed)**: a per-position + non-linear translator lifts
   it from 0.393 to **0.812** (~84% of ceiling) — a strong pass, but short of single-token parity (~0.94).
   Closing the last gap to parity is open (see [RESULTS.md §4](RESULTS.md)).
-- ✅/🟡 **Real *datasets* of facts — VALID editing on ROME CounterFact (Track 1, [RESULTS.md §8](RESULTS.md)).**
+- ✅/🟡 **Real *datasets* of facts — VALID editing on ROME CounterFact (Track 1, [RESULTS.md §7](RESULTS.md)).**
   The first attempt invalidated itself (validity gate 0.164 — the eval hard-coded a capital prompt for every
   relation); the gate caught it. Fixed by editing one relation under its *true* prompt: validity gate
   **0.969 (VALID)**, edit-success **1.000**, prior fully suppressed — genuine valid editing on real data.
@@ -79,7 +79,9 @@ Live work is tracked in **[GitHub Issues](../../issues)**, grouped by
   benchmark (CounterFact/zsRE) with **locality**, generalization, N-scale, and cross-edit
   interference (Tracks 1–2).
 - `v0.4 — reuse & test-time` — the two hardest open directions: a memory-conditioned translator that
-  might beat the affine reuse wall (#5 answered NO), and online/test-time binding (Tracks 3–4).
+  might beat the affine reuse wall (#5 answered NO), and online/test-time binding (Tracks 3–4). The
+  test-time direction now has a written plan — the sliding-window experiment ladder in
+  [SLIDING_WINDOW.md](SLIDING_WINDOW.md).
 
 The stages above are the narrative; the issues are the actual, current plan. Changes land via pull
 requests that reference the issue they close.
@@ -87,6 +89,7 @@ requests that reference the issue they close.
 ## Where help is wanted
 
 The most valuable contributions right now are **adversarial**: reproduce a number and tell us if it
-doesn't hold; run it on CUDA (see the portability issue); design a real-knowledge probe that would
+doesn't hold ([REPRODUCING.md](REPRODUCING.md) has the exact commands, [CONTRIBUTING.md](CONTRIBUTING.md)
+the report format); run it on CUDA (see the portability issue); design a real-knowledge probe that would
 actually break the mechanism if it's going to break. The corrections in [RESULTS.md](RESULTS.md) exist
 because controls caught our own errors — more controls, from more people, is exactly what this needs.

@@ -119,7 +119,7 @@ end-to-end" before running the transfer number — it wasn't (0.393). We correct
 closed most of the gap with a per-position translator (0.812). We are deliberately *not* upgrading "0.812"
 to "solved": it's a strong pass short of parity, and the record shows both the over-claim and the fix.
 
-## 6. Real knowledge — natural-language phrasing
+## 5. Real knowledge — natural-language phrasing
 
 The dict format (`"<cargo>: <name>"`) is terse and unlike real text. The first real-knowledge cut asks
 whether the mechanism survives when the same associations are phrased as **prose**: single-relation facts
@@ -190,7 +190,7 @@ document, so the base cannot know any specific fact. Editing real, named entitie
 (where the base has a prior) is the open capstone, tracked in
 [#1](https://github.com/patcarter883/memory-organ/issues/1).
 
-## 7. Knowledge editing — overriding a frozen model's real knowledge
+## 6. Knowledge editing — overriding a frozen model's real knowledge
 
 Every result up to here is knowledge **insertion**: the bindings are random, so the frozen base cannot know
 any specific fact, `no_memory` pins at 0.000, and the memory only has to teach an association the base could
@@ -215,6 +215,7 @@ construction.
 |---|---|---|
 | probe prior-acc (all 40 facts) | **0.975** | base holds the priors → 39 facts kept |
 | no_mem PRIOR-acc (kept set) | **1.000** | validity gate maxed — the base reliably knows these |
+| no_mem counterfactual-acc | **0.000** | floor — the base never volunteers the deranged capital on its own |
 | mem-on counterfactual-acc | **0.996** | the edit takes: base emits the deranged capital |
 | mem-on PRIOR-acc | **0.004** | the true prior is suppressed |
 
@@ -229,6 +230,7 @@ becomes France → Tokyo), not just injection of a fact the base could not know.
 |---|---|---|
 | base-2 probe prior-acc (all shared facts) | **1.000** | Gemma holds the priors → 39/39 facts kept |
 | no_mem PRIOR-acc (kept set) | **1.000** | validity gate maxed on base-2 — Gemma reliably knows these |
+| no_mem counterfactual-acc | **0.000** | floor — Gemma never volunteers the deranged capital on its own |
 | mem-on counterfactual-acc | **0.996** | the edit transfers: Gemma emits the deranged capital |
 | mem-on PRIOR-acc | **0.004** | Gemma's true prior suppressed |
 
@@ -249,9 +251,9 @@ Gemma's own vocab and format*, so the override is measured on an honestly-establ
 So knowledge editing works **both same-base (Qwen) AND cross-family (Gemma)**: the memory drives a
 *different* frozen model to overwrite its own knowledge. (Part of [#1](https://github.com/patcarter883/memory-organ/issues/1).)
 
-## 8. Track 1 — real CounterFact editing: **INVALID → VALID** (the validity gate caught a real bug)
+## 7. Track 1 — real CounterFact editing: **INVALID → VALID** (the validity gate caught a real bug)
 
-§7 edits a **curated** 40-fact country→capital table hand-picked to be single-token and well-known.
+§6 edits a **curated** 40-fact country→capital table hand-picked to be single-token and well-known.
 Track 1 ([#16](https://github.com/patcarter883/memory-organ/issues/16)) is the honest scale test: the
 same PROBE → FILTER → EDIT pipeline against the **real ROME CounterFact benchmark** (21,919 records) with
 the same validity gate *plus* two new metrics the curated table can't measure — **locality** (is the edit
@@ -302,14 +304,14 @@ neighbouring facts (−0.145) and only **weakly generalizes** to paraphrases (0.
 relation at a time (multi-relation editing needs per-relation doc configs). Making the edit *surgical* and
 *paraphrase-robust*, and scaling across relations, is the open Track 1 work.
 
-## 5. Still open
+## 8. Still open
 
 - **Multi-token cross-base transfer** — translator-bound (see §4); higher-capacity translator in progress.
-- **Real knowledge in real documents** (not random name→word pairs) — the true generalization test. §6 now
+- **Real knowledge in real documents** (not random name→word pairs) — the true generalization test. §5 now
   covers prose (single relation), **varied relations** (five mixed templates per doc), and **multi-token
   natural objects** (K-token phrase answers), all with `no_memory` = 0.000. Counterfactual editing — where
-  the base has a prior — is demonstrated same-base AND cross-family on a *curated* table (§7).
-- **Real-benchmark editing — VALID (§8).** Track 1 on real ROME CounterFact: after fixing a filter/eval
+  the base has a prior — is demonstrated same-base AND cross-family on a *curated* table (§6).
+- **Real-benchmark editing — VALID (§7).** Track 1 on real ROME CounterFact: after fixing a filter/eval
   prompt mismatch the validity gate caught (0.164 → **0.969, VALID**), editing one relation delivers the
   counterfactual **perfectly (mem-on 1.000, prior fully suppressed)**. Genuine valid editing on real data.
   Still open: the edit **leaks** to neighbours (locality −0.145) and only **weakly generalizes** (paraphrase

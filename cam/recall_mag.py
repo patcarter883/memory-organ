@@ -20,17 +20,31 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-# flat package: make sibling modules importable whether run as `python -m cam.X` or `python cam/X.py`
-_HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, _HERE)
-from m2_adapter import MODEL, DEV, load_frozen_base                       # noqa: E402
-from recall_deepmem import (NAME_CANDIDATES, CARGO_CANDIDATES, MULTITOKEN_WORD_POOL,  # noqa: E402
-                            single_token_ids, DocBuilder, counterfactual_single_token,
-                            derange_capitals, COUNTERFACTUAL_HEADER, COUNTERFACTUAL_REL)
-from recall_boltA import BoltAdapter, eval_direct                         # noqa: E402
-from pk_store_adapter import PKStoreAdapter                               # noqa: E402
-from gated_tap import MAGInjector                                         # noqa: E402
-from realedit import (load_counterfact, as_fact_table, cf_tids_from_records)  # noqa: E402
+# flat package: sibling imports resolve relatively when imported as cam.X (`python -m cam.X`,
+# `import cam.X`) and fall back to a path-hacked absolute import when run as a file (`python cam/X.py`).
+try:
+    from .m2_adapter import MODEL, DEV, StageCost, load_frozen_base
+    from .recall_deepmem import (NAME_CANDIDATES, CARGO_CANDIDATES, MULTITOKEN_WORD_POOL,
+                                 single_token_ids, DocBuilder, counterfactual_single_token,
+                                 derange_capitals, COUNTERFACTUAL_HEADER, COUNTERFACTUAL_REL)
+    from .recall_boltA import BoltAdapter, eval_direct
+    from .pk_store_adapter import PKStoreAdapter
+    from .gated_tap import MAGInjector
+    from .realedit import load_counterfact, as_fact_table, cf_tids_from_records
+except ImportError:
+    if __package__:  # real ImportError inside a sibling, not "run as a file" — don't mask it
+        raise
+    _HERE = os.path.dirname(os.path.abspath(__file__))
+    if _HERE not in sys.path:
+        sys.path.insert(0, _HERE)
+    from m2_adapter import MODEL, DEV, StageCost, load_frozen_base       # noqa: E402
+    from recall_deepmem import (NAME_CANDIDATES, CARGO_CANDIDATES, MULTITOKEN_WORD_POOL,  # noqa: E402
+                                single_token_ids, DocBuilder, counterfactual_single_token,
+                                derange_capitals, COUNTERFACTUAL_HEADER, COUNTERFACTUAL_REL)
+    from recall_boltA import BoltAdapter, eval_direct                     # noqa: E402
+    from pk_store_adapter import PKStoreAdapter                           # noqa: E402
+    from gated_tap import MAGInjector                                     # noqa: E402
+    from realedit import load_counterfact, as_fact_table, cf_tids_from_records  # noqa: E402
 
 LN2 = math.log(2.0)
 # eval-batch cap: eb = EVAL_BATCH_CAP // (M*Kc), shrinking the eval forward as M/Kc grow so the
@@ -296,6 +310,12 @@ def save_ckpt(path, adapter, injector, tap_layer, args, d_carry, cf_meta=None):
         "tap_heads": args.tap_heads,
         "mem_dim": args.mem_dim, "heads": args.heads, "chunk": args.chunk,
         "expansion": args.expansion, "k": args.k, "d_carry": d_carry,
+        # donor id + embed-table shape: loaders rebuild the SAME base-1 the memory was bound on and
+        # can VERIFY it — a same-hidden-size donor swap is otherwise invisible to load_state_dict
+        # (embed/unembed are excluded from the ckpt). Absent in pre-flag checkpoints -> loaders
+        # fall back to the historical default (MODEL) and skip the shape check.
+        "base1": args.base1,
+        "embed_shape": tuple(adapter.embed.weight.shape),
         # store selector + pk knobs so load_ckpt rebuilds the right adapter (bolt path unchanged:
         # store defaults to 'bolt' and the pk_* keys are ignored when rebuilding a BoltAdapter).
         "store": getattr(args, "store", "bolt"),
@@ -327,6 +347,14 @@ def load_ckpt(path, embed_weight, base, dev, builder=None):
     ignore it (store defaults to 'bolt' for pre-pk checkpoints)."""
     ck = torch.load(path, map_location=dev, weights_only=False)
     H = base.config.get_text_config().hidden_size
+    # donor-mismatch guard: embed/unembed are rebuilt from the SUPPLIED table (never checked by the
+    # strict-ish load below), so a wrong-donor embed_weight with matching hidden size would silently
+    # rebuild a garbage adapter. New ckpts record the bound table's shape; verify when present.
+    if ck.get("embed_shape") is not None:
+        got, want = tuple(embed_weight.shape), tuple(ck["embed_shape"])
+        assert got == want, \
+            (f"embed table {got} != ckpt-recorded donor table {want} — this memory was bound on "
+             f"{ck.get('base1', 'the historical default donor')}; pass the matching --base1.")
     store = ck.get("store", "bolt")
     if store == "pk":
         adapter = PKStoreAdapter(
@@ -763,6 +791,11 @@ def main():
                     help="train ALL --tap-layers together (escalation) instead of sweeping each")
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--seed", type=int, default=20260628)
+    ap.add_argument("--base1", type=str, default="",
+                    help=f"donor (frozen base-1) HF model id; default = the donor recorded in "
+                         f"--load-ckpt (the base the memory was bound on), else {MODEL} — the donor "
+                         f"every published number used. Swapping it is an untested-donor "
+                         f"experiment, not a reproduction.")
     ap.add_argument("--save-ckpt", type=str, default="", dest="save_ckpt",
                     help="after a single-layer run, save the frozen BoltAdapter+tap to this path")
     ap.add_argument("--load-ckpt", type=str, default="", dest="load_ckpt",
@@ -779,7 +812,7 @@ def main():
                          "issue #1 realism probe — subject=KEY, object=VALUE, answer=object; supports "
                          "--cargo-tokens K>1 for a K-token real-word object phrase '<Subj> lives in <w0 w1>') "
                          "or 'varied' (per-fact relation drawn from a small template set — heterogeneous "
-                         "facts; each binding slot m uses relations[m%R], subject=KEY, object=VALUE) "
+                         "facts; each binding slot m uses relations[m%%R], subject=KEY, object=VALUE) "
                          "or 'counterfactual' (KNOWLEDGE EDITING: real country->capital facts the base "
                          "KNOWS, with DERANGED capitals in memory. PROBE-FILTER-EDIT: probe the frozen "
                          "base first, keep only facts it demonstrably knows, bind the counterfactual "
@@ -796,6 +829,12 @@ def main():
                     help="dir holding counterfact.json (for --dataset counterfact)")
     ap.add_argument("--locality-cap", type=int, default=256, dest="locality_cap",
                     help="max locality/generalization probe prompts to score (budget cap)")
+    ap.add_argument("--query-rel", type=str, default="", dest="query_rel",
+                    help="ADVERSARIAL paraphrase probe (issue #10, natural phrasing only): bind and "
+                         "train exactly as normal (bindings + training queries use ' lives in'), then "
+                         "ALSO evaluate with the query phrased as this relation (e.g. ' resides in') — "
+                         "does the memory address by the subject or by the literal relation tokens? "
+                         "Reported next to the standard eval; leading space matters for tokenization.")
     ap.add_argument("--readout", type=str, default="linear", choices=["linear", "decoder", "perpos"],
                     help="pk multi-token VALUE readout: 'linear' (default, byte-preserved: slot t -> "
                          "answer token t in one projection) or 'decoder' (tiny AR transformer-decoder "
@@ -837,7 +876,24 @@ def main():
     torch.manual_seed(args.seed)
     rng = np.random.default_rng(args.seed)
 
-    base, tok = load_frozen_base()
+    # resolve the donor BEFORE loading it: explicit --base1 wins; a RELOAD falls back to the donor
+    # recorded in the checkpoint (the base the memory was actually bound on); else the historical
+    # default. An explicit override that disagrees with the record is almost certainly a mistake
+    # (the adapter rebuilds on the wrong embedding table and load_state_dict cannot catch a
+    # same-hidden-size donor swap), so say so loudly.
+    if args.load_ckpt:
+        _peek = torch.load(args.load_ckpt, map_location="cpu", weights_only=False)
+        _recorded = _peek.get("base1")
+        del _peek
+        if args.base1 and _recorded and args.base1 != _recorded:
+            print(f"[mag] WARNING: --base1 {args.base1} != ckpt-recorded donor {_recorded} — "
+                  f"the memory was bound on {_recorded}; results on a different donor are garbage "
+                  f"unless you know exactly why you are doing this.", flush=True)
+        args.base1 = args.base1 or _recorded or MODEL
+    else:
+        args.base1 = args.base1 or MODEL
+
+    base, tok = load_frozen_base(args.base1)
     H = base.config.get_text_config().hidden_size
     n_layers = base.config.get_text_config().num_hidden_layers
     embed_weight = base.get_input_embeddings().weight.detach().float().clone()
@@ -874,11 +930,20 @@ def main():
     if args.cargo_tokens > 1:
         print(f"[mag] MULTI-TOKEN cargo: K={args.cargo_tokens} word_pool={len(cargo_words)} "
               f"(answer = K-token real-word phrase; acc = exact-match)", flush=True)
+    # PARAPHRASE probe (#10): an EVAL-ONLY builder whose docs are identical except the query relation.
+    # Bind/train never see it — the store must address by the subject, not the literal relation tokens.
+    builder_pq = None
+    if args.query_rel:
+        assert args.phrasing == "natural", "--query-rel is a natural-phrasing probe"
+        builder_pq = DocBuilder(tok, names, cargo, args.M, args.seg_len, args.qa_seg, phrasing="natural",
+                                cargo_tokens=args.cargo_tokens, cargo_words=cargo_words,
+                                query_rel=args.query_rel)
+        print(f"[mag] PARAPHRASE probe: bindings ' lives in' | eval query '{args.query_rel}'", flush=True)
 
     # ---- RELOAD path: reuse a fixed v0 memory checkpoint (no re-bind) and reproduce the V0 eval ----
     if args.load_ckpt:
         adapter, injector, L, ck = load_ckpt(args.load_ckpt, embed_weight, base, DEV, builder=builder)
-        print(f"[mag] {MODEL} | H={H} n_layers={n_layers} | RELOAD tap L={L} | "
+        print(f"[mag] {args.base1} | H={H} n_layers={n_layers} | RELOAD tap L={L} | "
               f"K={ck['k']} mem_dim={ck['mem_dim']} | chance acc={1/args.M:.3f}", flush=True)
         injector.attach()
         gen = eval_generative_mag(base, adapter, injector, builder, rng, args)
@@ -890,6 +955,11 @@ def main():
                 lg = eval_locality_generalization(base, tok, injector, adapter, builder, cf_records,
                                                   args, cap=args.locality_cap)
                 verdict_locality_generalization(str(L), lg)
+        if builder_pq is not None:
+            pq_carry, pq_abl, _pc, _pa = eval_direct(adapter, builder_pq, rng, args)
+            print(f"[mag][{L}] PARAPHRASE carry: {pq_carry:.3f} (ablated {pq_abl:.3f})", flush=True)
+            gen_pq = eval_generative_mag(base, adapter, injector, builder_pq, rng, args)
+            verdict(f"{L}|paraphrase", pq_carry, gen_pq, 1 / args.M)
         injector.detach()
         print("\n[mag] RELOAD SANITY (tap -> memory / no_memory / ceiling):", flush=True)
         print(f"  L={L:>8}  {m_acc:.3f} / {nm_acc:.3f} / {gen['local_control'][1]:.3f}", flush=True)
@@ -898,12 +968,13 @@ def main():
 
     layers = ([int(x) for x in args.tap_layers.split(",") if x != ""]
               if args.tap_layers else [n_layers // 2])
-    print(f"[mag] {MODEL} | H={H} n_layers={n_layers} | tap_layers={layers} multi={args.multi} | "
+    print(f"[mag] {args.base1} | H={H} n_layers={n_layers} | tap_layers={layers} multi={args.multi} | "
           f"K={args.k} mem_dim={args.mem_dim} | chance acc={1/args.M:.3f}", flush=True)
 
     # ---- stage 1: bind once ----
     adapter = build_adapter(args, embed_weight, H, builder=builder)
-    d_carry = bind_adapter(adapter, builder, rng, args)
+    with StageCost(f"stage-1 bind (M={args.M}, {args.bind_steps} steps, batch {args.batch})"):
+        d_carry = bind_adapter(adapter, builder, rng, args)
 
     # ---- stage 2: MAG delivery ----
     configs = [layers] if args.multi else [[L] for L in layers]
@@ -911,9 +982,21 @@ def main():
     for cfg in configs:
         tag = "+".join(map(str, cfg))
         injector = MAGInjector(base, cfg, args.mem_dim, n_heads=args.tap_heads).to(DEV)
-        train_taps(base, adapter, injector, builder, rng, args, tag)
-        gen = eval_generative_mag(base, adapter, injector, builder, rng, args)
+        with StageCost(f"stage-2 tap fit L={tag} ({args.steps} steps, batch {args.batch})"):
+            train_taps(base, adapter, injector, builder, rng, args, tag)
+        with StageCost(f"delivery eval L={tag}"):
+            gen = eval_generative_mag(base, adapter, injector, builder, rng, args)
         m_acc, nm_acc = verdict(tag, d_carry, gen, 1 / args.M)
+        if builder_pq is not None:
+            # the store/tap were trained with ' lives in' queries ONLY; this asks the same questions
+            # phrased differently. carry = the store's own paraphrase addressing; the verdict block =
+            # paraphrase delivery through the frozen base.
+            pq_carry, pq_abl, _pc, _pa = eval_direct(adapter, builder_pq, rng, args)
+            print(f"[mag][{tag}] PARAPHRASE carry: {pq_carry:.3f} (ablated {pq_abl:.3f}) "
+                  f"vs standard {d_carry:.3f}", flush=True)
+            with StageCost(f"paraphrase delivery eval L={tag}"):
+                gen_pq = eval_generative_mag(base, adapter, injector, builder_pq, rng, args)
+            verdict(f"{tag}|paraphrase", pq_carry, gen_pq, 1 / args.M)
         if counterfactual:
             # the 4 knowledge-editing metrics + VALID/INVALID gate (scores mem/no_mem against BOTH the
             # counterfactual capital and the true prior at the SAME query position).

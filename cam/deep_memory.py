@@ -33,8 +33,13 @@ try:  # works both as a package import and when deep_mem/ is directly on sys.pat
     from .deep_mem_analytic import analytic_surprise, mlp_forward
     from .store_recurrence import _gated_scan
 except ImportError:
-    import os, sys
-    sys.path.insert(0, os.path.dirname(__file__))
+    if __package__:  # real ImportError inside a sibling, not "run as a file" — don't mask it
+        raise
+    import os
+    import sys
+    _HERE = os.path.dirname(os.path.abspath(__file__))
+    if _HERE not in sys.path:
+        sys.path.insert(0, _HERE)
     from deep_mem_analytic import analytic_surprise, mlp_forward
     from store_recurrence import _gated_scan
 

@@ -26,15 +26,27 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-# flat package: make sibling modules importable whether run as `python -m cam.X` or `python cam/X.py`
-_HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, _HERE)
-from m2_adapter import MODEL, DEV                                          # noqa: E402
-from recall_deepmem import (NAME_CANDIDATES, CARGO_CANDIDATES, MULTITOKEN_WORD_POOL,  # noqa: E402
-                            single_token_ids, DocBuilder, derange_capitals)
-from recall_mag import (memory_bank, load_ckpt, EVAL_BATCH_CAP,  # noqa: E402
-                        _kc, _answer_logits, _seq_ce, _seq_metrics, _nll_bits, probe_and_filter)  # noqa: E402
-from translator import TranslatedInjector, save_translator                # noqa: E402
+# flat package: sibling imports resolve relatively when imported as cam.X (`python -m cam.X`,
+# `import cam.X`) and fall back to a path-hacked absolute import when run as a file (`python cam/X.py`).
+try:
+    from .m2_adapter import MODEL, DEV, StageCost
+    from .recall_deepmem import (NAME_CANDIDATES, CARGO_CANDIDATES, MULTITOKEN_WORD_POOL,
+                                 single_token_ids, DocBuilder, derange_capitals)
+    from .recall_mag import (memory_bank, load_ckpt, EVAL_BATCH_CAP,
+                             _kc, _answer_logits, _seq_ce, _seq_metrics, _nll_bits, probe_and_filter)
+    from .translator import TranslatedInjector, save_translator
+except ImportError:
+    if __package__:  # real ImportError inside a sibling, not "run as a file" — don't mask it
+        raise
+    _HERE = os.path.dirname(os.path.abspath(__file__))
+    if _HERE not in sys.path:
+        sys.path.insert(0, _HERE)
+    from m2_adapter import MODEL, DEV, StageCost                           # noqa: E402
+    from recall_deepmem import (NAME_CANDIDATES, CARGO_CANDIDATES, MULTITOKEN_WORD_POOL,  # noqa: E402
+                                single_token_ids, DocBuilder, derange_capitals)
+    from recall_mag import (memory_bank, load_ckpt, EVAL_BATCH_CAP,  # noqa: E402
+                            _kc, _answer_logits, _seq_ce, _seq_metrics, _nll_bits, probe_and_filter)
+    from translator import TranslatedInjector, save_translator            # noqa: E402
 
 LN2 = math.log(2.0)
 # 2nd base, overridable via --base2. Default = the v1 same-family base (Qwen3-0.6B, d=1024).
@@ -280,6 +292,11 @@ def main():
     ap.add_argument("--base2", type=str, default=MODEL2,
                     help="2nd (frozen) base; default Qwen3-0.6B same-family, "
                          "or unsloth/Llama-3.2-3B for the cross-family falsifier")
+    ap.add_argument("--base1", type=str, default="",
+                    help="donor (frozen base-1) HF model id; default = the donor recorded in the "
+                         "checkpoint (pre-flag checkpoints fall back to the historical default). "
+                         "Must match the base the memory was bound on — its embedding table "
+                         "rebuilds the adapter.")
     ap.add_argument("--save-translator", type=str, default="", dest="save_translator",
                     help="save the fitted translator card (A,B,gamma2 + meta) to this path")
     ap.add_argument("--steps", type=int, default=3000)
@@ -307,26 +324,32 @@ def main():
     torch.manual_seed(args.seed)
     rng = np.random.default_rng(args.seed)
 
-    # base-1 ONLY supplies its frozen embedding table to rebuild the adapter; we never run base-1 fwd.
-    from transformers import AutoTokenizer, AutoModelForCausalLM
-    tok1 = AutoTokenizer.from_pretrained(MODEL)
-    m1 = AutoModelForCausalLM.from_pretrained(MODEL, dtype=torch.bfloat16,
-                                              low_cpu_mem_usage=True).to(DEV).eval()
-    for p in m1.parameters():
-        p.requires_grad_(False)
-    embed_weight = m1.get_input_embeddings().weight.detach().float().clone()
-    n1 = m1.config.get_text_config().num_hidden_layers   # base-1 depth (for the proportional tap map)
-
-    # determine the multi-token answer length K up-front (builder1 needs it BEFORE load_ckpt): CLI
-    # override else inherit from the checkpoint metadata (cheap metadata peek; embed/unembed are not
-    # in the ckpt). cargo_words for base-1; base-2's pool is intersected below for index alignment.
+    # checkpoint metadata peek FIRST (cheap; embed/unembed are not in the ckpt): the multi-token
+    # answer length K (builder1 needs it BEFORE load_ckpt), the doc format, and the DONOR id the
+    # memory was bound on (--base1 overrides; pre-flag checkpoints fall back to MODEL).
     K = args.cargo_tokens
     _meta = torch.load(args.load_ckpt, map_location="cpu", weights_only=False)
     if K == 0:
         K = int(_meta.get("cargo_tokens", 1))
     phrasing = _meta.get("phrasing", "dict")   # rebuild the SAME doc format the memory was bound on
     cf_facts = _meta.get("cf_facts", None)     # counterfactual: filtered (country,capital) word pairs
+    if args.base1 and _meta.get("base1") and args.base1 != _meta["base1"]:
+        print(f"[v1] WARNING: --base1 {args.base1} != ckpt-recorded donor {_meta['base1']} — the "
+              f"memory was bound on {_meta['base1']}; a different donor's embedding table makes the "
+              f"transfer numbers meaningless (load_ckpt will reject a shape mismatch, but a "
+              f"same-size donor swap it cannot catch).", flush=True)
+    base1_id = args.base1 or _meta.get("base1") or MODEL
     del _meta
+
+    # base-1 ONLY supplies its frozen embedding table to rebuild the adapter; we never run base-1 fwd.
+    from transformers import AutoTokenizer, AutoModelForCausalLM
+    tok1 = AutoTokenizer.from_pretrained(base1_id)
+    m1 = AutoModelForCausalLM.from_pretrained(base1_id, dtype=torch.bfloat16,
+                                              low_cpu_mem_usage=True).to(DEV).eval()
+    for p in m1.parameters():
+        p.requires_grad_(False)
+    embed_weight = m1.get_input_embeddings().weight.detach().float().clone()
+    n1 = m1.config.get_text_config().num_hidden_layers   # base-1 depth (for the proportional tap map)
     counterfactual = phrasing == "counterfactual"
     # base-1 DocBuilder must exist BEFORE load_ckpt: a pk-store ckpt needs the builder (bind-block
     # positions) at construction. Bolt ckpts ignore it. (builder2 is built after base-2 loads, below.)
@@ -376,7 +399,7 @@ def main():
     # map the base-1 tap depth to a base-2 depth proportionally (cards carry the tap-layer as metadata)
     tap_layer2 = min(int(round(tap_layer / n1 * n2)), n2 - 1)
 
-    print(f"[v1] base-1={MODEL} (d_base1={frozen_tap.H}, tap L={tap_layer}) | "
+    print(f"[v1] base-1={base1_id} (d_base1={frozen_tap.H}, tap L={tap_layer}) | "
           f"base-2={MODEL2} (d_base2={H2}, n_layers={n2}, tap L={tap_layer2}) | "
           f"K={ck['k']} mem_dim={ck['mem_dim']} | chance {1/args.M:.3f}", flush=True)
 
@@ -439,8 +462,10 @@ def main():
         nparam = sum(p.numel() for p in injector.A_params())
         print(f"[v1] translator variant={args.xlator} (Kc={Kc_x}, mlp_mult={args.mlp_mult}) "
               f"trainable params: {nparam/1e6:.3f}M (base-2 d={H2} <-> tap d={frozen_tap.H})", flush=True)
-        train_translator(base2, adapter, injector, builder1, builder2, rng, args)
-        gen = eval_v1_counterfactual(base2, adapter, injector, builder1, builder2, rng, args)
+        with StageCost(f"stage-3 translator fit ({args.xlator}, {args.steps} steps, batch {args.batch})"):
+            train_translator(base2, adapter, injector, builder1, builder2, rng, args)
+        with StageCost("transfer eval (counterfactual)"):
+            gen = eval_v1_counterfactual(base2, adapter, injector, builder1, builder2, rng, args)
         verdict_v1_counterfactual(gen, 1 / args.M)
         if args.save_translator:
             save_translator(args.save_translator, injector, {
@@ -484,8 +509,10 @@ def main():
           f"trainable params: {nparam/1e6:.3f}M "
           f"(base-2 d={H2} <-> tap d={frozen_tap.H})", flush=True)
 
-    train_translator(base2, adapter, injector, builder1, builder2, rng, args)
-    gen = eval_v1(base2, adapter, injector, builder1, builder2, rng, args)
+    with StageCost(f"stage-3 translator fit ({args.xlator}, {args.steps} steps, batch {args.batch})"):
+        train_translator(base2, adapter, injector, builder1, builder2, rng, args)
+    with StageCost("transfer eval"):
+        gen = eval_v1(base2, adapter, injector, builder1, builder2, rng, args)
     m_acc, nm_acc = verdict(gen, 1 / args.M, xlator=args.xlator)
     if args.save_translator:
         save_translator(args.save_translator, injector, {
