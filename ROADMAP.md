@@ -41,8 +41,11 @@ across applications.
   Retrieval-conditioned banking + a tap gated on an explicit **store-confidence scalar** (the store's own
   retrieval strength, replacing the null slot's prompt-novelty proxy) make it **local AND generalizing at
   once** — locality drop **−0.008**, generalization **0.91–0.93** (up from 0.61 with the learned sink;
-  generalization was never dead — 0.889 edit-only, the old 0.074 was a measurement artifact). 🟡 Still open:
-  it runs one relation at a time ([#16](https://github.com/patcarter883/memory-organ/issues/16)).
+  generalization was never dead — 0.889 edit-only, the old 0.074 was a measurement artifact). **Multiple
+  relations in one memory now works** (faithful prefix, `--phrasing counterfactual_multi`): 4
+  relation-templates, VALID (0.99), edit-success 0.928, generalization 0.679. 🟡 Still open: multi-relation
+  locality leaks (−0.066) and doesn't tighten with `lw` — per-relation gate calibration is the next lever
+  ([#16](https://github.com/patcarter883/memory-organ/issues/16)).
 - ❔ Does it hold at the **N-scale** of a useful memory (thousands–millions of facts)?
 - ❌ **Translator reuse — answered NO (fundamental at affine capacity).** A translator fit for one memory
   gives 0.000 on a different memory, and *joint* training on multiple memories still gives 0.002 on a

@@ -475,3 +475,35 @@ ceiling while staying surgical. The `neg_cgate` diagnostic makes the mechanism l
 weak-bank read's multiplier toward 0 while paraphrases (strong reads) still deliver. Editing on real
 CounterFact is now valid, delivered, local, *and* generalizing — with delivery driven by what the memory
 actually retrieved, not by how the prompt looked. The remaining front is multiple relations per document.
+
+## Phase 15 — multiple relations in one memory (faithful prefix)
+
+Everything through Phase 14 edited one relation at a time — the relation's prefix folded into a shared
+header so every fact in a doc read "The capital of X is", subject pinned at `qa_start`. To edit *different*
+relations together we had a fork: reword every fact subject-first so the subject stays at `qa_start` (cheap,
+but departs from CounterFact's real prompts and the validity gate would test the reworded phrasing), or keep
+each fact's **real** prompt with the subject mid-string and pay for it in machinery. We took the faithful
+route — the point of Track 1 is real-benchmark fidelity.
+
+The faithful format means the subject no longer sits at a fixed offset: "The capital of France is Paris" and
+"The official language of Dante is Italian" put the subject after prefixes of *different* lengths. So KEY
+(subject) and VALUE (object) positions **vary per binding** — exactly the problem the `varied` phrasing
+already solved with `binding_positions()`, so we reused that machinery and extended the pk-store write path
+to it. Batch-rectangularity comes varied-style: doc slot m always carries relation `m % R`, so per-slot
+block geometry is relation-determined (uniform across the batch) even though the specific fact is drawn per
+row. The one genuinely new coupling was addressing supervision, which had hardcoded "the queried subject is
+at `qa_start`" — now it reads `qa_start + q_subj_off` (the queried relation's prefix length). A
+tokenizer-only selftest pinned every position (KEY on the subject, VALUE on the counterfactual object, the
+query subject at `qa_start + q_subj_off`, strong/weak banking binding or not binding the target) before we
+spent a single GPU-second — and it caught the structure exactly: "The capital of Canada is Berlin.\n".
+
+On GPU (4 relation-templates, 42 edits, conf-gate, lw 0.1): the validity gate passes at **0.990** (the base
+holds all four relations' priors), edit-success is **0.928**, and generalization is **0.679** — the edits
+fire on paraphrases across relations. Multi-relation editing works. The honest residual is locality: at
+**−0.066** it leaks more than single-relation's −0.008, and — unlike single-relation — turning up the
+locality weight did *not* tighten it (a higher-lw run came out leakier, not cleaner). The likely reason is
+that the confidence gate standardizes retrieval strength through a **single** running EMA, but different
+relations have different retrieval magnitudes, so one global scale can't cleanly separate strong from weak
+across all of them. Per-relation gate calibration is the next lever. Scaling to many *semantically* distinct
+relations is separately base-limited: Qwen3.5-4B parametrically holds only ~13% of CounterFact, so the
+base-known editable set is dominated by a few relations — the mechanism handles more than the base knows.
