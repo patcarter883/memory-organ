@@ -80,7 +80,9 @@ Live work is tracked in **[GitHub Issues](../../issues)**, grouped by
   benchmark (CounterFact/zsRE) with **locality**, generalization, N-scale, and cross-edit
   interference (Tracks 1–2).
 - `v0.4 — reuse & test-time` — the two hardest open directions: a memory-conditioned translator that
-  might beat the affine reuse wall (#5 answered NO), and online/test-time binding (Tracks 3–4).
+  might beat the affine reuse wall (#5 answered NO), and online/test-time binding (Tracks 3–4). The
+  test-time direction now has a written plan — the sliding-window experiment ladder in
+  [SLIDING_WINDOW.md](SLIDING_WINDOW.md).
 
 The stages above are the narrative; the issues are the actual, current plan. Changes land via pull
 requests that reference the issue they close.
