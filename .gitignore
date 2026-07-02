@@ -20,3 +20,6 @@ dist/
 
 # Local GPU run-harness (box-specific ROCm image + lease/cache paths; not portable — see issue #6)
 tools/local/
+
+# Editing benchmarks (download locally; see cam/realedit loader)
+data/
