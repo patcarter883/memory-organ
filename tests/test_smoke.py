@@ -57,7 +57,7 @@ def test_pk_store_empty_read_is_zero():
     s = _store()
     V = s.init_state(2, "cpu")
     q = torch.randn(2, 5, 64)
-    out, head_norms = s.read(V, q)
+    out, _ = s.read(V, q)
     assert out.shape == (2, 5, 64)
     assert torch.allclose(out, torch.zeros_like(out), atol=1e-6)
 
@@ -111,10 +111,11 @@ def test_gated_tap_exact_noop_at_init():
 # ---- PKStoreAdapter: the single-token dict bind path, end to end on random embeds -------------
 class _StubDictBuilder:
     """Minimal stand-in declaring the dict-layout contract PKStoreAdapter reads off DocBuilder:
-    [cargo, ':', name, '\\n'] blocks after bos+header, single-token, key@0 / value@2."""
+    [cargo, ':', name, '\\n'] blocks after bos+header, single-token, key@0 / value@2.
+    test_docbuilder_with_real_tokenizer cross-asserts these constants against a real dict
+    DocBuilder so the stub cannot silently drift from the real layout."""
     bos = [0]
     header = [1, 2]
-    colon = [9]
     M = 3
     bind_len = 4
     key_off = 0
@@ -176,3 +177,8 @@ def test_docbuilder_with_real_tokenizer():
     assert ids.shape[0] == 4 and ids.shape[1] >= apos
     assert ans.shape[0] == 4
     assert int(ids[0, b.qa_start]) >= 0
+    # pin _StubDictBuilder's hardcoded layout to the real dict builder so the stub can't drift
+    assert b.bind_len == _StubDictBuilder.bind_len
+    assert getattr(b, "key_off", 0) == _StubDictBuilder.key_off
+    voff = b.val_off if hasattr(b, "val_off") else 1 + len(b.colon)
+    assert voff == _StubDictBuilder.val_off

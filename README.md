@@ -147,26 +147,30 @@ built from base-1's embeddings, never base-2's — which is what makes the trans
 
 ```bash
 # capacity ladder (product-key store + addressing supervision)
-python -m cam.bind_msweep --store pk --addr-sup-weight 1.0 --pk-read-heads 8 --Ms 8,16,32,64,128
+python -m cam.bind_msweep --store pk --addr-sup-weight 1.0 --pk-read-heads 8 --Ms 8,16,32,64,128 \
+    --bind-steps 6000 --batch 16 --lr 1e-3 --seed 20260625
 
 # end-to-end: bind -> deliver into frozen base-1 -> transfer to frozen base-2
-python -m cam.recall_mag --store pk --addr-sup-weight 1.0 --M 8 --save-ckpt ckpt/m8.pt
-python -m cam.recall_v1  --load-ckpt ckpt/m8.pt --M 8 --base2 unsloth/gemma-3-4b-pt
+python -m cam.recall_mag --store pk --addr-sup-weight 1.0 --M 8 \
+    --bind-steps 6000 --seed 20260625 --save-ckpt ckpt/m8.pt
+python -m cam.recall_v1  --load-ckpt ckpt/m8.pt --M 8 --seed 20260625 --base2 unsloth/gemma-3-4b-pt
 
 # multi-token cargo: disjoint per-position store + higher-capacity per-position translator
 python -m cam.recall_mag --store pk --readout perpos --perpos-key disjoint --cargo-tokens 2 \
-    --addr-sup-weight 1.0 --pk-read-heads 8 --M 8 --save-ckpt ckpt/mt.pt
+    --addr-sup-weight 1.0 --pk-read-heads 8 --M 8 --bind-steps 6000 --seed 20260625 --save-ckpt ckpt/mt.pt
 python -m cam.recall_v1  --load-ckpt ckpt/mt.pt --M 8 --cargo-tokens 2 --xlator perpos-mlp \
-    --base2 unsloth/gemma-3-4b-pt
+    --seed 20260625 --base2 unsloth/gemma-3-4b-pt
 
 # real knowledge (first cut): natural-language facts "<Subject> lives in <Object>." (phrasing survives)
-python -m cam.recall_mag --store pk --addr-sup-weight 1.0 --M 8 --phrasing natural --save-ckpt ckpt/nat.pt
-python -m cam.recall_v1  --load-ckpt ckpt/nat.pt --M 8 --base2 unsloth/gemma-3-4b-pt
+python -m cam.recall_mag --store pk --addr-sup-weight 1.0 --M 8 --phrasing natural \
+    --bind-steps 6000 --seed 20260625 --save-ckpt ckpt/nat.pt
+python -m cam.recall_v1  --load-ckpt ckpt/nat.pt --M 8 --seed 20260625 --base2 unsloth/gemma-3-4b-pt
 
 # knowledge editing: probe the frozen base for real country->capital priors it KNOWS, keep those, put a
 # DERANGED capital in memory, and override the base's own prior (mem-on flips France->Paris to France->Tokyo).
 # PROBE -> FILTER -> EDIT runs in one pass; the VALID/INVALID gate fires on no_mem prior-acc (same-base valid).
-python -m cam.recall_mag --store pk --addr-sup-weight 1.0 --M 8 --phrasing counterfactual --save-ckpt ckpt/cf.pt
+python -m cam.recall_mag --store pk --addr-sup-weight 1.0 --M 8 --phrasing counterfactual \
+    --bind-steps 6000 --seed 20260625 --save-ckpt ckpt/cf.pt
 ```
 
 ## License & credit

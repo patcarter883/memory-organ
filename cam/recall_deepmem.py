@@ -54,6 +54,8 @@ import torch.nn.functional as F
 try:
     from .m2_adapter import MODEL, DEV, TitansMemoryAdapter, load_frozen_base
 except ImportError:
+    if __package__:  # real ImportError inside a sibling, not "run as a file" — don't mask it
+        raise
     _HERE = os.path.dirname(os.path.abspath(__file__))
     if _HERE not in sys.path:
         sys.path.insert(0, _HERE)
@@ -948,6 +950,9 @@ def main():
     ap.add_argument("--eval-pool", type=int, default=12, dest="eval_pool",
                     help="held-out name/cargo tokens reserved for eval (disjoint from train)")
     ap.add_argument("--seed", type=int, default=20260624)
+    ap.add_argument("--base1", type=str, default=MODEL,
+                    help=f"donor (frozen base-1) HF model id; default {MODEL}. Swapping it is an "
+                         f"untested-donor experiment, not a reproduction.")
     ap.add_argument("--save", default="ckpt/recall_adapter.pt")
     ap.add_argument("--eval-only", action="store_true", dest="eval_only",
                     help="load --save checkpoint, skip training, run held-out eval + decode probe only")
@@ -960,7 +965,7 @@ def main():
     torch.manual_seed(args.seed)
     rng = np.random.default_rng(args.seed)
 
-    base, tok = load_frozen_base()
+    base, tok = load_frozen_base(args.base1)
     H = base.config.get_text_config().hidden_size
     # dict phrasing places cargo line-initial -> needs NO-space single tokens; manifest is mid-sentence
     cargo_prefix = "" if args.phrasing == "dict" else " "

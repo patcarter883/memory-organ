@@ -46,6 +46,11 @@ python -m cam.bind_msweep --store pk --addr-sup-weight 0.0 --Ms 8,16,32 \
     --bind-steps 6000 --batch 16 --lr 1e-3 --seed 20260625
 ```
 
+> **Known gap:** the §1 table's "uncompressed KV (control, upper bound)" row has no command — that
+> control was a one-off falsifier (RESULTS.md §2) and is not scripted in the current drivers
+> (`--store` offers only `bolt`/`pk`). Reproducing it needs a small custom store; a PR restoring it
+> as `--store kv` would be welcome.
+
 ### §3 Single-token pipeline (bind → deliver → transfer)
 
 ```bash

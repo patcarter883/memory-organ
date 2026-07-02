@@ -42,6 +42,8 @@ try:
     from .recall_deepmem import NAME_CANDIDATES, CARGO_CANDIDATES, single_token_ids, DocBuilder
     from .deep_memory import DeepMemory
 except ImportError:
+    if __package__:  # real ImportError inside a sibling, not "run as a file" — don't mask it
+        raise
     _HERE = os.path.dirname(os.path.abspath(__file__))
     if _HERE not in sys.path:
         sys.path.insert(0, _HERE)
@@ -176,12 +178,15 @@ def main():
     ap.add_argument("--expansion", type=float, default=4.0)
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--seed", type=int, default=20260625)
+    ap.add_argument("--base1", type=str, default=MODEL,
+                    help=f"donor (frozen base-1) HF model id; default {MODEL}. Swapping it is an "
+                         f"untested-donor experiment, not a reproduction.")
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
     rng = np.random.default_rng(args.seed)
 
-    base, tok = load_frozen_base()
+    base, tok = load_frozen_base(args.base1)
     H = base.config.get_text_config().hidden_size
     embed_weight = base.get_input_embeddings().weight.detach().float().clone()
 

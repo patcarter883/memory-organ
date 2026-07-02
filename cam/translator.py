@@ -27,6 +27,8 @@ import torch.nn as nn
 try:
     from .gated_tap import GatedMemoryTap, decoder_layers
 except ImportError:
+    if __package__:  # real ImportError inside a sibling, not "run as a file" — don't mask it
+        raise
     _HERE = os.path.dirname(os.path.abspath(__file__))
     if _HERE not in sys.path:
         sys.path.insert(0, _HERE)

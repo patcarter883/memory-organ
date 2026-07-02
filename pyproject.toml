@@ -27,3 +27,9 @@ Homepage = "https://github.com/patcarter883/memory-organ"
 
 [tool.setuptools.packages.find]
 include = ["cam*"]
+
+[tool.pytest.ini_options]
+# `import cam.*` in tests must work without `pip install -e .`: the pytest CONSOLE SCRIPT does not
+# put the repo root on sys.path (only `python -m pytest` does), so `pytest tests/` fails collection
+# without this. pythonpath needs pytest >= 7.
+pythonpath = ["."]

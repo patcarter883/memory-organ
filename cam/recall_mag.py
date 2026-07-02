@@ -31,6 +31,8 @@ try:
     from .pk_store_adapter import PKStoreAdapter
     from .gated_tap import MAGInjector
 except ImportError:
+    if __package__:  # real ImportError inside a sibling, not "run as a file" — don't mask it
+        raise
     _HERE = os.path.dirname(os.path.abspath(__file__))
     if _HERE not in sys.path:
         sys.path.insert(0, _HERE)
@@ -289,9 +291,12 @@ def save_ckpt(path, adapter, injector, tap_layer, args, d_carry, cf_meta=None):
         "tap_heads": args.tap_heads,
         "mem_dim": args.mem_dim, "heads": args.heads, "chunk": args.chunk,
         "expansion": args.expansion, "k": args.k, "d_carry": d_carry,
-        # donor id: v1 rebuilds the SAME base-1 (embed table + tokenizer) the memory was bound on.
-        # Absent in pre-flag checkpoints -> loaders fall back to the historical default (MODEL).
-        "base1": getattr(args, "base1", None),
+        # donor id + embed-table shape: loaders rebuild the SAME base-1 the memory was bound on and
+        # can VERIFY it — a same-hidden-size donor swap is otherwise invisible to load_state_dict
+        # (embed/unembed are excluded from the ckpt). Absent in pre-flag checkpoints -> loaders
+        # fall back to the historical default (MODEL) and skip the shape check.
+        "base1": args.base1,
+        "embed_shape": tuple(adapter.embed.weight.shape),
         # store selector + pk knobs so load_ckpt rebuilds the right adapter (bolt path unchanged:
         # store defaults to 'bolt' and the pk_* keys are ignored when rebuilding a BoltAdapter).
         "store": getattr(args, "store", "bolt"),
@@ -323,6 +328,14 @@ def load_ckpt(path, embed_weight, base, dev, builder=None):
     ignore it (store defaults to 'bolt' for pre-pk checkpoints)."""
     ck = torch.load(path, map_location=dev, weights_only=False)
     H = base.config.get_text_config().hidden_size
+    # donor-mismatch guard: embed/unembed are rebuilt from the SUPPLIED table (never checked by the
+    # strict-ish load below), so a wrong-donor embed_weight with matching hidden size would silently
+    # rebuild a garbage adapter. New ckpts record the bound table's shape; verify when present.
+    if ck.get("embed_shape") is not None:
+        got, want = tuple(embed_weight.shape), tuple(ck["embed_shape"])
+        assert got == want, \
+            (f"embed table {got} != ckpt-recorded donor table {want} — this memory was bound on "
+             f"{ck.get('base1', 'the historical default donor')}; pass the matching --base1.")
     store = ck.get("store", "bolt")
     if store == "pk":
         adapter = PKStoreAdapter(
@@ -568,10 +581,11 @@ def main():
                     help="train ALL --tap-layers together (escalation) instead of sweeping each")
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--seed", type=int, default=20260628)
-    ap.add_argument("--base1", type=str, default=MODEL,
-                    help=f"donor (frozen base-1) HF model id; default {MODEL} — the donor every "
-                         f"published number used. Swapping it is an untested-donor experiment, "
-                         f"not a reproduction.")
+    ap.add_argument("--base1", type=str, default="",
+                    help=f"donor (frozen base-1) HF model id; default = the donor recorded in "
+                         f"--load-ckpt (the base the memory was bound on), else {MODEL} — the donor "
+                         f"every published number used. Swapping it is an untested-donor "
+                         f"experiment, not a reproduction.")
     ap.add_argument("--save-ckpt", type=str, default="", dest="save_ckpt",
                     help="after a single-layer run, save the frozen BoltAdapter+tap to this path")
     ap.add_argument("--load-ckpt", type=str, default="", dest="load_ckpt",
@@ -636,6 +650,23 @@ def main():
 
     torch.manual_seed(args.seed)
     rng = np.random.default_rng(args.seed)
+
+    # resolve the donor BEFORE loading it: explicit --base1 wins; a RELOAD falls back to the donor
+    # recorded in the checkpoint (the base the memory was actually bound on); else the historical
+    # default. An explicit override that disagrees with the record is almost certainly a mistake
+    # (the adapter rebuilds on the wrong embedding table and load_state_dict cannot catch a
+    # same-hidden-size donor swap), so say so loudly.
+    if args.load_ckpt:
+        _peek = torch.load(args.load_ckpt, map_location="cpu", weights_only=False)
+        _recorded = _peek.get("base1")
+        del _peek
+        if args.base1 and _recorded and args.base1 != _recorded:
+            print(f"[mag] WARNING: --base1 {args.base1} != ckpt-recorded donor {_recorded} — "
+                  f"the memory was bound on {_recorded}; results on a different donor are garbage "
+                  f"unless you know exactly why you are doing this.", flush=True)
+        args.base1 = args.base1 or _recorded or MODEL
+    else:
+        args.base1 = args.base1 or MODEL
 
     base, tok = load_frozen_base(args.base1)
     H = base.config.get_text_config().hidden_size

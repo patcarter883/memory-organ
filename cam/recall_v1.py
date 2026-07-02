@@ -36,6 +36,8 @@ try:
                              _kc, _answer_logits, _seq_ce, _seq_metrics, _nll_bits, probe_and_filter)
     from .translator import TranslatedInjector, save_translator
 except ImportError:
+    if __package__:  # real ImportError inside a sibling, not "run as a file" — don't mask it
+        raise
     _HERE = os.path.dirname(os.path.abspath(__file__))
     if _HERE not in sys.path:
         sys.path.insert(0, _HERE)
@@ -331,6 +333,11 @@ def main():
         K = int(_meta.get("cargo_tokens", 1))
     phrasing = _meta.get("phrasing", "dict")   # rebuild the SAME doc format the memory was bound on
     cf_facts = _meta.get("cf_facts", None)     # counterfactual: filtered (country,capital) word pairs
+    if args.base1 and _meta.get("base1") and args.base1 != _meta["base1"]:
+        print(f"[v1] WARNING: --base1 {args.base1} != ckpt-recorded donor {_meta['base1']} — the "
+              f"memory was bound on {_meta['base1']}; a different donor's embedding table makes the "
+              f"transfer numbers meaningless (load_ckpt will reject a shape mismatch, but a "
+              f"same-size donor swap it cannot catch).", flush=True)
     base1_id = args.base1 or _meta.get("base1") or MODEL
     del _meta
 

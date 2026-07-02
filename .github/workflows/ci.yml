@@ -16,9 +16,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Cache HF tokenizer (optional real-tokenizer test)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-qwen3.5-4b-tokenizer
       - name: Install CPU torch + deps
         run: |
           pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install transformers numpy pytest
+      # `python -m pytest` (not the console script) so the repo root is on sys.path regardless of
+      # the pythonpath ini option; belt and suspenders with [tool.pytest.ini_options] pythonpath.
       - name: Smoke tests
-        run: pytest tests/ -v
+        run: python -m pytest tests/ -v

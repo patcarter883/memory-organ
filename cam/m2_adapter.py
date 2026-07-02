@@ -58,6 +58,8 @@ class TitansMemoryAdapter(nn.Module):
             try:
                 from .deep_memory import DeepMemory  # graph-free, depth-2 (mem_depth ignored)
             except ImportError:
+                if __package__:  # real ImportError inside deep_memory, not "run as a file"
+                    raise
                 _here = os.path.dirname(os.path.abspath(__file__))
                 if _here not in sys.path:
                     sys.path.insert(0, _here)
