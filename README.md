@@ -104,9 +104,12 @@ phrasing — prose, varied relations, multi-token — is validated in §5.)
 > **store-confidence scalar** (the store's own retrieval strength, not the null slot's prompt-novelty proxy)
 > makes single-relation editing **valid (0.96), delivered (≈1.0), local (−0.008), and generalizing
 > (0.91–0.93) all at once** — up from 0.61 generalization with the learned sink. And **multiple relations
-> at once now works**: 4 relation-templates edited in one memory (each keeping its real prompt), and a
-> per-relation confidence-gate EMA makes it VALID (0.99), delivered (0.92), LOCAL (−0.047), and generalizing
-> (0.74). Full arc + numbers in
+> at once now works**: a per-relation confidence-gate EMA edits 4 relation-templates in one memory, VALID
+> (0.99), local (−0.047), generalizing (0.74). The apparent diversity ceiling turned out to be a
+> **tractability** artifact, not base size (a 2.25× bigger base didn't help) — dropping the single-token-
+> **subject** filter (allow multi-token subjects; keep single-token objects, 97% of records) unlocks **6
+> semantically distinct relations** in one memory: VALID (1.00), delivered (~0.90), local (−0.016),
+> generalizing (0.65). Full arc + numbers in
 > [RESULTS.md §7](RESULTS.md) ([#16](https://github.com/patcarter883/memory-organ/issues/16)).
 
 See **[RESULTS.md](RESULTS.md)** for every number with its baseline and the full story including the
