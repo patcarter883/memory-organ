@@ -96,6 +96,7 @@ def _answer_logits(base, ctx_emb, Kc):
         lg = base(inputs_embeds=ctx_emb, logits_to_keep=Kc).logits.float()  # [B,Kc,V]
     except TypeError:                                    # older HF without logits_to_keep -> slice
         lg = base(inputs_embeds=ctx_emb).logits.float()
+    lg = lg.to(DEV)                                      # model-parallel: logits (last shard) -> cuda:0 (targets)
     return lg[:, -1] if Kc == 1 else lg[:, -Kc:]
 
 
@@ -104,9 +105,9 @@ def _last_logit(base, **fwd):
     (logits_to_keep=1) so the full [B,T,vocab] fp32 tensor never materializes (same OOM hog as
     _answer_logits, at the single-token probe/locality sites). Numerically identical to slicing."""
     try:
-        return base(logits_to_keep=1, **fwd).logits[:, -1].float()
+        return base(logits_to_keep=1, **fwd).logits[:, -1].float().to(DEV)
     except TypeError:
-        return base(**fwd).logits[:, -1].float()
+        return base(**fwd).logits[:, -1].float().to(DEV)
 
 
 # ---- memory bank: K query-conditioned pooled retrieval vectors (pre out_proj), mirrors BoltAdapter.inject

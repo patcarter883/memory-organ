@@ -100,7 +100,7 @@ class GatedMemoryTap(nn.Module):
             return h
         wdt = self.to_q.weight.dtype                           # tap compute dtype (fp32)
         h32 = h.to(wdt)
-        bank = bank.to(wdt)
+        bank = bank.to(device=h.device, dtype=wdt)             # MODEL-PARALLEL: bank (on cuda:0) -> layer's device
         B = h32.shape[0]
         q = self._split(self.to_q(h32))                        # [B,nh,T,dh]
         k = self._split(self.to_k(bank))                       # [B,nh,K,dh]
@@ -118,7 +118,7 @@ class GatedMemoryTap(nn.Module):
         self.last_null_attn = a[..., -1].mean().detach()       # softmax mass routed to the null slot
         upd = g * y                                            # [B,T,H] gated injection
         if self.conf_gate and self._conf is not None:
-            cf = self._conf.to(wdt).detach()                   # [B] store frozen -> no grad through store
+            cf = self._conf.to(device=h.device, dtype=wdt).detach()   # [B] store frozen -> no grad; to layer's device
             ri = int(self._relidx) if self._relidx is not None else 0
             ri = max(0, min(ri, self.n_rel - 1))
             if self.training:                                  # track this relation's absolute conf scale
@@ -183,6 +183,13 @@ class MAGInjector:
 
     def attach(self):
         for L in self.tap_layers:
+            # MODEL-PARALLEL: place the tap on ITS layer's device (device_map may shard layers across
+            # GPUs) so the injection h + g*y is same-device. Single-card = no-op (all on cuda:0).
+            try:
+                dev = next(self.layers[L].parameters()).device
+                self.taps[str(L)].to(dev)
+            except StopIteration:
+                pass
             self._handles.append(self.layers[L].register_forward_hook(self._hook(self.taps[str(L)])))
         return self
 
