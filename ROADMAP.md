@@ -43,8 +43,9 @@ across applications.
   once** — locality drop **−0.008**, generalization **0.91–0.93** (up from 0.61 with the learned sink;
   generalization was never dead — 0.889 edit-only, the old 0.074 was a measurement artifact). **Multiple
   relations in one memory now works** (faithful prefix, `--phrasing counterfactual_multi`): 4
-  relation-templates, VALID (0.99), edit-success 0.928, generalization 0.679. 🟡 Still open: multi-relation
-  locality leaks (−0.066) and doesn't tighten with `lw` — per-relation gate calibration is the next lever
+  relation-templates, and a **per-relation confidence-gate EMA** makes it VALID (0.99), delivered (0.92),
+  LOCAL (−0.047), generalizing (0.74) — the leak is closed. 🟡 Still open: scaling to many *semantically*
+  distinct relations (base-limited — Qwen3.5-4B holds only ~13% of CounterFact)
   ([#16](https://github.com/patcarter883/memory-organ/issues/16)).
 - ❔ Does it hold at the **N-scale** of a useful memory (thousands–millions of facts)?
 - ❌ **Translator reuse — answered NO (fundamental at affine capacity).** A translator fit for one memory

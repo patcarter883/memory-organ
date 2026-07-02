@@ -337,6 +337,7 @@ class PKStoreAdapter(nn.Module):
         B = emb.shape[0]
         self._last_aux_loss = None
         self._last_conf = None                          # per-example store-confidence scalar (MAG conf gate)
+        self._last_relidx = getattr(self.builder, "q_relidx", None)   # queried relation (per-relation EMA)
         want_sup = self.training and carry and self.addr_sup_weight > 0
         if carry:
             V = self._write_episode(emb, ids=ids if want_sup else None)

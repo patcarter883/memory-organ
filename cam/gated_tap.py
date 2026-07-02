@@ -37,7 +37,7 @@ def decoder_layers(base):
 class GatedMemoryTap(nn.Module):
     """Zero-init gated cross-attention from the residual stream into the K-slot memory bank."""
 
-    def __init__(self, base_hidden, mem_dim, n_heads=8, conf_gate=False):
+    def __init__(self, base_hidden, mem_dim, n_heads=8, conf_gate=False, n_rel=1):
         super().__init__()
         assert base_hidden % n_heads == 0, "base_hidden must divide n_heads"
         self.H, self.n_heads, self.d_head = base_hidden, n_heads, base_hidden // n_heads
@@ -61,11 +61,18 @@ class GatedMemoryTap(nn.Module):
         # delivery from novelty. conf is standardized by a running EMA (absolute scale, NOT per-batch — the
         # strong/weak positives+negatives arrive in SEPARATE forward passes, so per-batch norm would erase
         # the very distinction we gate on), then c = sigmoid(conf_scale * (conf/EMA - conf_bias)).
+        # PER-RELATION EMA (n_rel>1): the multi-relation editing case mixes relations with DIFFERENT ‖ctx‖
+        # scales, so ONE global EMA can't separate strong-vs-weak across all of them (the locality leak). A
+        # separate EMA per relation (indexed by the queried relation, batch-uniform per build) normalizes
+        # each relation to its OWN scale. Shared scale/bias then shape the sigmoid uniformly. n_rel=1 is the
+        # byte-identical single-EMA path.
         self.conf_gate = conf_gate
-        self.conf_scale = nn.Parameter(torch.tensor(4.0))     # sigmoid steepness (learned)
-        self.conf_bias = nn.Parameter(torch.tensor(1.0))      # threshold in EMA-normalized units (learned)
-        self.register_buffer("conf_ema", torch.tensor(-1.0))  # running mean of conf; <0 = uninitialised
+        self.n_rel = n_rel
+        self.conf_scale = nn.Parameter(torch.tensor(4.0))     # sigmoid steepness (learned, shared)
+        self.conf_bias = nn.Parameter(torch.tensor(1.0))      # threshold in EMA-normalized units (learned, shared)
+        self.register_buffer("conf_ema", torch.full((n_rel,), -1.0))  # per-relation running mean; <0 = uninit
         self._conf = None                                     # [B] store-confidence scalar, set per-forward
+        self._relidx = None                                   # queried relation index (batch-uniform), set per-forward
         self._bank = None                                     # [B,K,mem_dim], set per-forward
         self.last_gate = torch.tensor(0.0)
         self.last_attn_entropy = torch.tensor(0.0)
@@ -73,9 +80,10 @@ class GatedMemoryTap(nn.Module):
         self.last_conf = torch.tensor(0.0)                    # mean raw store-confidence
         self.last_cgate = torch.tensor(1.0)                   # mean confidence-gate multiplier c
 
-    def set_bank(self, bank, conf=None):
+    def set_bank(self, bank, conf=None, relidx=None):
         self._bank = bank
         self._conf = conf
+        self._relidx = relidx
 
     def _split(self, t):
         B, T, _ = t.shape
@@ -111,13 +119,15 @@ class GatedMemoryTap(nn.Module):
         upd = g * y                                            # [B,T,H] gated injection
         if self.conf_gate and self._conf is not None:
             cf = self._conf.to(wdt).detach()                   # [B] store frozen -> no grad through store
-            if self.training:                                  # track the absolute scale of conf
-                m = cf.mean()
-                if float(self.conf_ema) < 0:
-                    self.conf_ema.copy_(m.detach())
+            ri = int(self._relidx) if self._relidx is not None else 0
+            ri = max(0, min(ri, self.n_rel - 1))
+            if self.training:                                  # track this relation's absolute conf scale
+                m = cf.mean().detach()
+                if float(self.conf_ema[ri]) < 0:
+                    self.conf_ema[ri] = m
                 else:
-                    self.conf_ema.mul_(0.99).add_(0.01 * m.detach())
-            scale = self.conf_ema.clamp_min(1e-4)
+                    self.conf_ema[ri] = 0.99 * self.conf_ema[ri] + 0.01 * m
+            scale = self.conf_ema[ri].clamp_min(1e-4)
             c = torch.sigmoid(self.conf_scale * (cf / scale - self.conf_bias))   # [B] in (0,1)
             self.last_conf = cf.mean().detach()
             self.last_cgate = c.mean().detach()
@@ -128,11 +138,11 @@ class GatedMemoryTap(nn.Module):
 class MAGInjector:
     """Registers GatedMemoryTap forward-hooks on a set of frozen decoder layers, sharing one bank."""
 
-    def __init__(self, base, tap_layers, mem_dim, n_heads=8, conf_gate=False):
+    def __init__(self, base, tap_layers, mem_dim, n_heads=8, conf_gate=False, n_rel=1):
         H = base.config.get_text_config().hidden_size
         self.layers = decoder_layers(base)
         self.tap_layers = list(tap_layers)
-        self.taps = nn.ModuleDict({str(L): GatedMemoryTap(H, mem_dim, n_heads, conf_gate=conf_gate)
+        self.taps = nn.ModuleDict({str(L): GatedMemoryTap(H, mem_dim, n_heads, conf_gate=conf_gate, n_rel=n_rel)
                                    for L in self.tap_layers})
         self._handles = []
 
@@ -151,9 +161,9 @@ class MAGInjector:
         self.taps.eval()
         return self
 
-    def set_bank(self, bank, conf=None):
+    def set_bank(self, bank, conf=None, relidx=None):
         for t in self.taps.values():
-            t.set_bank(bank, conf=conf)
+            t.set_bank(bank, conf=conf, relidx=relidx)
 
     def gate_stats(self):
         return {L: float(self.taps[str(L)].last_gate) for L in self.tap_layers}

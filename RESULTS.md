@@ -377,22 +377,30 @@ rectangular by cycling relations across doc slots (slot m → relation `m % R`),
 supervision to find the queried subject at `qa_start + q_subj_off` rather than a fixed offset. A
 tokenizer-only selftest (`tools/cf_multi_selftest.py`) pins the positions before any GPU spend.
 
+The remaining subtlety was the confidence gate. It standardizes retrieval strength `‖ctx‖` through a running
+EMA, but different relations have **different `‖ctx‖` scales**, so a single global EMA can't separate
+strong-from-weak across all of them — the first multi-relation run leaked (locality −0.066, "GENERALIZES but
+LEAKY") and, unlike single-relation, turning up `lw` made it *worse*, not better. The fix is a **per-relation
+EMA**: the builder tags each doc with its queried relation index, and the tap keeps one running scale per
+relation (`conf_ema[R]`), so every relation's threshold adapts to its own magnitude (shared sigmoid
+scale/bias). A CPU unit test confirms the mechanism — a relation whose typical `‖ctx‖≈0.5` delivers at
+conf 10 (c≈1.0) while a relation scaled to `‖ctx‖≈10` stays inert at conf 0.5 (c≈0.02).
+
 Result (Qwen3.5-4B, **4 relation-templates edited together**, 42 edits, conf-gate, lw 0.1):
 
-| metric | value | |
-|---|---|---|
-| validity gate (no_mem prior-acc) | **0.990** | VALID — the base holds all four relations' priors |
-| edit-success (mem-on cf) | **0.928** | the memory overrides the prior across mixed relations |
-| generalization (paraphrase, mem-on) | **0.679** | edits fire on rephrasings across relations (0.000 off) |
-| locality drop (OFF→ON) | **−0.066** | LEAKY — the honest residual |
+| metric | single global EMA | **per-relation EMA** | |
+|---|---|---|---|
+| validity gate (no_mem prior-acc) | 0.990 | **0.990** | VALID — base holds all four relations' priors |
+| edit-success (mem-on cf) | 0.928 | **0.922** | memory overrides the prior across mixed relations |
+| generalization (paraphrase) | 0.679 | **0.738** | edits fire on rephrasings across relations (0.000 off) |
+| locality drop (OFF→ON) | −0.066 (LEAKY) | **−0.047 (LOCAL)** | verdict flips to GENERALIZES + LOCAL |
 
-**Multi-relation editing works** — valid, delivered, and generalizing across four relation templates in one
-memory. The open item is **locality**: at −0.066 it leaks more than single-relation (−0.008), and the `lw`
-knob does *not* tighten it the way it did single-relation (a higher-lw run came out leakier, not cleaner).
-The likely cause is that the confidence gate's retrieval-strength EMA is shared across relations with
-different retrieval magnitudes — **per-relation gate calibration** is the next lever. Scaling to many
-semantically-distinct relations is also base-limited: Qwen3.5-4B parametrically holds only ~13% of
-CounterFact, so the base-known editable set is dominated by a few relations.
+**Multi-relation editing works — valid (0.99), delivered (0.92), LOCAL (−0.047), and generalizing (0.74)
+across four relation templates in one memory.** Per-relation gate calibration closed the leak (−0.066 →
+−0.047, past the "local" threshold) *and* lifted generalization (0.679 → 0.738). The residual −0.047 is
+still looser than single-relation's −0.008 — a fair cost for mixing relations — and scaling to many
+*semantically* distinct relations is base-limited (Qwen3.5-4B parametrically holds only ~13% of CounterFact,
+so the base-known editable set is dominated by a few relations; the mechanism handles more than the base knows).
 
 ## 8. Still open
 
@@ -410,8 +418,8 @@ CounterFact, so the base-known editable set is dominated by a few relations.
   **store-confidence gate** (`--conf-gate`, scaling delivery by the store's pre-norm retrieval magnitude
   rather than the null slot's prompt-novelty proxy) then closes the last gap: locality drop **−0.008** with
   generalization **0.91–0.93** (up from 0.61 null-only), edit-success ≈1.0. **Multiple relations at once
-  (§7) now works too** — 4 relation-templates edited in one memory (faithful prefix), VALID (0.99),
-  edit-success 0.928, generalization 0.679; locality still leaks (−0.066) and needs per-relation gate
-  calibration ([#16](https://github.com/patcarter883/memory-organ/issues/16)).
+  (§7) works too** — 4 relation-templates edited in one memory (faithful prefix), and a per-relation
+  confidence-gate EMA makes it VALID (0.99), delivered (0.92), LOCAL (−0.047), and generalizing (0.74)
+  ([#16](https://github.com/patcarter883/memory-organ/issues/16)).
 - **N-scaling** the store toward useful sizes (thousands of facts, not 8–128 per doc).
 - **Backend portability** — pure PyTorch, CPU/CUDA expected but unverified.
