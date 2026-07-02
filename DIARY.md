@@ -339,3 +339,40 @@ local, and making it robust to rephrasing. The next steps are concrete rather th
 filter's eliciting prompt to the eval context so the validity gate can pass honestly, then attack the
 locality leak directly. Recorded here undramatised because the point of Track 1 was to find exactly this,
 and it did.
+
+## Phase 11 — Track 1 made VALID: the gate caught our eval bug
+
+Phase 10 ended on an honest sour note: real CounterFact editing *delivered* (mem-on 0.961) but the
+validity gate said INVALID (no_mem prior-acc 0.164 ≪ 0.60), so the "override" was meaningless. We wrote
+that up plainly and tracked the fix under #16. Chasing it down, the gate — again — turned out to be
+flagging **our own bug, not a limit of the memory**.
+
+The counterfactual eval builds its eliciting prompt from a doc-builder that had the capital case baked in:
+a fixed header **"The capital of"** + query **"&lt;subject&gt; is"**. That is exactly right for the curated
+country→capital table of §7. But Track 1 feeds it *real* CounterFact relations — official language, mother
+tongue, twin city, plays-instrument, located-in — and every one of them was being tested as
+"The capital of &lt;subject&gt; is". The base can't answer "the capital of Italy" with a *language*, so its
+prior recall collapsed and the gate correctly refused to certify the run. A filter/eval prompt-format
+mismatch, the same species of bug as the Gemma BOS artifact in Phase 9 — and the same control caught it.
+
+The fix is almost embarrassingly clean once you see it: facts that share a CounterFact **relation** share
+the *exact* prompt template, so we don't need per-fact prompts or a doc rewrite — we just **edit one
+relation at a time** and fold *that relation's* real prompt into the header/query, precisely as the code
+already folded "The capital of". `setup_counterfact` now groups the base-known facts by relation, picks
+the largest editable group, splits its prompt at the subject slot, and hands the pieces to the builder.
+The subject stays the single-token KEY at its old position, so the store's addressing and addr-sup are
+byte-unchanged. Filter and eval finally elicit the *same, true* relation.
+
+Result (relation P37, "The official language of {} is", 27 base-known facts, e.g. Italy: Italian→Korean,
+Monaco: French→Ukrainian): no_mem prior-acc **0.164 → 0.969** — **GATE VALID**. mem-on counterfactual-acc
+**1.000**, mem-on prior-acc **0.000**: the base demonstrably holds the priors AND the memory overrides them
+to the counterfactual. Bind carry 0.985, tap delivery 1.000. This is genuine, *valid* knowledge editing on
+the real ROME CounterFact benchmark — not a curated table.
+
+We are deliberately not over-selling it. Two things the curated table could never have shown are now on the
+record and are *not* solved: the edit **leaks** — bind one relation and neighbouring facts' prior recall
+drops 0.242 → 0.098 (−0.145 collateral) — and it only **weakly generalizes**, firing on paraphrases at
+0.074. And it is one relation at a time. So Track 1's honest status flips from "delivered-but-not-yet-valid"
+to "valid, but not yet surgical, paraphrase-robust, or multi-relation." That's real progress and a clear,
+specific open front. The nicest part of the story is unchanged from Phase 9: the validity control we built
+to keep ourselves honest did its job twice now — it caught a bug we'd otherwise have shipped as a result.

@@ -24,7 +24,9 @@ import argparse, os, sys, time, torch, torch.nn as nn, torch.nn.functional as F
 # it resolves relatively when imported as cam.X and falls back to a path-hacked absolute import
 # when run as a file (`python cam/m2_adapter.py`).
 
-MODEL = "Qwen/Qwen3.5-4B"
+# MODEL is the frozen base. Default is the production Qwen3.5-4B; CAM_BASE_MODEL overrides it (used by
+# CPU wiring smokes on a tiny model like Qwen/Qwen3-0.6B — no GPU, just proves the code path).
+MODEL = os.environ.get("CAM_BASE_MODEL", "Qwen/Qwen3.5-4B")
 DEV = "cuda" if torch.cuda.is_available() else "cpu"
 
 

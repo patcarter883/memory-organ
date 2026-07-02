@@ -30,6 +30,7 @@ try:
     from .recall_boltA import BoltAdapter, eval_direct
     from .pk_store_adapter import PKStoreAdapter
     from .gated_tap import MAGInjector
+    from .realedit import load_counterfact, as_fact_table, cf_tids_from_records
 except ImportError:
     if __package__:  # real ImportError inside a sibling, not "run as a file" — don't mask it
         raise
@@ -43,6 +44,7 @@ except ImportError:
     from recall_boltA import BoltAdapter, eval_direct                     # noqa: E402
     from pk_store_adapter import PKStoreAdapter                           # noqa: E402
     from gated_tap import MAGInjector                                     # noqa: E402
+    from realedit import load_counterfact, as_fact_table, cf_tids_from_records  # noqa: E402
 
 LN2 = math.log(2.0)
 # eval-batch cap: eb = EVAL_BATCH_CAP // (M*Kc), shrinking the eval forward as M/Kc grow so the
@@ -85,9 +87,26 @@ def _kc(builder):
 
 def _answer_logits(base, ctx_emb, Kc):
     """base forward -> the logits predicting the Kc answer tokens. single-token: [B,V] (last position).
-    multi-token: [B,Kc,V] (the last Kc logit positions of a teacher-forced context)."""
-    lg = base(inputs_embeds=ctx_emb).logits.float()
+    multi-token: [B,Kc,V] (the last Kc logit positions of a teacher-forced context).
+
+    Only the last Kc positions are ever read, so run the LM head on JUST those (logits_to_keep=Kc):
+    the full [B,T,vocab] tensor (~1 GB fp32 at V=151936) is the OOM hog on a 16GB card at the tail of
+    training — keeping Kc positions collapses it to [B,Kc,vocab] (numerically identical to slicing)."""
+    try:
+        lg = base(inputs_embeds=ctx_emb, logits_to_keep=Kc).logits.float()  # [B,Kc,V]
+    except TypeError:                                    # older HF without logits_to_keep -> slice
+        lg = base(inputs_embeds=ctx_emb).logits.float()
     return lg[:, -1] if Kc == 1 else lg[:, -Kc:]
+
+
+def _last_logit(base, **fwd):
+    """last-position logits [B,V] as fp32, running the LM head on ONLY the last position
+    (logits_to_keep=1) so the full [B,T,vocab] fp32 tensor never materializes (same OOM hog as
+    _answer_logits, at the single-token probe/locality sites). Numerically identical to slicing."""
+    try:
+        return base(logits_to_keep=1, **fwd).logits[:, -1].float()
+    except TypeError:
+        return base(**fwd).logits[:, -1].float()
 
 
 # ---- memory bank: K query-conditioned pooled retrieval vectors (pre out_proj), mirrors BoltAdapter.inject
@@ -420,7 +439,7 @@ def probe_and_filter(base, tok, facts, batch=16):
         rows = [bos + pref_ids + [ctid] + rel_ids for (_c, _cap, ctid, _ktid) in chunk]  # ".. <Country> is"
         gold = torch.tensor([ktid for (_c, _cap, _ctid, ktid) in chunk], dtype=torch.long, device=DEV)
         ids = torch.tensor(rows, dtype=torch.long, device=DEV)        # constant length (all single-token)
-        logits = base(input_ids=ids).logits[:, -1].float()           # predict the capital token
+        logits = _last_logit(base, input_ids=ids)                    # predict the capital token
         pred = logits.argmax(-1)
         for j, f in enumerate(chunk):
             hit = bool(pred[j].item() == gold[j].item())
@@ -455,6 +474,169 @@ def setup_counterfactual(base, tok, args):
     ex = ", ".join(f"{kept[i][0]}: {kept[i][1]}->{tok.decode([cf_tid[i]]).strip()}" for i in range(min(4, len(kept))))
     print(f"[mag][cf] example edits (true->counterfactual): {ex}", flush=True)
     return builder, kept, perm, prior_acc_full
+
+
+# ---- COUNTERFACTUAL on the REAL CounterFact benchmark (Track 1, issue #16) ----------------------
+@torch.no_grad()
+def probe_and_filter_counterfact(base, tok, records, batch=16):
+    """PROBE the frozen base on each CounterFact record using the record's OWN natural prompt
+    (requested_rewrite.prompt formatted with the subject) — NOT the fixed curated header. A record is
+    VALID iff the base parametrically predicts its target_true token. This is the validity gate: an
+    editing claim is only meaningful on a fact the base demonstrably held. Returns
+    (kept_records, prior_acc_full)."""
+    bos = [tok.bos_token_id] if tok.bos_token_id is not None else []
+    kept, correct = [], 0
+    done = 0
+    # variable prompt length per record -> probe one-at-a-time-batched by identical length is overkill;
+    # just run rows of possibly-different length as a python loop over mini-batches of EQUAL length.
+    # Simplest correct approach: group by tokenized-prompt length so each forward is rectangular.
+    from collections import defaultdict
+    buckets = defaultdict(list)
+    for r in records:
+        p_ids = tok(r.prompt_text, add_special_tokens=False).input_ids
+        buckets[len(p_ids)].append((r, p_ids))
+    for _plen, items in buckets.items():
+        for i in range(0, len(items), batch):
+            chunk = items[i:i + batch]
+            rows = [bos + p_ids for (_r, p_ids) in chunk]
+            gold = torch.tensor([r.true_tid for (r, _p) in chunk], dtype=torch.long, device=DEV)
+            ids = torch.tensor(rows, dtype=torch.long, device=DEV)
+            pred = _last_logit(base, input_ids=ids).argmax(-1)
+            for j, (r, _p) in enumerate(chunk):
+                hit = bool(pred[j].item() == gold[j].item())
+                correct += int(hit)
+                if hit:
+                    kept.append(r)
+    return kept, correct / max(1, len(records))
+
+
+def setup_counterfact(base, tok, args):
+    """Track 1 setup: load REAL CounterFact -> single-token-subject subset -> PROBE/FILTER with each
+    record's own prompt -> bind target_new (NO derangement; CounterFact supplies the counterfactual).
+    Returns (builder, kept_records, prior_acc_full)."""
+    path = os.path.join(args.data_dir, "counterfact.json")
+    records, stats = load_counterfact(path, tok, single_token_only=True)
+    print(f"[mag][cf] CounterFact <- {path}", flush=True)
+    print(f"[mag][cf] survivor accounting: total {stats['total']} | objects-single {stats['objects_single']} "
+          f"| subject-single {stats['subject_single']} | ALL-single (tractable) {stats['all_single']}",
+          flush=True)
+    print(f"[mag][cf] kept {stats['kept']} single-token-subject editable records for the probe", flush=True)
+    kept, prior_acc_full = probe_and_filter_counterfact(base, tok, records, batch=args.cf_probe_batch)
+    print(f"[mag][cf] PROBE/FILTER (each record's OWN prompt): base prior-acc over {len(records)} "
+          f"records = {prior_acc_full:.3f}", flush=True)
+    print(f"[mag][cf] FILTERED-SET SIZE = {len(kept)} facts the base demonstrably knows (across all relations)",
+          flush=True)
+    # Track 1 VALIDITY FIX: the eval elicits the prior via the DocBuilder's header+rel. The old code
+    # hard-coded "The capital of <X> is" for EVERY fact, so non-capital facts (mother tongue, plays,
+    # located-in, ...) were tested under a nonsense prompt the base can't answer -> no_mem prior-acc
+    # collapsed -> gate INVALID. Fix: EDIT ONE RELATION and fold its real prompt template into the
+    # header/rel, so filter and eval elicit the SAME (true) relation. Facts of one relation share the
+    # template exactly -> subject stays the single-token KEY at qa_start, positions/addr-sup unchanged.
+    from collections import defaultdict
+    by_rel = defaultdict(list)
+    for r in kept:
+        by_rel[(r.relation_id, r.prompt)].append(r)
+    # candidates: non-empty prefix (subject not at absolute start) + short suffix (fits the QA segment),
+    # ranked by how many base-known facts the relation has.
+    def _split(prompt):
+        pre, _, suf = prompt.partition("{}")
+        return pre.rstrip(), suf
+    cand = []
+    for (rid, prompt), recs in by_rel.items():
+        if "{}" not in prompt:
+            continue
+        pre, suf = _split(prompt)
+        if not pre or len(tok(suf, add_special_tokens=False).input_ids) > 6:
+            continue
+        cand.append((len(recs), rid, prompt, pre, suf, recs))
+    dist = sorted(((len(v), k[0]) for k, v in by_rel.items()), reverse=True)[:8]
+    print(f"[mag][cf] kept-set relation distribution (top, size:relation): {dist}", flush=True)
+    assert cand, "no editable relation group (non-empty prefix + short suffix) in the filtered set"
+    n_facts, rid, prompt, prefix, suffix, rel_kept = max(cand, key=lambda c: c[0])
+    print(f"[mag][cf] EDITING relation {rid!r} — prompt {prompt!r} ({n_facts} base-known facts); "
+          f"header prefix {prefix!r} | rel {suffix!r}", flush=True)
+    assert len(rel_kept) >= args.M, \
+        f"largest editable relation group ({len(rel_kept)}) < M ({args.M}); lower --M or widen the probe"
+    kept = rel_kept
+    facts = as_fact_table(kept)                       # (subject, true_str, subject_tid, true_tid)
+    cf_tid = cf_tids_from_records(kept)               # target_new tids (parallel) — NO derangement
+    builder = DocBuilder(tok, None, None, args.M, args.seg_len, args.qa_seg, phrasing="counterfactual",
+                         facts=facts, cf_header_prefix=prefix, cf_rel=suffix)
+    builder.set_counterfactual(cf_tid)
+    ex = ", ".join(f"{kept[i].subject}: {kept[i].true_str}->{kept[i].new_str}" for i in range(min(4, len(kept))))
+    print(f"[mag][cf] example edits (true->target_new): {ex}", flush=True)
+    return builder, kept, prior_acc_full
+
+
+@torch.no_grad()
+def eval_locality_generalization(base, tok, injector, adapter, builder, kept, args, cap=256):
+    """Track 1 metrics beyond edit-success, using the memory bound on the kept edits.
+
+    LOCALITY: over the kept edits' neighborhood_prompts (other subjects, SAME true object; the base
+      knows them, they are NOT bound in memory), score prior-acc (argmax == the record's target_true
+      token) with memory ON vs OFF. Success = ON ~= OFF (editing one fact did not corrupt neighbours).
+    GENERALIZATION: over the kept edits' paraphrase_prompts (rephrasings of the edited fact), score
+      acc against target_new with memory ON. Success = the edit fires on paraphrases too.
+
+    Both probes run the base directly on the natural prompt (no doc segmentation); the memory bank is
+    driven from a COUNTERFACTUAL doc for the probed subject so the tap sees the edit's bank. Returns a
+    dict of the four numbers + probe counts. cap bounds how many prompts we score (CPU/GPU budget)."""
+    bos = [tok.bos_token_id] if tok.bos_token_id is not None else []
+    injector.eval()
+
+    def _score(prompts_golds, carry):
+        """prompts_golds: list of (prompt_str, gold_tid, subject_tid_for_bank). Returns acc.
+        The memory bank is built from a single-fact counterfactual doc keyed on subject_tid so the tap
+        carries THAT edit; carry=False resets memory (floor). Batched by equal tokenized length."""
+        from collections import defaultdict
+        buckets = defaultdict(list)
+        for (p, g, subj) in prompts_golds:
+            pid = tok(p, add_special_tokens=False).input_ids
+            buckets[len(pid)].append((pid, g, subj))
+        hit, seen = 0, 0
+        # cap the probe batch like the other evals: each row rebuilds an M-binding cf doc for the bank,
+        # so memory scales with (batch * M). Shrinks as M grows; overridable via CAM_EVAL_BATCH_CAP.
+        eb = max(1, min(args.batch, EVAL_BATCH_CAP // max(1, args.M)))
+        for _plen, items in buckets.items():
+            for i in range(0, len(items), eb):
+                chunk = items[i:i + eb]
+                torch.cuda.empty_cache() if torch.cuda.is_available() else None
+                ids = torch.tensor([bos + pid for (pid, _g, _s) in chunk], dtype=torch.long, device=DEV)
+                gold = torch.tensor([g for (_p, g, _s) in chunk], dtype=torch.long, device=DEV)
+                # drive the memory bank from a counterfactual doc so the tap is ON with the edits loaded.
+                # We reuse a freshly-built cf doc (all M kept facts visible in memory) for this batch; the
+                # bank is query-conditioned so it retrieves per the probe subject via the base's own attn.
+                cur = ids.shape[0]
+                d_ids, _cf, _pr, d_apos = builder.build_cf(np.random.default_rng(args.seed + i), cur)
+                d_ids = d_ids.to(DEV)
+                bank = memory_bank(adapter, d_ids, args.seg_len, builder.qa_start, d_apos, carry=carry)
+                injector.set_bank(bank)
+                emb = base.get_input_embeddings()(ids)
+                pred = _last_logit(base, inputs_embeds=emb).argmax(-1)
+                hit += (pred == gold).sum().item(); seen += cur
+        injector.set_bank(None)
+        return (hit / max(1, seen)), seen
+
+    # LOCALITY probes: (neighborhood_prompt, target_true_tid). gold = the neighbour's TRUE object,
+    # which shares the edited fact's true object (CounterFact construction).
+    loc = []
+    for r in kept:
+        for p in r.neighborhood_prompts:
+            loc.append((p, r.true_tid, r.subject_tid))
+    loc = loc[:cap]
+    # GENERALIZATION probes: (paraphrase_prompt, target_new_tid).
+    gen = []
+    for r in kept:
+        for p in r.paraphrase_prompts:
+            gen.append((p, r.new_tid, r.subject_tid))
+    gen = gen[:cap]
+
+    loc_on, n_loc = _score(loc, carry=True)
+    loc_off, _ = _score(loc, carry=False)
+    gen_on, n_gen = _score(gen, carry=True)
+    gen_off, _ = _score(gen, carry=False)
+    return {"locality_mem_on": loc_on, "locality_mem_off": loc_off, "n_locality": n_loc,
+            "generalization_mem_on": gen_on, "generalization_mem_off": gen_off, "n_generalization": n_gen}
 
 
 @torch.no_grad()
@@ -551,6 +733,34 @@ def verdict_counterfactual(tag, cf, chance, valid_thresh=0.6):
     return m_cf, nm_cf, nm_pr
 
 
+def verdict_locality_generalization(tag, lg):
+    """Track 1 (CounterFact) real-editing metrics report:
+      LOCALITY       — neighbour prior-acc with memory ON vs OFF. Success = ON ~= OFF (editing one fact
+                       did NOT corrupt unrelated facts that share the same true object).
+      GENERALIZATION — paraphrase acc vs target_new with memory ON (vs the OFF floor). Success = the
+                       edit fires on rephrasings, not just the exact training string."""
+    loc_on, loc_off = lg["locality_mem_on"], lg["locality_mem_off"]
+    gen_on, gen_off = lg["generalization_mem_on"], lg["generalization_mem_off"]
+    print(f"\n[mag][{tag}] === Track 1 CounterFact LOCALITY + GENERALIZATION ===", flush=True)
+    print(f"  LOCALITY (neighbour prior-acc; gold=target_true, NOT bound):", flush=True)
+    print(f"    mem OFF {loc_off:.3f}  |  mem ON {loc_on:.3f}   over {lg['n_locality']} probes   "
+          f"(success = ON ~= OFF; drop = collateral damage)", flush=True)
+    print(f"  GENERALIZATION (paraphrase acc; gold=target_new):", flush=True)
+    print(f"    mem OFF {gen_off:.3f}  |  mem ON {gen_on:.3f}   over {lg['n_generalization']} probes   "
+          f"(success = ON > OFF; edit fires on rephrasings)", flush=True)
+    loc_drop = loc_off - loc_on
+    if loc_drop <= 0.05 and gen_on > gen_off + 0.10:
+        v = "GENERALIZES + LOCAL — edit fires on paraphrases AND neighbours preserved."
+    elif loc_drop <= 0.05:
+        v = f"LOCAL but weak generalization (paraphrase lift {gen_on - gen_off:+.3f})."
+    elif gen_on > gen_off + 0.10:
+        v = f"GENERALIZES but LEAKY (neighbour acc dropped {loc_drop:.3f} — collateral damage)."
+    else:
+        v = f"WEAK — little generalization and/or locality damage ({loc_drop:.3f})."
+    print(f"[mag][{tag}] => {v}\n" + "=" * 64, flush=True)
+    return lg
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--bind-steps", type=int, default=3000, dest="bind_steps")
@@ -610,6 +820,15 @@ def main():
                          "mem/no_mem PRIOR-acc + a VALID/INVALID gate on no_mem prior-acc)")
     ap.add_argument("--cf-probe-batch", type=int, default=16, dest="cf_probe_batch",
                     help="counterfactual: batch size for the base prior-knowledge probe/filter forward")
+    ap.add_argument("--dataset", type=str, default="curated", choices=["curated", "counterfact"],
+                    help="counterfactual fact source: 'curated' (the hand-picked country->capital table, "
+                         "default, unchanged) or 'counterfact' (REAL ROME CounterFact benchmark — Track 1: "
+                         "probe with each record's own prompt, bind target_new, adds LOCALITY + "
+                         "GENERALIZATION metrics). Only active with --phrasing counterfactual.")
+    ap.add_argument("--data-dir", type=str, default="data", dest="data_dir",
+                    help="dir holding counterfact.json (for --dataset counterfact)")
+    ap.add_argument("--locality-cap", type=int, default=256, dest="locality_cap",
+                    help="max locality/generalization probe prompts to score (budget cap)")
     ap.add_argument("--query-rel", type=str, default="", dest="query_rel",
                     help="ADVERSARIAL paraphrase probe (issue #10, natural phrasing only): bind and "
                          "train exactly as normal (bindings + training queries use ' lives in'), then "
@@ -691,13 +910,20 @@ def main():
         "varied phrasing is single-token only (no multi-token cargo)"
     counterfactual = args.phrasing == "counterfactual"
     cf_meta = None
+    cf_records = None                    # Track 1 (CounterFact) records for locality/generalization eval
     if counterfactual:
         assert args.cargo_tokens == 1, "counterfactual phrasing is single-token only"
         # PROBE the frozen base -> FILTER to demonstrably-known facts -> DERANGE the memory capitals.
         # (this is the GPU probe forward the orchestrator runs; the filtered set size + example edits
         # are logged above the bind loop.)
-        builder, kept_facts, cf_perm, prior_acc_full = setup_counterfactual(base, tok, args)
-        cf_meta = {"kept": kept_facts, "perm": cf_perm}      # persisted in the ckpt for v1 transfer
+        if args.dataset == "counterfact":
+            # Track 1: REAL CounterFact benchmark (probe with each record's own prompt, bind target_new).
+            builder, cf_records, prior_acc_full = setup_counterfact(base, tok, args)
+            cf_meta = {"kept": [(r.subject, r.true_str) for r in cf_records], "perm": None}
+        else:
+            builder, kept_facts, cf_perm, prior_acc_full = setup_counterfactual(base, tok, args)
+            cf_meta = {"kept": kept_facts, "perm": cf_perm}  # persisted in the ckpt for v1 transfer
+            cf_records = None
     else:
         builder = DocBuilder(tok, names, cargo, args.M, args.seg_len, args.qa_seg, phrasing=args.phrasing,
                              cargo_tokens=args.cargo_tokens, cargo_words=cargo_words)
@@ -725,6 +951,10 @@ def main():
         if counterfactual:
             cf = eval_counterfactual(base, adapter, injector, builder, rng, args)
             verdict_counterfactual(str(L), cf, 1 / args.M)
+            if cf_records is not None:
+                lg = eval_locality_generalization(base, tok, injector, adapter, builder, cf_records,
+                                                  args, cap=args.locality_cap)
+                verdict_locality_generalization(str(L), lg)
         if builder_pq is not None:
             pq_carry, pq_abl, _pc, _pa = eval_direct(adapter, builder_pq, rng, args)
             print(f"[mag][{L}] PARAPHRASE carry: {pq_carry:.3f} (ablated {pq_abl:.3f})", flush=True)
@@ -772,6 +1002,12 @@ def main():
             # counterfactual capital and the true prior at the SAME query position).
             cf = eval_counterfactual(base, adapter, injector, builder, rng, args)
             verdict_counterfactual(tag, cf, 1 / args.M)
+            if cf_records is not None:
+                # Track 1 real-editing metrics: LOCALITY (neighbours preserved) + GENERALIZATION (edit
+                # fires on paraphrases). Only for --dataset counterfact (records carry the probe prompts).
+                lg = eval_locality_generalization(base, tok, injector, adapter, builder, cf_records,
+                                                  args, cap=args.locality_cap)
+                verdict_locality_generalization(tag, lg)
         summary.append((tag, m_acc, nm_acc, gen["local_control"][1]))
         # save the FIRST passing single-layer tap as the reusable v0 memory checkpoint
         if args.save_ckpt and len(cfg) == 1 and (args.save_anyway or (m_acc > nm_acc + 0.15 and m_acc > 0.5)):
