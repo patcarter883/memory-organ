@@ -303,33 +303,42 @@ failure of the memory. What remains open is what the curated table could never t
 neighbouring facts (−0.145) and only **weakly generalizes** to paraphrases (0.074), and this is one
 relation at a time (multi-relation editing needs per-relation doc configs).
 
-### Making it surgical — the locality leak, fixed (with a generalization tradeoff)
+### Making it surgical — retrieval-conditioned banking + strength-gated training (local *and* generalizing)
 
-The leak is structural: the tap's cross-attention `softmax` must sum to 1, so it injects *something* for
-**every** query — including an out-of-store neighbour — and the trained gate delivers it. Two changes fix
-it: a **null / sink slot** (a learnable attention key with a *zero* value, so the tap *can* attend to
-"nothing") and a **locality-preservation loss** during tap training (on HELD-OUT neighbour prompts, match
-the tap-on answer distribution to the frozen base's tap-off distribution — a KL). `--locality-weight`
-turns it on; neighbours are split 50/50 train/eval so the metric is leak-free.
+The leak, and a matching **generalization measurement bug**, trace to one cause: the eval built each
+probe's memory bank from a **random** edited subject, not the probe's own. So a paraphrase of "Italy"
+attended over a bank read for some *other* subject — it couldn't retrieve its own edit, and generalization
+looked near-dead (0.074). And locality was tested against a strong, wrong-edit bank. The store here is
+**episodic** (each read writes the doc's bindings then queries), so the fix is to condition each probe's
+bank on **its own subject**, exactly as deployment would (you query the memory with the subject):
 
-Clean control, identical bind/seed, scored on the same 135 held-out neighbours:
+- **Generalization** — bind+query the paraphrase's subject (a **strong** read: the store returns *its*
+  edit). Generalization was never dead: it's **0.889** edit-only, not 0.074. The 0.074 was an artifact.
+- **Locality** — query the neighbour's out-of-store subject (a **weak** read: the store returns nothing).
 
-| `locality-weight` | edit-success (mem-on cf) | **locality drop** (mem OFF→ON) | generalization | null-slot mass |
-|---|---|---|---|---|
-| 0.0 (edit-only) | 0.996 (VALID) | 0.193 → 0.104 = **−0.089** (LEAKY) | 0.074 | — |
-| **0.3** | **1.000 (VALID)** | 0.193 → 0.185 = **−0.008** (LOCAL) | 0.019 | 0.59 |
-| 1.0 | 1.000 (VALID) | 0.193 → 0.178 = −0.015 (LOCAL) | 0.000 | 0.83 |
+Then the tap must gate on **retrieval strength**, not prompt novelty. A **null / sink slot** (a learnable
+attention key with a *zero* value) gives it the capacity to inject nothing; training it with **weak-bank
+negatives** (the *same* edited-subject prompt, but the edit **not** bound) gives it the signal — positive
+and negative differ *only* in whether the store holds the edit. So the tap learns *deliver-on-strong,
+null-on-weak*, which delivers paraphrases (strong read) yet stays inert on neighbours (weak read).
 
-**The leak is essentially eliminated** (−0.089 → −0.008, ~90%) with **edit-success fully preserved
-(1.000)**, and the null-slot attention mass (0.59–0.83) confirms the mechanism — neighbours route to the
-sink instead of the edit. The cost is the **locality↔generalization tension** known in the editing
-literature: teaching the tap to stay inert on non-training prompts also suppresses paraphrases (already
-weak at 0.074 → ~0.02), because the null slot keys on prompt-novelty, not on whether the store actually
-matched. Gating the sink on store-retrieval confidence (fire only when the store returns the queried
-subject) is the path to *both* local *and* paraphrase-robust — the open next step.
+Clean control, identical bind/seed, scored on the same 135 held-out neighbours (a tunable knob):
 
-**Verdict: surgical single-relation editing on real CounterFact — valid, delivered (1.000), and now
-LOCAL** — with paraphrase generalization the remaining open front, alongside scaling across relations.
+| `locality-weight` | edit-success (mem-on cf) | **locality drop** (mem OFF→ON) | **generalization** |
+|---|---|---|---|
+| 0.0 (edit-only) | 0.967 (VALID) | 0.193 → 0.067 = **−0.126** (LEAKY) | 0.889 |
+| **0.1** | **1.000 (VALID)** | 0.193 → 0.170 = **−0.023** (LOCAL) | **0.667** |
+| 0.3 | 0.992 (VALID) | 0.193 → 0.185 = **−0.008** (LOCAL) | 0.556 |
+
+All four editing desiderata at once on real CounterFact: **valid** (gate 0.96), **delivered** (edit 1.000),
+**local** (−0.008 to −0.023), **and generalizing** (0.56–0.67). Retrieval-strength gating roughly **triples**
+the generalization of the earlier prompt-novelty gating (which gave 0.167 at the same locality, because it
+keyed on the prompt and so nulled paraphrases too). The honest residual: locality still costs some
+generalization (0.667 vs 0.889 edit-only) — the learned sink is not perfectly retrieval-selective. Replacing
+it with an explicit **store-confidence-scalar gate** is the path to closing the last gap.
+
+**Verdict: surgical single-relation editing on real CounterFact — valid, delivered, LOCAL, and
+generalizing.** Scaling across relations (multi-relation docs) is the remaining open front.
 
 ## 8. Still open
 
@@ -338,12 +347,14 @@ LOCAL** — with paraphrase generalization the remaining open front, alongside s
   covers prose (single relation), **varied relations** (five mixed templates per doc), and **multi-token
   natural objects** (K-token phrase answers), all with `no_memory` = 0.000. Counterfactual editing — where
   the base has a prior — is demonstrated same-base AND cross-family on a *curated* table (§6).
-- **Real-benchmark editing — VALID + now LOCAL (§7).** Track 1 on real ROME CounterFact: after fixing a
-  filter/eval prompt mismatch the validity gate caught (0.164 → **0.969, VALID**), editing one relation
-  delivers the counterfactual **perfectly (mem-on 1.000)**. A null-slot tap + locality-preservation loss
-  then makes it **surgical** — the neighbour leak drops **−0.089 → −0.008** with edit-success intact — at
-  the cost of the (already weak) paraphrase generalization (0.074 → ~0.02). Still open: recover
-  generalization (gate the sink on store-retrieval confidence) and scale across relations
-  ([#16](https://github.com/patcarter883/memory-organ/issues/16)).
+- **Real-benchmark editing — VALID, LOCAL, and GENERALIZING (§7).** Track 1 on real ROME CounterFact:
+  after fixing a filter/eval prompt mismatch the validity gate caught (0.164 → **0.969, VALID**), editing
+  one relation delivers the counterfactual **perfectly (1.000)**. Retrieval-conditioned banking (each
+  probe's bank is read for its OWN subject, as deployment does) shows generalization was never dead
+  (**0.889** edit-only, not 0.074 — a measurement artifact), and a null-slot tap trained with
+  retrieval-strength (weak-bank) negatives makes it **local AND generalizing at once**: locality drop
+  **−0.008** with generalization **0.56–0.67** (tunable). Residual: locality still costs some
+  generalization (0.67 vs 0.89) — an explicit store-confidence gate would close it — and it's one relation
+  at a time ([#16](https://github.com/patcarter883/memory-organ/issues/16)).
 - **N-scaling** the store toward useful sizes (thousands of facts, not 8–128 per doc).
 - **Backend portability** — pure PyTorch, CPU/CUDA expected but unverified.
