@@ -105,7 +105,66 @@ def main():
         assert bound == bind_target, f"{name}: target bound={bound} but bind_target={bind_target}"
         print(f"[selftest] (4) build_cf_query {name}: target subject bound-in-doc={bound} (expected {bind_target}) OK")
 
-    print("[selftest] ALL CHECKS PASSED — multi-relation doc structure + positions are correct.")
+    print("[selftest] ALL CHECKS PASSED (single-token subjects).")
+    _multitoken_subject(tok)
+
+
+def _multitoken_subject(tok):
+    """MULTI-TOKEN SUBJECT: a relation whose subjects are 2 tokens each. Verify the KEY lands on the
+    subject's LAST token, positions stay rectangular, and the query carries the full subject."""
+    # build 2-token subjects: pick words whose ' <w>' is 2 tokens (or concatenate two single-token words).
+    st = single_token_ids(tok, ["York", "Delhi", "Jersey", "Orleans", "Zealand", "Guinea", "Mexico", "Hampshire"])
+    pre1 = single_token_ids(tok, ["New", "Old", "West", "East", "South", "North"])
+    assert len(st) >= 4 and len(pre1) >= 2
+    obj = single_token_ids(tok, ["French", "German", "Spanish", "Arabic", "English", "Dutch", "Italian", "Korean"])
+    # subject = "<pre> <second>" -> tokenized as 2 tokens (space-prefixed). Build facts for relation 'lang2'.
+    facts, fact_relid, cf_tid, fact_subj_tids = [], [], [], []
+    rel_templates = {"lang2": ("The official language of", " is")}
+    rel_subj_len = {"lang2": 2}
+    for k in range(6):
+        pw, pt = pre1[k % len(pre1)]; sw, s2 = st[k % len(st)]
+        subj_str = f"{pw} {sw}"
+        subj_ids = tok(" " + subj_str, add_special_tokens=False).input_ids
+        if len(subj_ids) != 2:            # skip if tokenizer merges differently
+            continue
+        t_w, t_t = obj[k % len(obj)]; c_w, c_t = obj[(k + 1) % len(obj)]
+        facts.append((subj_str, t_w, subj_ids[-1], t_t))   # KEY = last subject token
+        fact_relid.append("lang2"); cf_tid.append(c_t); fact_subj_tids.append(subj_ids)
+    assert len(facts) >= 4, "need >=4 two-token-subject facts for the selftest"
+    # need a 2nd relation for rectangular multi (R>=2); reuse single-token 'cap'
+    sing = single_token_ids(tok, ["France", "Japan", "Canada", "Brazil"])
+    capobj = single_token_ids(tok, ["Paris", "Tokyo", "London", "Berlin"])
+    rel_templates["cap"] = ("The capital of", " is"); rel_subj_len["cap"] = 1
+    for k in range(4):
+        sw, s_t = sing[k]; t_w, t_t = capobj[k]; c_w, c_t = capobj[(k + 1) % 4]
+        facts.append((sw, t_w, s_t, t_t)); fact_relid.append("cap"); cf_tid.append(c_t)
+        fact_subj_tids.append([s_t])
+    import numpy as np
+    from cam.recall_deepmem import DocBuilder
+    M = 4
+    b = DocBuilder(tok, None, None, M, 48, 3, phrasing="counterfactual_multi", facts=facts,
+                   fact_relid=fact_relid, rel_templates=rel_templates,
+                   fact_subj_tids=fact_subj_tids, rel_subj_len=rel_subj_len)
+    b.set_counterfactual(cf_tid)
+    print(f"[selftest-mt] slot_relid={b.slot_relid} rel_subj_len={rel_subj_len} slot_key_off={b.slot_key_off} "
+          f"slot_val_off={b.slot_val_off} slot_bind_len={b.slot_bind_len}")
+    rng = np.random.default_rng(1)
+    ids, ans_cf, ans_prior, apos = b.build_cf(rng, batch=6)
+    row0 = ids[0].tolist()
+    hstart = len(b.bos) + len(b.header)
+    keys, vals = b.binding_positions(hstart)
+    subj_last = {f[2] for f in facts}
+    for m in range(M):
+        assert row0[keys[m]] in subj_last, f"[mt] slot {m} KEY pos not a subject LAST token"
+    m0 = row0[hstart + b.bind_bases[0]: hstart + b.bind_bases[0] + b.slot_bind_len[0]]
+    print(f"[selftest-mt] slot-0 binding: {tok.decode(m0)!r}")
+    # query subject last token at qa_start + q_key_off
+    assert row0[b.qa_start + b.q_key_off] in subj_last, "[mt] query subject last-token offset wrong"
+    print(f"[selftest-mt] query region: {tok.decode(row0[b.qa_start:apos])!r} | q_bind_idx={b.q_bind_idx} "
+          f"q_subj_off={b.q_subj_off} q_key_off={b.q_key_off}")
+    # rectangular
+    assert ids.shape[1] == len(row0)
+    print("[selftest-mt] ALL CHECKS PASSED — multi-TOKEN subject positions correct (KEY=last token, rectangular).")
 
 
 if __name__ == "__main__":

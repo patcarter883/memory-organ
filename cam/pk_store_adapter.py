@@ -409,12 +409,16 @@ class PKStoreAdapter(nn.Module):
         Identical formulation to train_mem_canonical.run_step, but on base-derived random codebooks in
         mem_dim — needs no canonical-Z target geometry; the targets ARE the store's own write projns."""
         import torch.nn.functional as F
-        # which binding was queried? match the QA subject token to the M binding KEY ids. The subject sits
-        # at qa_start for most phrasings, but at qa_start + q_subj_off for counterfactual_multi (the query
-        # carries a per-fact relation PREFIX before the subject).
-        qoff = getattr(self.builder, "q_subj_off", 0)
-        q_tok = ids[:, qa_start + qoff].unsqueeze(1)                # [B,1]
-        tgt = (self._cargo_ids == q_tok).float().argmax(dim=1)      # [B] queried binding index
+        # which binding was queried? counterfactual_multi tells us the queried binding SLOT directly
+        # (q_bind_idx, batch-uniform) — robust to multi-token subjects that may share a last token. Other
+        # phrasings match the QA subject token (at qa_start, or qa_start+q_key_off) to the M binding KEY ids.
+        b = self.builder
+        if getattr(b, "phrasing", None) == "counterfactual_multi":
+            tgt = q.new_full((q.shape[0],), int(getattr(b, "q_bind_idx", 0)), dtype=torch.long)
+        else:
+            qoff = getattr(b, "q_key_off", getattr(b, "q_subj_off", 0))
+            q_tok = ids[:, qa_start + qoff].unsqueeze(1)               # [B,1]
+            tgt = (self._cargo_ids == q_tok).float().argmax(dim=1)     # [B] queried binding index
         rq = self.store.head_query(q, h=0).mean(dim=1)             # [B,mem_dim] factual read query
         ctx_fac = ctxs[0].mean(dim=1)                              # [B,mem_dim] factual retrieved mix
         sa = torch.einsum("bd,bmd->bm", F.normalize(rq, dim=-1),
