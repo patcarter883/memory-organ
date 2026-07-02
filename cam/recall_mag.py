@@ -135,8 +135,10 @@ def memory_bank(adapter, ids, seg_len, qa_start, answer_pos, carry=True):
 
 def _set_bank(injector, adapter, bank):
     """Set the tap bank AND forward the adapter's per-example store-confidence scalar (pk-store only;
-    None for bolt). The tap uses conf only when its confidence gate is enabled — harmless otherwise."""
-    injector.set_bank(bank, conf=getattr(adapter, "_last_conf", None))
+    None for bolt) + the queried relation index (for the per-relation conf-gate EMA; None outside
+    multi-relation). The tap uses conf/relidx only when its confidence gate is enabled."""
+    injector.set_bank(bank, conf=getattr(adapter, "_last_conf", None),
+                      relidx=getattr(adapter, "_last_relidx", None))
 
 
 def _leakfree_ctx(base, builder, ids, apos, end=None):
@@ -366,6 +368,7 @@ def save_ckpt(path, adapter, injector, tap_layer, args, d_carry, cf_meta=None):
         "tap_layer": tap_layer,
         "tap_heads": args.tap_heads,
         "conf_gate": getattr(args, "conf_gate", False),     # store-confidence gate (retrieval-strength delivery)
+        "n_rel": getattr(injector.taps[str(tap_layer)], "n_rel", 1),  # per-relation conf-gate EMA count
         "mem_dim": args.mem_dim, "heads": args.heads, "chunk": args.chunk,
         "expansion": args.expansion, "k": args.k, "d_carry": d_carry,
         # donor id + embed-table shape: loaders rebuild the SAME base-1 the memory was bound on and
@@ -442,7 +445,7 @@ def load_ckpt(path, embed_weight, base, dev, builder=None):
     adapter.eval()
     L = ck["tap_layer"]
     injector = MAGInjector(base, [L], ck["mem_dim"], n_heads=ck["tap_heads"],
-                           conf_gate=ck.get("conf_gate", False)).to(dev)
+                           conf_gate=ck.get("conf_gate", False), n_rel=ck.get("n_rel", 1)).to(dev)
     injector.taps.load_state_dict(ck["taps"])
     for p in injector.parameters():
         p.requires_grad_(False)
@@ -1166,11 +1169,13 @@ def main():
 
     # ---- stage 2: MAG delivery ----
     configs = [layers] if args.multi else [[L] for L in layers]
+    # per-relation conf-gate EMA: one slot per edited relation (multi), else a single global EMA.
+    n_rel = getattr(builder, "R", 1) if multi_relation else 1
     summary = []
     for cfg in configs:
         tag = "+".join(map(str, cfg))
         injector = MAGInjector(base, cfg, args.mem_dim, n_heads=args.tap_heads,
-                               conf_gate=getattr(args, "conf_gate", False)).to(DEV)
+                               conf_gate=getattr(args, "conf_gate", False), n_rel=n_rel).to(DEV)
         with StageCost(f"stage-2 tap fit L={tag} ({args.steps} steps, batch {args.batch})"):
             train_taps(base, adapter, injector, builder, rng, args, tag, loc_buckets=loc_buckets)
         with StageCost(f"delivery eval L={tag}"):

@@ -507,3 +507,18 @@ relations have different retrieval magnitudes, so one global scale can't cleanly
 across all of them. Per-relation gate calibration is the next lever. Scaling to many *semantically* distinct
 relations is separately base-limited: Qwen3.5-4B parametrically holds only ~13% of CounterFact, so the
 base-known editable set is dominated by a few relations — the mechanism handles more than the base knows.
+
+We then closed the locality leak. The diagnosis held up: the confidence gate standardizes retrieval
+strength `‖ctx‖` through a running EMA, but relations have different `‖ctx‖` scales, so one global EMA sets
+a threshold that's too high for some relations and too low for others — neither strong-vs-weak split is
+clean, and cranking `lw` just trades one relation's leak for another's. The fix is a **per-relation EMA**:
+the builder already knows the queried relation per doc, so it tags each build with a relation index, the
+adapter forwards it beside the confidence scalar, and the tap keeps one running scale per relation
+(`conf_ema[R]`, shared sigmoid scale/bias). A CPU unit test made the mechanism legible before any GPU spend
+— a relation scaled to `‖ctx‖≈0.5` delivers at conf 10 (c≈1.0) while one scaled to `‖ctx‖≈10` stays inert
+at conf 0.5 (c≈0.02); a single EMA (their average ≈5) would have half-fired both. On GPU it did exactly what
+the isolation test predicted: locality drop −0.066 → **−0.047** (past the "local" threshold, verdict flips to
+GENERALIZES + LOCAL) and — a bonus — generalization *rose* 0.679 → **0.738**, because calibrating each
+relation's scale also lets genuine paraphrase reads clear their own threshold. Multi-relation editing is now
+valid (0.99), delivered (0.92), local (−0.047), and generalizing (0.74). The residual −0.047 is still looser
+than single-relation's −0.008 — the fair price of mixing relations through one shared tap.

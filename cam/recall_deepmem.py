@@ -482,6 +482,7 @@ class DocBuilder:
             self.bind_len = None
             self.qfix_len = None                                      # set per build (queried relation)
             self.q_subj_off = 0                                       # set per build (= len(queried prefix))
+            self.q_relidx = 0                                         # set per build (queried relation index)
         elif phrasing == "dict":
             # the basecheck-validated best format (acc 0.61): "Cargo to ship:\n<cargo>: <name>\n..." with
             # query "<cargo>:" -> answer " <name>". cargo is line-initial (NO-space single token),
@@ -655,10 +656,14 @@ class DocBuilder:
     # ---- MULTI-RELATION counterfactual (faithful prefix) --------------------------------------------
     def _set_query_geom(self, q_slot):
         """Per-build query geometry for the queried slot's relation: subject offset within the query
-        region (= len(prefix), so the subject sits at qa_start + q_subj_off) and the total query length."""
+        region (= len(prefix), so the subject sits at qa_start + q_subj_off), the total query length, and
+        the queried relation INDEX (into rel_order) — the MAG conf-gate keys a PER-RELATION
+        retrieval-strength EMA on it (relations have different ‖ctx‖ scales; one global EMA can't separate
+        strong-vs-weak across all of them)."""
         rid = self.slot_relid[q_slot]
         self.q_subj_off = len(self.rel_prefix[rid])
         self.qfix_len = len(self.rel_prefix[rid]) + 1 + len(self.rel_suffix[rid])
+        self.q_relidx = self.rel_order.index(rid)
 
     def _draw_multi_row(self, rng, force=None, exclude_subj=frozenset()):
         """One fact index per slot (slot m drawn from relation slot_relid[m]) with DISTINCT subject tids
