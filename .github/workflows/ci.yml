@@ -1,0 +1,24 @@
+# CPU smoke: imports, ProductKeyStore write/read mechanics, GatedMemoryTap exact-no-op-at-init,
+# adapter forward shapes, both documented run styles. No GPU, no model downloads — this partially
+# exercises the "pure PyTorch, should run off ROCm" claim (DISCLOSURES.md) on every push.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  cpu-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU torch + deps
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install transformers numpy pytest
+      - name: Smoke tests
+        run: pytest tests/ -v
