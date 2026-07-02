@@ -456,17 +456,42 @@ carry = does the store retrieve the bound value; 3 language relations, full prob
 | edit-success | ~0.90 | 0.70 | — |
 | chance (1/M) | 0.125 | 0.062 | 0.031 |
 
-Still ~18× above chance at M=32, so it *works* — but this is **not** the flat-0.9-to-M=32 the store showed
-on distinct-object *recall* (§4). The realistic editing setting degrades earlier, and the leading suspect is
-**object aliasing**: these relations map many subjects onto a tiny object vocabulary (a handful of
-languages), so the store struggles to keep "which subject → which of the same few objects" straight as M
-grows (the subject-*last-token* keying holds up; it's the value side that saturates). A first control (M=16
-with six *diverse-object* relations) trended the same or lower, but was confounded (heterogeneous geometry +
-it hit the second wall) so object-aliasing stays a hypothesis, not a result. The second wall is **fact
-supply**: even a full probe yields only ~13–37 base-known single-token-object facts per relation, which caps
-M for the diverse set (the smaller relations run out of distinct subjects at M≈16). So "scale to a useful
-number of facts" has two real limits here — associative capacity under object-aliasing, and the size of the
-base-known editable pool — neither of which the M=8 headline exposes. `--cf-probe-cap` widens the pool.
+Still ~18× above chance at M=32, so it *works* — but it declines where distinct-object *recall* (§4) stayed
+flat. Two controls localize the cause, and it is **not** the store's capacity:
+
+- **Fundamental capacity is fine.** The curated country→capital table (distinct objects, *single-token*
+  subjects) holds **bind carry 0.96 at M=32** — the store addresses 32 associations cleanly when the keys
+  are separable. So M=32 per se is not the wall.
+- **Not slot capacity either.** Quadrupling the store (n_sub 32→64, read-heads 8→16) leaves the
+  language-relation M=32 carry at **0.59** (vs 0.58) — more slots don't help, so it's key *separation*, not
+  slot count.
+
+So the ceiling is **key/addressing-side, not value-side** — which a mechanism argument makes airtight:
+bind carry is "retrieve the bound value for a queried *subject*", and a well-separated key retrieves its own
+value **regardless of whether other facts share that value**. Value overlap therefore *cannot* lower bind
+carry; only failure to separate the subject keys can. The difference between the clean curated run and the
+degrading language run is the **multi-token subjects keyed on their last token** (many names' last tokens are
+not separable at M=32) plus the relation **prefix carried in the read query** (noise the write key lacks).
+(An earlier draft guessed "object aliasing / value side" — the controls + this argument rule that out.)
+
+And the fix that points at — **richer subject keys, not a value-side change or a bigger store** — works.
+Two opt-in changes (`CAM_POOLED_SUBJ_KEY`, `CAM_SUBJ_ONLY_QUERY`): pool the full subject span into the write
+key instead of keying on the last token, and narrow the read query to the subject span (dropping the
+relation prefix). They lift the capacity curve, most where it hurt (high M):
+
+| M (3 language relations) | 8 | 16 | 32 |
+|---|---|---|---|
+| baseline (last-token key, full query) | 0.93 | 0.76 | 0.58 |
+| **+ pooled key + subject-only query** | ~0.93 | **0.80** | **0.82** |
+
+M=32 bind carry recovers **0.58 → 0.82** — closing ~60% of the gap to the curated ceiling (0.96) and beating
+the *M=16 baseline*. The bigger lever is the **subject-only query** (dropping the relation-prefix noise:
+0.63→0.82); pooling the key is secondary (0.58→0.63). So the ceiling was the read *addressing*, exactly as
+the mechanism argument said, and it's largely fixable. (The residual to 0.96 is likely multi-token *names*
+being inherently less separable than single-token entities, plus mixing three relations.) Second,
+independent wall: **fact supply** — even a full probe yields only ~13–37 base-known single-token-
+object facts per relation, capping M for the diverse set (`--cf-probe-cap` widens it). Neither limit is
+exposed by the M=8 headline.
 
 ## 8. Still open
 

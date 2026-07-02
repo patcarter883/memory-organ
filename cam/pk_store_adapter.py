@@ -259,7 +259,14 @@ class PKStoreAdapter(nn.Module):
                     val_pos_list.append(list(range(base + voff, base + voff + K)))  # K cargo tokens
                 else:
                     val_pos_list.append([base + voff])   # single name token
-        keys = mem_emb[:, keys_pos]                     # [B,M,mem_dim] (name in multi, cargo in single)
+        # RICHER SUBJECT KEY (N-scaling key-separation fix): the default key is one token (subject LAST
+        # token). For multi-token subjects that don't separate at high M, POOL the full subject span
+        # (mean) into the key — more separable, so bind carry recovers. Opt-in via CAM_POOLED_SUBJ_KEY=1.
+        if os.environ.get("CAM_POOLED_SUBJ_KEY") == "1" and hasattr(b, "binding_key_spans"):
+            spans = b.binding_key_spans(hstart)
+            keys = torch.stack([mem_emb[:, s:s + L].mean(dim=1) for (s, L) in spans], dim=1)  # [B,M,mem_dim]
+        else:
+            keys = mem_emb[:, keys_pos]                 # [B,M,mem_dim] (name in multi, cargo in single)
         if mt and self.mt_value == "perpos" and self.perpos_key == "disjoint":
             # DISJOINT (Thrust 1 #4): position t writes its M associations into ITS OWN store
             # self.stores[t]. For binding m, position t: key = _pos_key(name_m, t) [L2(name)+pos_tag[t]],
@@ -348,8 +355,15 @@ class PKStoreAdapter(nn.Module):
             V = [self.stores[t].init_state(B, emb.device, dtype=torch.float32) for t in range(K)]
         else:
             V = self.store.init_state(B, emb.device, dtype=torch.float32)   # empty store -> ablated floor
-        q = emb[:, qa_start:answer_pos]                 # query tokens (leak-free): 'cargo' / 'name :'
         b = self.builder
+        # N-scaling key-separation fix (opt-in CAM_SUBJ_ONLY_QUERY=1): narrow the read query to just the
+        # SUBJECT span, dropping the relation PREFIX (noise the subject write-key lacks) so the read
+        # addresses by the subject, not the prompt. counterfactual_multi only (exposes q_subj_off/q_key_off).
+        if os.environ.get("CAM_SUBJ_ONLY_QUERY") == "1" and getattr(b, "phrasing", None) == "counterfactual_multi":
+            qs = qa_start + b.q_subj_off
+            q = emb[:, qs:qa_start + b.q_key_off + 1]    # [B, subj_len, mem_dim] subject span only
+        else:
+            q = emb[:, qa_start:answer_pos]             # query tokens (leak-free): 'cargo' / 'name :'
         if getattr(b, "multitoken", False) and self.mt_value == "perpos":
             # PER-POSITION read (consistent train + eval): query name+pos_tag[t] for each answer slot t
             # -> the t-th cargo token's value. name query = the KEY-token mem embed (binding key pos 0).
