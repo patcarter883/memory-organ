@@ -594,6 +594,37 @@ class DocBuilder:
         assert self.phrasing == "counterfactual", "build_cf is counterfactual-only"
         return self._build_counterfactual(rng, batch, local=local)
 
+    def build_cf_query(self, rng, q_fact_idx, batch, bind_target=True):
+        """Each row QUERIES a SPECIFIED fact (q_fact_idx[row]) so the episodic store read is conditioned on
+        that subject (retrieval-confidence banking). bind_target=True: the target IS bound in the doc ->
+        the store read is STRONG (the edit is retrievable — a paraphrase gets ITS edit). bind_target=False:
+        the target is queried but NOT bound (bindings are M other facts) -> the store read is WEAK (the edit
+        is NOT retrievable — the out-of-store / neighbour case). The gold answer token is still the target's
+        counterfactual (only meaningful when bound). Returns (ids[B,S], answer_pos)."""
+        assert self.cf_tid is not None, "call set_counterfactual(cf_tid) before build_cf_query"
+        n = len(self.facts)
+        rows, S = [], None
+        for b in range(batch):
+            tgt = int(q_fact_idx[b])
+            pool = [i for i in rng.permutation(n) if i != tgt]
+            f_idx = ([tgt] + pool[:self.M - 1]) if bind_target else pool[:self.M]  # bound set
+            ctids = [self.facts[i][2] for i in f_idx]
+            cf_caps = [self.cf_tid[i] for i in f_idx]
+            q_ctid, q_cap = self.facts[tgt][2], self.cf_tid[tgt]    # ALWAYS query the target subject
+            qa = self._query_ids(q_ctid, q_cap, slot=0)
+            bindings = []
+            for nt, ct in zip(ctids, cf_caps):
+                bindings += self._binding_ids(nt, ct)
+            pre = self.bos + self.header + bindings
+            assert len(pre) <= self.qa_start, "binding block overflows qa_start"
+            pre = pre + [self.pad_tid] * (self.qa_start - len(pre))
+            seq = pre + qa + [q_cap]
+            if S is None:
+                S = len(seq)
+            assert len(seq) == S, "row length mismatch"
+            rows.append(seq)
+        return torch.tensor(rows, dtype=torch.long), len(rows[0]) - 1
+
     def build(self, rng, batch, local=False):
         """Return (ids[B,S] long, answer[...] long, answer_pos int). Each row draws M distinct
         (name, cargo) bindings and queries one of them. local=True puts the bindings in the QA segment
