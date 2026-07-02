@@ -95,8 +95,19 @@ fact. Plot recall vs **age** (episodes since written) and vs **total accumulated
   the wall, measured *before* any conversation machinery exists — and the fix conversation (bigger
   N, write-time slot protection, decay-aware addressing) happens with a clean curve in hand.
 
-This rung needs no new mechanism — only a flag to stop resetting `V` between episodes and an eval loop
-that tags each fact with its write-age. It doubles as the first N-scaling-through-time measurement.
+This rung needs no new mechanism, and the harness is implemented: **`cam/persist_probe.py`** reuses
+the trained adapter's own write/read paths verbatim (frozen embed → in_proj → LayerNorm →
+`store.write`, and the published query → pooled-read → tied-unembed probe), so the only variable is
+bank persistence. All four conditions ship, plus the age-pooling bookkeeping, with CPU tests pinning
+the mechanics (`tests/test_persist_probe.py`). It doubles as the first N-scaling-through-time
+measurement — sweep fill fraction by binding a smaller store (`--n-sub 8` → N=64), not by inventing
+off-distribution keys (unique keys cap at the cargo-pool size, ~200).
+
+```bash
+# needs a saved single-token dict pk-store memory (REPRODUCING.md §3's m8.pt)
+python -m cam.persist_probe --load-ckpt ckpt/m8.pt --episodes 16 --M 8 --seed 20260625 \
+    --out intlog/e0.json
+```
 
 ### E1 — sliding-window recall (oracle segmentation)
 
