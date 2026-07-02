@@ -178,24 +178,50 @@ def lm_loss_segmented(base, adapter, ids, embeds, seg_len, detach_every=0):
     return total / max(nseg, 1), nseg
 
 
+def _maybe_patch_native_gdn(model):
+    """OPT-IN RDNA4 acceleration: swap the frozen base's HuggingFace Qwen3.5 gated-delta-net (fla) layers
+    for minisgl's native Triton-free `gdn_hip` path. Enabled ONLY when `CAM_NATIVE_GDN=1` — a no-op
+    otherwise, so this repo carries NO hard dependency on minisgl (the import is lazy + guarded, and
+    external reviewers see an optional accel path, not a coupling). On gfx1201, fla's GDN kernel HANGS as
+    the tap gate opens and isn't in the serve image; `gdn_hip` is the differentiable Triton-free
+    replacement (forward matches fla ~1e-3, dL/d_hidden cos>0.9999). The run must mount the minisgl
+    checkout and put it on PYTHONPATH (see tools/run_cam_native_gdn.sh). Prints the layers patched.
+    Fails LOUD if opted in but minisgl can't be imported — a silent fla fallback would hang, not error."""
+    if os.environ.get("CAM_NATIVE_GDN") != "1":
+        return model
+    from minisgl.gdn.hf_patch import patch_qwen3_5_gdn   # lazy: only imported when opted in
+    n = patch_qwen3_5_gdn(model)
+    print(f"[cam] CAM_NATIVE_GDN=1 -> patched {n} Qwen3.5 gated-delta-net layer(s) to native gdn_hip",
+          flush=True)
+    if n == 0:
+        print("[cam] WARNING: CAM_NATIVE_GDN=1 but 0 GDN layers found — base is running on fla "
+              "(will HANG on RDNA4 once the gate opens). Is this a GDN-hybrid model?", flush=True)
+    return model
+
+
 def load_frozen_base(model_id=None):
     """Load + freeze the donor base. model_id=None keeps the historical default (MODEL, Qwen3.5-4B);
     drivers expose it as --base1 so reproducers can swap donors / smaller cards without editing code."""
     model_id = model_id or MODEL
     from transformers import AutoModelForCausalLM, AutoModelForImageTextToText, AutoTokenizer
     tok = AutoTokenizer.from_pretrained(model_id)
-    last = None
+    m, last = None, None
     for loader in (AutoModelForCausalLM, AutoModelForImageTextToText):
         try:
             m = loader.from_pretrained(model_id, dtype=torch.bfloat16, low_cpu_mem_usage=True).to(DEV).eval()
-            for p in m.parameters():
-                p.requires_grad_(False)
-            m.config.use_cache = False
-            m.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
-            return m, tok
+            break
         except Exception as e:  # noqa
             last = e
-    raise last
+    if m is None:
+        raise last
+    for p in m.parameters():
+        p.requires_grad_(False)
+    m.config.use_cache = False
+    # opt-in RDNA4 accel — OUTSIDE the loader try/except so a patch/import failure stays loud (a silent
+    # fla fallback would HANG on RDNA4, not error).
+    m = _maybe_patch_native_gdn(m)
+    m.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+    return m, tok
 
 
 def main():
