@@ -522,3 +522,34 @@ GENERALIZES + LOCAL) and — a bonus — generalization *rose* 0.679 → **0.738
 relation's scale also lets genuine paraphrase reads clear their own threshold. Multi-relation editing is now
 valid (0.99), delivered (0.92), local (−0.047), and generalizing (0.74). The residual −0.047 is still looser
 than single-relation's −0.008 — the fair price of mixing relations through one shared tap.
+
+## Phase 16 — the diversity ceiling was tractability, not base size
+
+Phase 15 left one honest caveat: the relations we could edit together were dominated by a couple (official
+and native language). The natural read was "the base doesn't know enough" — so we tested it directly and
+loaded a **2.25× bigger base** (Qwen3.5-9B, sharded model-parallel across both cards). It moved nothing:
+prior-acc 0.139 vs the 4B's 0.130, same P37/P36 skew. The size hypothesis was *falsified* — which is exactly
+what makes it worth having run; we now know the ceiling isn't base knowledge.
+
+The real cap was a filter we'd been treating as a given. CounterFact records survive only if the subject
+*and* both objects are single tokens — but subjects are mostly multi-token names, so that keeps just 789 of
+21,919 records (3.6%), and the survivors are the handful of relations with single-token subjects (countries,
+languages). Objects are single-token in 97% of records. So the constraint that mattered was on **subjects**,
+not objects, and it was throwing away 96% of the benchmark. Allow multi-token subjects: the store keys on the
+subject's **last token** (one position, so the write path is untouched), the read already pools the whole
+query region (which carries the full subject), rectangular batches are kept by fixing one subject length per
+relation, and addressing supervision switches from token-match to a queried-**index** (robust to two subjects
+sharing a last token). That surfaced **6 semantically distinct relations** — a film's original language, a
+person's native language, official language, headquarters, location, religion — from 1065 base-known facts
+instead of 102, and editing holds across all of them: VALID (prior 1.000), edit ~0.90 (0.89–0.96 across
+runs), local −0.016, generalizing 0.654 (the last two from the run that fit — the multi-token loc/gen eval
+is fragmentation-bound on a 16GB card).
+
+There was a hardware detour worth recording: fla's gated-delta backward **segfaults** on RDNA4 the moment
+stage-2 tap-training starts (reproducibly, not intermittently), so this whole regime *requires* the native
+Triton-free `gdn_hip` path. That path had been ~3× slower than the (crashing) fla fallback because the shim
+ran a per-sequence Python loop; batching it — one varlen op call for all sequences, the batch folded into
+the value-head dimension for the reference backward, with a memory-bounded chunk so it doesn't thrash a 16GB
+card — brought native to ~on par with fla-torch *and* stable (stage-2 527s → 147s, parity-exact). So the
+diversity result runs fast now. The lesson that keeps repeating: before assuming a *capability* limit
+(bigger model, better mechanism), check whether it's a *tractability* limit hiding in a filter or a kernel.

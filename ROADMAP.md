@@ -44,8 +44,11 @@ across applications.
   generalization was never dead — 0.889 edit-only, the old 0.074 was a measurement artifact). **Multiple
   relations in one memory now works** (faithful prefix, `--phrasing counterfactual_multi`): 4
   relation-templates, and a **per-relation confidence-gate EMA** makes it VALID (0.99), delivered (0.92),
-  LOCAL (−0.047), generalizing (0.74) — the leak is closed. 🟡 Still open: scaling to many *semantically*
-  distinct relations (base-limited — Qwen3.5-4B holds only ~13% of CounterFact)
+  LOCAL (−0.047), generalizing (0.74) — the leak is closed. And **relation DIVERSITY is unlocked**: the
+  apparent ceiling was a *tractability* artifact, not base size (a 2.25× bigger base didn't help) — dropping
+  the single-token-**subject** filter (allow multi-token subjects; store keys on the last token) edits **6
+  semantically distinct relations** in one memory (VALID 1.00, delivered ~0.90, local −0.016, generalizing
+  0.65). Requires `CAM_NATIVE_GDN=1` (fla segfaults in stage-2 on RDNA4)
   ([#16](https://github.com/patcarter883/memory-organ/issues/16)).
 - ❔ Does it hold at the **N-scale** of a useful memory (thousands–millions of facts)?
 - ❌ **Translator reuse — answered NO (fundamental at affine capacity).** A translator fit for one memory

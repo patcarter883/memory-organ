@@ -398,9 +398,51 @@ Result (Qwen3.5-4B, **4 relation-templates edited together**, 42 edits, conf-gat
 **Multi-relation editing works — valid (0.99), delivered (0.92), LOCAL (−0.047), and generalizing (0.74)
 across four relation templates in one memory.** Per-relation gate calibration closed the leak (−0.066 →
 −0.047, past the "local" threshold) *and* lifted generalization (0.679 → 0.738). The residual −0.047 is
-still looser than single-relation's −0.008 — a fair cost for mixing relations — and scaling to many
-*semantically* distinct relations is base-limited (Qwen3.5-4B parametrically holds only ~13% of CounterFact,
-so the base-known editable set is dominated by a few relations; the mechanism handles more than the base knows).
+still looser than single-relation's −0.008 — a fair cost for mixing relations. That first multi-relation run
+looked base-limited: the editable set was dominated by a couple of relations (mostly official/native
+language). We chased that — and it turned out **not** to be a base-size limit.
+
+### What actually caps relation diversity — multi-token subjects, not base size
+
+The obvious hypothesis was "the base doesn't know enough" — so we loaded a **2.25× bigger base** (Qwen3.5-9B,
+model-parallel across two cards). It made **no difference**: prior-acc 0.139 vs the 4B's 0.130, still
+P37/P36-dominated. The 9B *falsified* the size hypothesis.
+
+The real cap was the **single-token-subject filter**. CounterFact records are kept only if the subject *and*
+both objects are single tokens — but subjects are mostly multi-token names ("Danielle Darrieux"), so that
+filter keeps just **789 of 21,919 records (3.6%)**, skewed to the few relations with single-token subjects.
+Objects, by contrast, are single-token in **97%** of records. So: keep single-token objects, allow
+**multi-token subjects**. The store keys on the subject's **last token** (one position — the write path is
+unchanged); the read pools the whole query region, which carries the full subject; batches stay rectangular
+by fixing one subject length per relation; addressing supervision identifies the queried binding by **index**
+(robust to two subjects sharing a last token).
+
+This unlocks the diversity the single-token filter was hiding — **6 semantically distinct relations** at once
+(vs the earlier all-P37), from **1065** base-known facts (of 8000 probed) instead of 102:
+
+| relation | example edit |
+|---|---|
+| P364 original-language-of-a-film | "Fort Apache Napoli": Italian → English |
+| P103 native language | "Raymond Triboulet": French → Dutch |
+| P37 official language | (as before) |
+| P159 headquarters location · P276 location · P140 religion | mixed multi-token-subject facts |
+
+Result (Qwen3.5-4B, native `gdn_hip`, 6 distinct relations, multi-token subjects, ~50 edits, conf-gate lw 0.1):
+
+| metric | value | |
+|---|---|---|
+| validity gate (no_mem prior-acc) | **1.000** | VALID across all six relations |
+| edit-success (mem-on cf) | **0.90** | override works across mixed relations + multi-token subjects (0.89–0.96 across runs) |
+| locality drop (OFF→ON) | **−0.016** | LOCAL |
+| generalization (paraphrase) | **0.654** | edits fire on rephrasings (0.000 off) |
+
+**So the diversity ceiling was a *tractability* artifact, not a base-knowledge or mechanism limit.** With
+multi-token subjects, editing spans genuinely different relations — valid, delivered, local, and
+generalizing. Two caveats specific to the 16GB RDNA4 card: this run **requires** `CAM_NATIVE_GDN=1` — fla's
+GDN backward *segfaults* on RDNA4 in stage-2 (the native path is now ~as fast as fla-torch thanks to the
+batched prefill-train, see the engine repo) — and the locality/generalization *eval* is fragmentation-bound
+(the longer multi-token probes tip a 16GB card over; those two numbers are from the run that fit, the gate +
+edit reproduce every run).
 
 ## 8. Still open
 
