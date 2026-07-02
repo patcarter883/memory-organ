@@ -633,57 +633,69 @@ def setup_counterfact(base, tok, args):
 
 def setup_counterfact_multi(base, tok, args):
     """Track 1 MULTI-RELATION setup (#16): probe/filter the base, then keep the top-N base-known relations
-    (by fact count) and edit them TOGETHER in one memory. Each fact keeps its OWN real CounterFact prompt
-    (faithful prefix); the DocBuilder cycles relations across doc slots. Returns (builder, kept, prior_acc)."""
+    and edit them TOGETHER in one memory. MULTI-TOKEN SUBJECTS: the single-token-subject filter drops ~96%
+    of CounterFact and skews to a few relations (P37/P36), so here we keep single-token OBJECTS but allow
+    MULTI-TOKEN subjects (the store keys on the subject's LAST token). To keep batches rectangular, each
+    relation fixes ONE subject length (the length with the most base-known facts). One relation per
+    relation_id (semantic diversity). Returns (builder, kept, prior_acc)."""
     path = os.path.join(args.data_dir, "counterfact.json")
-    records, stats = load_counterfact(path, tok, single_token_only=True)
-    print(f"[mag][cf-multi] CounterFact <- {path} | ALL-single (tractable) {stats['all_single']}", flush=True)
-    kept, prior_acc_full = probe_and_filter_counterfact(base, tok, records, batch=args.cf_probe_batch)
-    print(f"[mag][cf-multi] PROBE/FILTER base prior-acc = {prior_acc_full:.3f} | {len(kept)} known facts",
-          flush=True)
+    records, stats = load_counterfact(path, tok, single_token_only=False)
+    obj = [r for r in records if r.true_tid != -1 and r.new_tid != -1]     # single-token OBJECTS; subject any len
+    print(f"[mag][cf-multi] CounterFact <- {path} | objects-single {len(obj)} of {stats['total']} "
+          f"(subject may be multi-token)", flush=True)
+    # cap the probe pool (probing ~20k is expensive) — deterministic sample surfaces many relations.
+    rng = np.random.default_rng(args.seed)
+    cap = min(len(obj), getattr(args, "cf_probe_cap", 8000))
+    pool = [obj[i] for i in rng.permutation(len(obj))[:cap]]
+    kept, prior_acc_full = probe_and_filter_counterfact(base, tok, pool, batch=args.cf_probe_batch)
+    print(f"[mag][cf-multi] PROBE/FILTER base prior-acc = {prior_acc_full:.3f} | {len(kept)} known facts "
+          f"(of {cap} probed)", flush=True)
     from collections import defaultdict
-    by_rel = defaultdict(list)
-    for r in kept:
-        by_rel[(r.relation_id, r.prompt)].append(r)
 
     def _split(prompt):
         pre, _, suf = prompt.partition("{}")
         return pre.rstrip(), suf
-    # editable relation = non-empty prefix + short suffix; rank by base-known fact count
-    cand = []
-    for (rid, prompt), recs in by_rel.items():
-        if "{}" not in prompt:
+    # rid -> (prompt, subject_len) -> [recs]; pick, per relation_id, the (prompt,len) with the most facts.
+    by_rid = defaultdict(lambda: defaultdict(list))
+    for r in kept:
+        if "{}" not in r.prompt:
             continue
-        pre, suf = _split(prompt)
+        pre, suf = _split(r.prompt)
         if not pre or len(tok(suf, add_special_tokens=False).input_ids) > 6:
             continue
-        cand.append((len(recs), rid, prompt, pre, suf, recs))
-    cand.sort(reverse=True, key=lambda c: c[0])
+        by_rid[r.relation_id][(r.prompt, len(r.subject_tids))].append(r)
     R = max(2, args.multi_relations)
-    # each relation must supply enough distinct subjects for its share of the M doc slots (+margin)
-    per_rel_min = max(2, (args.M + R - 1) // R + 1)
-    chosen = [c for c in cand if c[0] >= per_rel_min][:R]
-    assert len(chosen) >= 2, (f"need >= 2 editable relations with >= {per_rel_min} base-known facts each "
-                              f"(got {[(c[1], c[0]) for c in cand[:6]]}); lower --multi-relations or --M")
-    print(f"[mag][cf-multi] EDITING {len(chosen)} relations: "
-          f"{[(rid, n) for (n, rid, _p, _pre, _suf, _r) in chosen]}", flush=True)
-    facts, fact_relid, cf_tid, kept_multi = [], [], [], []
-    rel_templates = {}
-    for (_n, rid, prompt, pre, suf, recs) in chosen:
-        relkey = f"{rid}|{prompt}"
+    per_rel_min = max(2, (args.M + R - 1) // R + 1)      # distinct subjects for this relation's doc-slot share
+    best = []
+    for rid, variants in by_rid.items():
+        (prompt, slen), recs = max(variants.items(), key=lambda kv: len(kv[1]))
+        if len(recs) >= per_rel_min:
+            best.append((len(recs), rid, prompt, slen, recs))
+    best.sort(reverse=True, key=lambda c: c[0])
+    chosen = best[:R]
+    assert len(chosen) >= 2, (f"need >= 2 relations with >= {per_rel_min} base-known facts at one subject "
+                              f"length (got {[(c[1], c[0]) for c in best[:6]]}); lower --multi-relations/--M")
+    print(f"[mag][cf-multi] EDITING {len(chosen)} relations (rid, subj_len, #facts): "
+          f"{[(rid, slen, n) for (n, rid, _p, slen, _r) in chosen]}", flush=True)
+    facts, fact_relid, cf_tid, fact_subj_tids, kept_multi = [], [], [], [], []
+    rel_templates, rel_subj_len = {}, {}
+    for (_n, rid, prompt, slen, recs) in chosen:
+        relkey = rid                                     # one relation per relation_id
+        pre, suf = _split(prompt)
         rel_templates[relkey] = (pre, suf)
+        rel_subj_len[relkey] = slen
         for r in recs:
-            facts.append((r.subject, r.true_str, r.subject_tid, r.true_tid))
+            facts.append((r.subject, r.true_str, r.subject_last_tid, r.true_tid))  # KEY = subject LAST token
             fact_relid.append(relkey)
             cf_tid.append(r.new_tid)
-            r._relkey = relkey                       # tag the record so eval can bucket by relation
+            fact_subj_tids.append(list(r.subject_tids))
+            r._relkey = relkey                           # tag the record so eval can bucket by relation
             kept_multi.append(r)
     builder = DocBuilder(tok, None, None, args.M, args.seg_len, args.qa_seg,
-                         phrasing="counterfactual_multi", facts=facts,
-                         fact_relid=fact_relid, rel_templates=rel_templates)
+                         phrasing="counterfactual_multi", facts=facts, fact_relid=fact_relid,
+                         rel_templates=rel_templates, fact_subj_tids=fact_subj_tids, rel_subj_len=rel_subj_len)
     builder.set_counterfactual(cf_tid)
-    ex = "; ".join(f"{r.subject} [{r._relkey.split('|')[0]}]: {r.true_str}->{r.new_str}"
-                   for r in kept_multi[:5])
+    ex = "; ".join(f"{r.subject} [{r._relkey}]: {r.true_str}->{r.new_str}" for r in kept_multi[:5])
     print(f"[mag][cf-multi] {len(kept_multi)} edits across {len(chosen)} relations | e.g. {ex}", flush=True)
     return builder, kept_multi, prior_acc_full
 
@@ -705,7 +717,7 @@ def build_locality_split(records, tok, frac_train=0.5):
             pid = bos + tok(p, add_special_tokens=False).input_ids
             train_buckets[len(pid)].append(pid)
         for p in nb[cut:]:
-            eval_probes.append((p, r.true_tid, r.subject_tid, getattr(r, "_relkey", None)))
+            eval_probes.append((p, r.true_tid, r.subject, getattr(r, "_relkey", None)))   # subj STRING key
     return dict(train_buckets), eval_probes
 
 
@@ -730,11 +742,13 @@ def eval_locality_generalization(base, tok, injector, adapter, builder, kept, ar
     if not getattr(builder, "facts", None):
         subj2fact = {}
     elif multi:
-        subj2fact = {(builder.facts[i][2], builder.fact_relid[i]): i for i in range(len(builder.facts))}
+        # MULTI-RELATION: key by (subject STRING, relation) — subjects may be multi-token (subject_tid=-1)
+        # and can appear in >1 relation. facts[i][0] is the subject string.
+        subj2fact = {(builder.facts[i][0], builder.fact_relid[i]): i for i in range(len(builder.facts))}
     else:
-        subj2fact = {builder.facts[i][2]: i for i in range(len(builder.facts))}
+        subj2fact = {builder.facts[i][0]: i for i in range(len(builder.facts))}   # subject string
 
-    def _key(subj, relkey):
+    def _key(subj, relkey):                          # subj = subject STRING (see probe tuples below)
         return (subj, relkey) if multi else subj
 
     def _score(prompts_golds, carry, cond=False, weak=False):
@@ -782,13 +796,13 @@ def eval_locality_generalization(base, tok, injector, adapter, builder, kept, ar
         loc = []
         for r in kept:
             for p in r.neighborhood_prompts:
-                loc.append((p, r.true_tid, r.subject_tid, getattr(r, "_relkey", None)))
+                loc.append((p, r.true_tid, r.subject, getattr(r, "_relkey", None)))
     loc = loc[:cap]
-    # GENERALIZATION probes: (paraphrase_prompt, target_new_tid, subject_tid, relkey).
+    # GENERALIZATION probes: (paraphrase_prompt, target_new_tid, subject STRING, relkey).
     gen = []
     for r in kept:
         for p in r.paraphrase_prompts:
-            gen.append((p, r.new_tid, r.subject_tid, getattr(r, "_relkey", None)))
+            gen.append((p, r.new_tid, r.subject, getattr(r, "_relkey", None)))
     gen = gen[:cap]
 
     # LOCALITY with WEAK (out-of-store) banking: the neighbour's subject is not in the store, so the read

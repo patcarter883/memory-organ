@@ -56,6 +56,7 @@ class EditRecord:
     subject_ntok: int                 # subject token count (space-prefixed)
     true_tid: int                     # single-token target_true VALUE tid (space-prefixed), or -1
     new_tid: int                      # single-token target_new  VALUE tid (space-prefixed), or -1
+    subject_tids: list = field(default_factory=list)   # FULL space-prefixed subject token ids (multi-token OK)
     neighborhood_prompts: list = field(default_factory=list)   # LOCALITY probes (gold = true_str)
     paraphrase_prompts: list = field(default_factory=list)     # GENERALIZATION probes (gold = new_str)
 
@@ -125,6 +126,7 @@ def load_counterfact(path, tok, single_token_only=True, limit=None):
             subject_tid=(subj_ids[0] if subj_single else -1),
             subject_last_tid=subj_ids[-1],
             subject_ntok=len(subj_ids),
+            subject_tids=list(subj_ids),
             true_tid=(true_ids[0] if len(true_ids) == 1 else -1),
             new_tid=(new_ids[0] if len(new_ids) == 1 else -1),
             neighborhood_prompts=list(rec.get("neighborhood_prompts", [])),

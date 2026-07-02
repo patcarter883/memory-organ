@@ -294,7 +294,8 @@ class DocBuilder:
 
     def __init__(self, tok, names, cargo, M, seg_len, qa_seg, pad_word=" and", phrasing="dict",
                  cargo_tokens=1, cargo_words=None, facts=None, cf_header_prefix=None, cf_rel=None,
-                 query_rel=None, fact_relid=None, rel_templates=None):
+                 query_rel=None, fact_relid=None, rel_templates=None,
+                 fact_subj_tids=None, rel_subj_len=None):
         self.tok = tok
         self.names = names          # list[(word, tid)] — space-prefixed single tokens
         self.cargo = cargo          # dict: NO-space single tokens; manifest: space-prefixed
@@ -446,7 +447,7 @@ class DocBuilder:
             # subject at qa_start + q_subj_off (NOT qa_start). Batch-rectangularity is kept varied-style:
             # slot m always uses relation rel_order[m%R], so per-slot block geometry is relation-determined
             # (batch-uniform) even though the specific fact is drawn per row.
-            assert not self.multitoken, "counterfactual_multi is single-token only"
+            assert not self.multitoken, "counterfactual_multi objects are single-token (subjects may be multi-token)"
             assert facts is not None and rel_templates is not None and fact_relid is not None, \
                 ("counterfactual_multi needs facts + rel_templates {relid:(prefix,suffix)} + fact_relid "
                  "(relation id per fact, parallel to facts)")
@@ -455,6 +456,19 @@ class DocBuilder:
             self.dot = piece(tok, ".")
             self.nl = piece(tok, "\n")
             self.fact_relid = list(fact_relid)
+            # MULTI-TOKEN SUBJECT support: fact_subj_tids[i] is the fact's FULL space-prefixed subject token
+            # list (CounterFact subjects are mostly multi-token names — the single-token-subject filter drops
+            # ~96% of records and skews to a few relations). The store KEY is the subject's LAST token (single
+            # position, so _write_episode is unchanged); the READ pools the whole query region (which carries
+            # the full subject). To keep batches rectangular, every fact in a relation shares ONE subject
+            # length rel_subj_len[rid] (fixed at setup). Absent -> single-token fallback (byte-identical to the
+            # earlier single-token-subject path). facts[i][2] stays the KEY tid = subject LAST token.
+            self.fact_subj_tids = (list(fact_subj_tids) if fact_subj_tids is not None
+                                   else [[facts[i][2]] for i in range(len(facts))])
+            self.rel_subj_len = dict(rel_subj_len) if rel_subj_len is not None else {}
+            assert all(len(self.fact_subj_tids[i]) == self.rel_subj_len.get(self.fact_relid[i], 1)
+                       for i in range(len(facts))), \
+                "each fact's subject token count must equal rel_subj_len[its relation] (fix at setup)"
             # relation id -> its prefix / suffix token pieces (all facts of a relation share the template)
             self.rel_prefix = {rid: piece(tok, pre) for rid, (pre, _suf) in rel_templates.items()}
             self.rel_suffix = {rid: piece(tok, suf) for rid, (_pre, suf) in rel_templates.items()}
@@ -466,23 +480,27 @@ class DocBuilder:
             self.R = len(self.rel_order)
             assert self.R >= 1 and all(rid in self.rel_prefix for rid in self.rel_order), \
                 "every fact's relation id must have a template in rel_templates"
-            # slot m -> relation rel_order[m % R]; per-slot block geometry (relation-determined => uniform)
+            # slot m -> relation rel_order[m % R]; per-slot block geometry (relation + subject-len => uniform)
             self.slot_relid = [self.rel_order[m % self.R] for m in range(M)]
-            self.slot_key_off, self.slot_val_off, self.slot_bind_len = [], [], []
+            self.slot_subj_off, self.slot_key_off, self.slot_val_off, self.slot_bind_len = [], [], [], []
             for m in range(M):
                 rid = self.slot_relid[m]
                 pl, sl = len(self.rel_prefix[rid]), len(self.rel_suffix[rid])
-                self.slot_key_off.append(pl)                          # subject offset within block
-                self.slot_val_off.append(pl + 1 + sl)                 # object offset within block
-                self.slot_bind_len.append(pl + 1 + sl + 1 + len(self.dot) + len(self.nl))  # pre subj suf obj . \n
+                slen = self.rel_subj_len.get(rid, 1)                  # fixed subject length for this relation
+                self.slot_subj_off.append(pl)                        # subject START offset within block
+                self.slot_key_off.append(pl + slen - 1)              # subject LAST token = the store KEY
+                self.slot_val_off.append(pl + slen + sl)             # object offset within block
+                self.slot_bind_len.append(pl + slen + sl + 1 + len(self.dot) + len(self.nl))  # pre subj suf obj . \n
             self.bind_bases = [sum(self.slot_bind_len[:m]) for m in range(M)]
             self.bind_total = sum(self.slot_bind_len)
             self.key_off = 0                                          # not scalar (per-slot); via binding_positions
             self.val_off = None
             self.bind_len = None
             self.qfix_len = None                                      # set per build (queried relation)
-            self.q_subj_off = 0                                       # set per build (= len(queried prefix))
+            self.q_subj_off = 0                                       # set per build (= subject START in query)
+            self.q_key_off = 0                                        # set per build (= subject LAST token in query)
             self.q_relidx = 0                                         # set per build (queried relation index)
+            self.q_bind_idx = 0                                       # set per build (queried binding slot; addr-sup)
         elif phrasing == "dict":
             # the basecheck-validated best format (acc 0.61): "Cargo to ship:\n<cargo>: <name>\n..." with
             # query "<cargo>:" -> answer " <name>". cargo is line-initial (NO-space single token),
@@ -522,8 +540,8 @@ class DocBuilder:
             worst_qfix = 1 + max(len(r) for r in self.rels)          # "<Subject><rel>" (longest rel)
         elif self.phrasing == "counterfactual_multi":
             bind_block = len(self.bos) + len(self.header) + self.bind_total
-            worst_qfix = max(len(self.rel_prefix[r]) + 1 + len(self.rel_suffix[r])   # "<pre><subj><suf>"
-                             for r in self.rel_order)
+            worst_qfix = max(len(self.rel_prefix[r]) + self.rel_subj_len.get(r, 1) + len(self.rel_suffix[r])
+                             for r in self.rel_order)          # "<pre><subject(len)><suf>"
         else:
             bind_block = len(self.bos) + len(self.header) + M * self.bind_len
             worst_qfix = self.qfix_len
@@ -576,10 +594,11 @@ class DocBuilder:
             # name_tid = country (KEY), cargo = capital tid (VALUE, the counterfactual capital in memory)
             return [name_tid] + self.rel + [cargo] + self.dot + self.nl  # "<Country> is <Capital>.\n"
         if self.phrasing == "counterfactual_multi":
-            # per-slot relation: "<prefix><subject><suffix> <cf-object>.\n" (subject mid-block = KEY)
+            # per-slot relation: "<prefix><subject...><suffix> <cf-object>.\n" (subject mid-block; multi-token
+            # subject OK — name_tid may be a token LIST; the store KEY is its LAST token via binding_positions)
             rid = self.slot_relid[slot]
-            return (self.rel_prefix[rid] + [name_tid] + self.rel_suffix[rid]
-                    + [cargo] + self.dot + self.nl)
+            subj = name_tid if isinstance(name_tid, list) else [name_tid]
+            return self.rel_prefix[rid] + subj + self.rel_suffix[rid] + [cargo] + self.dot + self.nl
         if self.phrasing == "manifest":
             return [name_tid] + self.carries + [cargo] + self.dot
         if self.multitoken:
@@ -597,7 +616,8 @@ class DocBuilder:
             return [name_tid] + self.rel                               # "<Country> is"
         if self.phrasing == "counterfactual_multi":
             rid = self.slot_relid[slot]
-            return self.rel_prefix[rid] + [name_tid] + self.rel_suffix[rid]   # "<pre><subj><suf>"
+            subj = name_tid if isinstance(name_tid, list) else [name_tid]
+            return self.rel_prefix[rid] + subj + self.rel_suffix[rid]         # "<pre><subj...><suf>"
         if self.phrasing == "manifest":
             return self.qfix1 + [cargo] + self.qfix2
         if self.multitoken:
@@ -661,9 +681,13 @@ class DocBuilder:
         retrieval-strength EMA on it (relations have different ‖ctx‖ scales; one global EMA can't separate
         strong-vs-weak across all of them)."""
         rid = self.slot_relid[q_slot]
-        self.q_subj_off = len(self.rel_prefix[rid])
-        self.qfix_len = len(self.rel_prefix[rid]) + 1 + len(self.rel_suffix[rid])
+        pl, sl = len(self.rel_prefix[rid]), len(self.rel_suffix[rid])
+        slen = self.rel_subj_len.get(rid, 1)                   # fixed subject length for the queried relation
+        self.q_subj_off = pl                                   # subject START in the query region
+        self.q_key_off = pl + slen - 1                         # subject LAST token (the store KEY; addr-sup reads it)
+        self.qfix_len = pl + slen + sl                         # "<prefix><subject><suffix>"
         self.q_relidx = self.rel_order.index(rid)
+        self.q_bind_idx = q_slot                               # queried binding slot (addr-sup, index-based)
 
     def _draw_multi_row(self, rng, force=None, exclude_subj=frozenset()):
         """One fact index per slot (slot m drawn from relation slot_relid[m]) with DISTINCT subject tids
@@ -693,8 +717,8 @@ class DocBuilder:
         bindings = []
         for m in range(self.M):
             fi = picked[m]
-            bindings += self._binding_ids(self.facts[fi][2], self.cf_tid[fi], slot=m)
-        qa = self._query_ids(q_subj, q_cap, slot=q_slot)
+            bindings += self._binding_ids(self.fact_subj_tids[fi], self.cf_tid[fi], slot=m)
+        qa = self._query_ids(q_subj, q_cap, slot=q_slot)       # q_subj is the queried subject's TOKEN LIST
         if not local:
             pre = self.bos + self.header + bindings
             assert len(pre) <= self.qa_start, "multi binding block overflows qa_start (raise --qa-seg)"
@@ -716,7 +740,7 @@ class DocBuilder:
         for _ in range(batch):
             picked = self._draw_multi_row(rng)
             qfi = picked[q_slot]
-            seq, apos = self._assemble_multi(picked, q_slot, self.facts[qfi][2], self.cf_tid[qfi], local=local)
+            seq, apos = self._assemble_multi(picked, q_slot, self.fact_subj_tids[qfi], self.cf_tid[qfi], local=local)
             seq = seq + [self.cf_tid[qfi]]                      # gold = the queried fact's counterfactual
             if S is None:
                 S = len(seq)
@@ -743,16 +767,17 @@ class DocBuilder:
         rows, S = [], None
         for b in range(batch):
             tgt = int(q_fact_idx[b])
-            q_subj, q_cap = self.facts[tgt][2], self.cf_tid[tgt]
+            q_subj_key, q_cap = self.facts[tgt][2], self.cf_tid[tgt]   # KEY = subject LAST token (dedup/exclude)
+            q_subj_toks = self.fact_subj_tids[tgt]                     # full subject token list (assembly)
             if bind_target:
                 picked = self._draw_multi_row(rng, force={q_slot: tgt})
             else:
-                # WEAK: target NOT bound. q_slot gets a different fact of q_rid; exclude the target subject.
+                # WEAK: target NOT bound. q_slot gets a different-subject fact of q_rid; exclude the target.
                 alt = [i for i in self.rel_groups[q_rid]
-                       if self.facts[i][2] != q_subj]
+                       if self.facts[i][2] != q_subj_key]
                 force = {q_slot: int(alt[rng.integers(0, len(alt))])} if alt else {}
-                picked = self._draw_multi_row(rng, force=force, exclude_subj={q_subj})
-            seq, _apos = self._assemble_multi(picked, q_slot, q_subj, q_cap, local=False)
+                picked = self._draw_multi_row(rng, force=force, exclude_subj={q_subj_key})
+            seq, _apos = self._assemble_multi(picked, q_slot, q_subj_toks, q_cap, local=False)
             seq = seq + [q_cap]
             if S is None:
                 S = len(seq)
