@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="420" viewBox="0 0 760 420" role="img" aria-label="Held-out carry vs difficulty M. The product-key store with addressing supervision stays flat around 0.93 through M=128 while the naive recurrent store and the no-supervision ablation collapse to chance past M=8.">
+<rect width="760" height="420" fill="#ffffff"/>
+<text x="16.0" y="22.0" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, sans-serif" font-size="14" font-weight="700" fill="#0b0b0b" text-anchor="start">Held-out carry vs difficulty M</text>
+<text x="16.0" y="38.0" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, sans-serif" font-size="11" font-weight="400" fill="#52514e" text-anchor="start">recall from the frozen store; chance = 1/M · data: RESULTS.md §1</text>
+<rect x="404" y="14" width="10" height="10" rx="2" fill="#2a78d6"/>
+<text x="418.0" y="23.0" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, sans-serif" font-size="11" font-weight="400" fill="#52514e" text-anchor="start">pk + addr-sup</text>
+<rect x="514" y="14" width="10" height="10" rx="2" fill="#1baf7a"/>
+<text x="528.0" y="23.0" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, sans-serif" font-size="11" font-weight="400" fill="#52514e" text-anchor="start">naive</text>
+<rect x="572" y="14" width="10" height="10" rx="2" fill="#eda100"/>
+<text x="586.0" y="23.0" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, sans-serif" font-size="11" font-weight="400" fill="#52514e" text-anchor="start">pk, no sup</text>
+<line x1="654" y1="19" x2="664" y2="19" stroke="#898781" stroke-width="1.5" stroke-dasharray="4 3"/>
+<text x="668.0" y="23.0" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, sans-serif" font-size="11" font-weight="400" fill="#52514e" text-anchor="start">chance</text>
+<line x1="56" y1="360.0" x2="610" y2="360.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="48" y="364.0" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, sans-serif" font-size="11" fill="#898781" text-anchor="end" style="font-variant-numeric: tabular-nums">0</text>
+<line x1="56" y1="282.0" x2="610" y2="282.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="48" y="286.0" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, sans-serif" font-size="11" fill="#898781" text-anchor="end" style="font-variant-numeric: tabular-nums">0.25</text>
+<line x1="56" y1="204.0" x2="610" y2="204.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="48" y="208.0" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, sans-serif" font-size="11" fill="#898781" text-anchor="end" style="font-variant-numeric: tabular-nums">0.5</text>
+<line x1="56" y1="126.0" x2="610" y2="126.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="48" y="130.0" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, sans-serif" font-size="11" fill="#898781" text-anchor="end" style="font-variant-numeric: tabular-nums">0.75</text>
+<line x1="56" y1="48.0" x2="610" y2="48.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="48" y="52.0" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, sans-serif" font-size="11" fill="#898781" text-anchor="end" style="font-variant-numeric: tabular-nums">1</text>
+<line x1="56" y1="360.0" x2="610" y2="360.0" stroke="#c3c2b7" stroke-width="1"/>
+<text x="56.0" y="378.0" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, sans-serif" font-size="11" fill="#898781" text-anchor="middle" style="font-variant-numeric: tabular-nums">8</text>
+<text x="194.5" y="378.0" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, sans-serif" font-size="11" fill="#898781" text-anchor="middle" style="font-variant-numeric: tabular-nums">16</text>
+<text x="333.0" y="378.0" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, sans-serif" font-size="11" fill="#898781" text-anchor="middle" style="font-variant-numeric: tabular-nums">32</text>
+<text x="471.5" y="378.0" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, sans-serif" font-size="11" fill="#898781" text-anchor="middle" style="font-variant-numeric: tabular-nums">64</text>
+<text x="610.0" y="378.0" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, sans-serif" font-size="11" fill="#898781" text-anchor="middle" style="font-variant-numeric: tabular-nums">128</text>
+<text x="333.0" y="412.0" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, sans-serif" font-size="11" font-weight="400" fill="#898781" text-anchor="middle">M (bindings per document, log₂ spacing)</text>
+<path d="M 56.0 321.0 L 194.5 340.5 L 333.0 350.2 L 471.5 355.1 L 610.0 357.6" fill="none" stroke="#898781" stroke-width="1.5" stroke-dasharray="4 3"/>
+<text x="620.0" y="361.6" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, sans-serif" font-size="11" font-weight="400" fill="#898781" text-anchor="start">chance = 1/M</text>
+<path d="M 56.0 247.7 L 194.5 278.3 L 333.0 353.8" fill="none" stroke="#eda100" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="56.0" cy="247.7" r="4" fill="#eda100" stroke="#ffffff" stroke-width="2"/>
+<circle cx="194.5" cy="278.3" r="4" fill="#eda100" stroke="#ffffff" stroke-width="2"/>
+<circle cx="333.0" cy="353.8" r="4" fill="#eda100" stroke="#ffffff" stroke-width="2"/>
+<path d="M 56.0 97.9 L 194.5 352.2 L 333.0 353.8" fill="none" stroke="#1baf7a" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="56.0" cy="97.9" r="4" fill="#1baf7a" stroke="#ffffff" stroke-width="2"/>
+<circle cx="194.5" cy="352.2" r="4" fill="#1baf7a" stroke="#ffffff" stroke-width="2"/>
+<circle cx="333.0" cy="353.8" r="4" fill="#1baf7a" stroke="#ffffff" stroke-width="2"/>
+<path d="M 56.0 64.2 L 194.5 71.1 L 333.0 81.1 L 471.5 72.6 L 610.0 70.2" fill="none" stroke="#2a78d6" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="56.0" cy="64.2" r="4" fill="#2a78d6" stroke="#ffffff" stroke-width="2"/>
+<circle cx="194.5" cy="71.1" r="4" fill="#2a78d6" stroke="#ffffff" stroke-width="2"/>
+<circle cx="333.0" cy="81.1" r="4" fill="#2a78d6" stroke="#ffffff" stroke-width="2"/>
+<circle cx="471.5" cy="72.6" r="4" fill="#2a78d6" stroke="#ffffff" stroke-width="2"/>
+<circle cx="610.0" cy="70.2" r="4" fill="#2a78d6" stroke="#ffffff" stroke-width="2"/>
+<text x="620.0" y="68.2" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, sans-serif" font-size="12" font-weight="600" fill="#0b0b0b" text-anchor="start">pk + addr-sup</text>
+<text x="620.0" y="82.2" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, sans-serif" font-size="11" font-weight="400" fill="#52514e" text-anchor="start">0.929 at M=128</text>
+<text x="66.0" y="87.9" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, sans-serif" font-size="12" font-weight="600" fill="#0b0b0b" text-anchor="start">naive recurrent</text>
+<text x="66.0" y="237.7" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, sans-serif" font-size="12" font-weight="600" fill="#0b0b0b" text-anchor="start">product-key, no addr-sup</text>
+<text x="202.5" y="334.2" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, sans-serif" font-size="11" font-weight="400" fill="#52514e" text-anchor="start">collapse to ≈ chance past M=8–12</text>
+</svg>

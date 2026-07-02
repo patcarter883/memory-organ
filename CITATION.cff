@@ -19,6 +19,37 @@ keywords:
   - hidden-state translation
 references:
   - type: article
+    title: "Titans: Learning to Memorize at Test Time"
+    authors:
+      - { family-names: Behrouz, given-names: Ali }
+      - { family-names: Zhong, given-names: Peilin }
+      - { family-names: Mirrokni, given-names: Vahab }
+    year: 2024
+    url: "https://arxiv.org/abs/2501.00663"
+  - type: conference-paper
+    title: "Large Memory Layers with Product Keys"
+    authors:
+      - { family-names: Lample, given-names: Guillaume }
+      - { family-names: Sablayrolles, given-names: Alexandre }
+      - { family-names: Ranzato, given-names: "Marc'Aurelio" }
+      - { family-names: Denoyer, given-names: Ludovic }
+      - { family-names: "Jégou", given-names: "Hervé" }
+    year: 2019
+    conference: { name: "NeurIPS 2019" }
+    url: "https://arxiv.org/abs/1907.05242"
+  - type: conference-paper
+    title: "Relative representations enable zero-shot latent space communication"
+    authors:
+      - { family-names: Moschella, given-names: Luca }
+      - { family-names: Maiorca, given-names: Valentino }
+      - { family-names: Fumero, given-names: Marco }
+      - { family-names: Norelli, given-names: Antonio }
+      - { family-names: Locatello, given-names: Francesco }
+      - { family-names: "Rodolà", given-names: Emanuele }
+    year: 2023
+    conference: { name: "ICLR 2023" }
+    url: "https://arxiv.org/abs/2209.15430"
+  - type: article
     title: "Recursive Multi-Agent Systems"
     authors:
       - { family-names: Yang, given-names: Xiyuan }

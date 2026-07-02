@@ -101,7 +101,7 @@ that tags each fact with its write-age. It doubles as the first N-scaling-throug
 ### E1 — sliding-window recall (oracle segmentation)
 
 **Question:** the headline claim, with extraction assumed away. Build conversation-shaped streams from
-the existing natural/varied-phrasing builders (§6 of RESULTS.md) — a long document of fact-bearing
+the existing natural/varied-phrasing builders (§5 of RESULTS.md) — a long document of fact-bearing
 prose, far longer than the window *W*. Slide the window; every fact is delta-written the moment it
 streams past (oracle key/value positions, as today). Probe each fact under the four conditions in
 "The claim" above, and plot **recall vs tokens-past-edge**.
@@ -109,7 +109,7 @@ streams past (oracle key/value positions, as today). Probe each fact under the f
 - Success: mem-on out-of-window ≈ in-window ceiling; mem-off out-of-window ≈ chance; never-shown = 0.
 - **The edit variant** (this is where it gets fun): restate a fact mid-stream with a *new* value —
   "the meeting moved to 3pm." The delta-write is error-correcting (`v_s += β·w·(new − v_s)`), so the
-  overwrite should happen *by construction*, and §7 already shows override works statically
+  overwrite should happen *by construction*, and §6 already shows override works statically
   (France→Tokyo at 0.996 with the prior suppressed to 0.004). Probe: latest value recalled, stale
   value suppressed — the knowledge-editing result, live.
 - **Falsifier:** if E0 held but E1 sags, the loss is in the window machinery or the read-query path,

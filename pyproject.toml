@@ -17,6 +17,11 @@ dependencies = [
   "numpy",
 ]
 
+[project.optional-dependencies]
+dev = ["pytest"]
+# reference NeuralMemory backend for `m2_adapter --memory lucidrains` (no published result needs it)
+lucidrains = ["titans-pytorch"]
+
 [project.urls]
 Homepage = "https://github.com/patcarter883/memory-organ"
 

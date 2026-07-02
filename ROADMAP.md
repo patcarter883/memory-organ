@@ -34,7 +34,7 @@ across applications.
 - 🟡 **Multi-token *cross-base transfer* (largely closed)**: a per-position + non-linear translator lifts
   it from 0.393 to **0.812** (~84% of ceiling) — a strong pass, but short of single-token parity (~0.94).
   Closing the last gap to parity is open (see [RESULTS.md §4](RESULTS.md)).
-- 🟡 **Real *datasets* of facts — attempted, mixed/negative (Track 1, [RESULTS.md §8](RESULTS.md)).** Run
+- 🟡 **Real *datasets* of facts — attempted, mixed/negative (Track 1, [RESULTS.md §7](RESULTS.md)).** Run
   against the real ROME **CounterFact** benchmark with **locality + generalization**, the edit still
   *delivers* (mem-on 0.961 vs 0.000 no-memory) — but the run **invalidates itself** (validity gate 0.164:
   the base doesn't hold the priors under the eval phrasing), **leaks** to neighbours (locality −0.199), and
@@ -90,6 +90,7 @@ requests that reference the issue they close.
 ## Where help is wanted
 
 The most valuable contributions right now are **adversarial**: reproduce a number and tell us if it
-doesn't hold; run it on CUDA (see the portability issue); design a real-knowledge probe that would
+doesn't hold ([REPRODUCING.md](REPRODUCING.md) has the exact commands, [CONTRIBUTING.md](CONTRIBUTING.md)
+the report format); run it on CUDA (see the portability issue); design a real-knowledge probe that would
 actually break the mechanism if it's going to break. The corrections in [RESULTS.md](RESULTS.md) exist
 because controls caught our own errors — more controls, from more people, is exactly what this needs.

@@ -119,7 +119,7 @@ end-to-end" before running the transfer number — it wasn't (0.393). We correct
 closed most of the gap with a per-position translator (0.812). We are deliberately *not* upgrading "0.812"
 to "solved": it's a strong pass short of parity, and the record shows both the over-claim and the fix.
 
-## 6. Real knowledge — natural-language phrasing
+## 5. Real knowledge — natural-language phrasing
 
 The dict format (`"<cargo>: <name>"`) is terse and unlike real text. The first real-knowledge cut asks
 whether the mechanism survives when the same associations are phrased as **prose**: single-relation facts
@@ -190,7 +190,7 @@ document, so the base cannot know any specific fact. Editing real, named entitie
 (where the base has a prior) is the open capstone, tracked in
 [#1](https://github.com/patcarter883/memory-organ/issues/1).
 
-## 7. Knowledge editing — overriding a frozen model's real knowledge
+## 6. Knowledge editing — overriding a frozen model's real knowledge
 
 Every result up to here is knowledge **insertion**: the bindings are random, so the frozen base cannot know
 any specific fact, `no_memory` pins at 0.000, and the memory only has to teach an association the base could
@@ -215,6 +215,7 @@ construction.
 |---|---|---|
 | probe prior-acc (all 40 facts) | **0.975** | base holds the priors → 39 facts kept |
 | no_mem PRIOR-acc (kept set) | **1.000** | validity gate maxed — the base reliably knows these |
+| no_mem counterfactual-acc | **0.000** | floor — the base never volunteers the deranged capital on its own |
 | mem-on counterfactual-acc | **0.996** | the edit takes: base emits the deranged capital |
 | mem-on PRIOR-acc | **0.004** | the true prior is suppressed |
 
@@ -229,6 +230,7 @@ becomes France → Tokyo), not just injection of a fact the base could not know.
 |---|---|---|
 | base-2 probe prior-acc (all shared facts) | **1.000** | Gemma holds the priors → 39/39 facts kept |
 | no_mem PRIOR-acc (kept set) | **1.000** | validity gate maxed on base-2 — Gemma reliably knows these |
+| no_mem counterfactual-acc | **0.000** | floor — Gemma never volunteers the deranged capital on its own |
 | mem-on counterfactual-acc | **0.996** | the edit transfers: Gemma emits the deranged capital |
 | mem-on PRIOR-acc | **0.004** | Gemma's true prior suppressed |
 
@@ -249,9 +251,9 @@ Gemma's own vocab and format*, so the override is measured on an honestly-establ
 So knowledge editing works **both same-base (Qwen) AND cross-family (Gemma)**: the memory drives a
 *different* frozen model to overwrite its own knowledge. (Part of [#1](https://github.com/patcarter883/memory-organ/issues/1).)
 
-## 8. Track 1 — the real CounterFact benchmark (edit *delivers*, but the run is INVALID and LEAKY)
+## 7. Track 1 — the real CounterFact benchmark (edit *delivers*, but the run is INVALID and LEAKY)
 
-§7 edits a **curated** 40-fact country→capital table hand-picked to be single-token and well-known.
+§6 edits a **curated** 40-fact country→capital table hand-picked to be single-token and well-known.
 Track 1 ([#16](https://github.com/patcarter883/memory-organ/issues/16)) is the honest scale test: the
 same PROBE → FILTER → EDIT pipeline run against the **real ROME CounterFact benchmark** (21,919 records)
 with the same validity gate *plus* two new metrics the curated table can't measure — **locality**
@@ -262,7 +264,7 @@ tap layer 24, bind 1500 / tap 200, frozen Qwen3.5-4B. `--dataset counterfact`.
 **Filtering.** Of 21,919 records, 783 have a single-token subject (tractable); probing each with its own
 prompt, the base holds **0.130** of them → **102 facts kept** as demonstrably-known edit targets.
 
-**Editing (same query position as §7):**
+**Editing (same query position as §6):**
 
 | metric | value | reading |
 |---|---|---|
@@ -291,7 +293,7 @@ stays at memory ≈ no_memory ≈ 0.000 (the wall). **GATE: INVALID.**
 2. **The run INVALIDATES itself** (no_mem prior-acc 0.164 ≪ 0.60). The filter kept 102 facts the base knew
    *under the probe prompt* (`"<Subject> is"`), yet under the doc-builder **eval** phrasing (seg_len-48
    leak-free context) the base recalls only 16.4% of those same priors. This is the *same* validity
-   discipline that caught the Gemma BOS artifact in §7 — a prompt-format mismatch between the filter and
+   discipline that caught the Gemma BOS artifact in §6 — a prompt-format mismatch between the filter and
    the eval — so the 0.961 "override" is **not a valid edit-success claim** until filter and eval elicit
    the prior identically.
 3. **Even taken at face value, the edit is not surgical** (locality leaks −0.199) **and only weakly
@@ -303,14 +305,14 @@ so the validity gate can pass honestly, then attack the locality leak (the edit 
 tap output for prompts it should leave alone). This is the reality-check Track 1 was built to deliver:
 **curated editing was a best case; real-benchmark editing is delivered-but-not-yet-valid.**
 
-## 5. Still open
+## 8. Still open
 
 - **Multi-token cross-base transfer** — translator-bound (see §4); higher-capacity translator in progress.
-- **Real knowledge in real documents** (not random name→word pairs) — the true generalization test. §6 now
+- **Real knowledge in real documents** (not random name→word pairs) — the true generalization test. §5 now
   covers prose (single relation), **varied relations** (five mixed templates per doc), and **multi-token
   natural objects** (K-token phrase answers), all with `no_memory` = 0.000. Counterfactual editing — where
-  the base has a prior — is demonstrated same-base AND cross-family on a *curated* table (§7).
-- **Real-benchmark editing (attempted — mixed/negative, §8).** Track 1 ran the real ROME CounterFact
+  the base has a prior — is demonstrated same-base AND cross-family on a *curated* table (§6).
+- **Real-benchmark editing (attempted — mixed/negative, §7).** Track 1 ran the real ROME CounterFact
   benchmark with locality + generalization: the edit still *delivers* (mem-on 0.961 vs 0.000), but the run
   **invalidates itself** (validity gate 0.164 < 0.60, a filter/eval prompt-format mismatch), **leaks** to
   neighbours (locality −0.199), and only **weakly generalizes** (paraphrase 0.103). The curated win did not
