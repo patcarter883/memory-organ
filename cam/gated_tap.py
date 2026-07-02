@@ -37,7 +37,7 @@ def decoder_layers(base):
 class GatedMemoryTap(nn.Module):
     """Zero-init gated cross-attention from the residual stream into the K-slot memory bank."""
 
-    def __init__(self, base_hidden, mem_dim, n_heads=8):
+    def __init__(self, base_hidden, mem_dim, n_heads=8, conf_gate=False):
         super().__init__()
         assert base_hidden % n_heads == 0, "base_hidden must divide n_heads"
         self.H, self.n_heads, self.d_head = base_hidden, n_heads, base_hidden // n_heads
@@ -52,13 +52,30 @@ class GatedMemoryTap(nn.Module):
         # ~nothing, so the tap CAN be inert for a query that doesn't match the bank. The locality loss
         # (train_taps) teaches it to route non-matching queries here. Zero-init keeps the gate no-op.
         self.null_key = nn.Parameter(torch.zeros(1, n_heads, 1, self.d_head))
+        # STORE-CONFIDENCE GATE (conf_gate=True): scale the WHOLE injection by a scalar c in (0,1) driven
+        # by the store's retrieval strength (pk_store.read's factual-head pre-norm ‖ctx‖, passed via
+        # set_bank). The learned null slot gates on PROMPT NOVELTY — a paraphrase of the edited subject
+        # looks as unfamiliar as a neighbour, so it gets suppressed (the ~0.67 generalization ceiling).
+        # The confidence scalar instead keys on ACTUAL retrieval: a paraphrase retrieves its own edit
+        # (strong -> c~1 -> deliver) while a neighbour retrieves nothing (weak -> c~0 -> inert), decoupling
+        # delivery from novelty. conf is standardized by a running EMA (absolute scale, NOT per-batch — the
+        # strong/weak positives+negatives arrive in SEPARATE forward passes, so per-batch norm would erase
+        # the very distinction we gate on), then c = sigmoid(conf_scale * (conf/EMA - conf_bias)).
+        self.conf_gate = conf_gate
+        self.conf_scale = nn.Parameter(torch.tensor(4.0))     # sigmoid steepness (learned)
+        self.conf_bias = nn.Parameter(torch.tensor(1.0))      # threshold in EMA-normalized units (learned)
+        self.register_buffer("conf_ema", torch.tensor(-1.0))  # running mean of conf; <0 = uninitialised
+        self._conf = None                                     # [B] store-confidence scalar, set per-forward
         self._bank = None                                     # [B,K,mem_dim], set per-forward
         self.last_gate = torch.tensor(0.0)
         self.last_attn_entropy = torch.tensor(0.0)
         self.last_null_attn = torch.tensor(0.0)               # mean softmax mass on the null slot
+        self.last_conf = torch.tensor(0.0)                    # mean raw store-confidence
+        self.last_cgate = torch.tensor(1.0)                   # mean confidence-gate multiplier c
 
-    def set_bank(self, bank):
+    def set_bank(self, bank, conf=None):
         self._bank = bank
+        self._conf = conf
 
     def _split(self, t):
         B, T, _ = t.shape
@@ -91,17 +108,32 @@ class GatedMemoryTap(nn.Module):
         self.last_gate = g.abs().mean().detach()
         self.last_attn_entropy = (-(a.clamp_min(1e-9).log() * a).sum(-1)).mean().detach()
         self.last_null_attn = a[..., -1].mean().detach()       # softmax mass routed to the null slot
-        return h + (g * y).to(h.dtype)
+        upd = g * y                                            # [B,T,H] gated injection
+        if self.conf_gate and self._conf is not None:
+            cf = self._conf.to(wdt).detach()                   # [B] store frozen -> no grad through store
+            if self.training:                                  # track the absolute scale of conf
+                m = cf.mean()
+                if float(self.conf_ema) < 0:
+                    self.conf_ema.copy_(m.detach())
+                else:
+                    self.conf_ema.mul_(0.99).add_(0.01 * m.detach())
+            scale = self.conf_ema.clamp_min(1e-4)
+            c = torch.sigmoid(self.conf_scale * (cf / scale - self.conf_bias))   # [B] in (0,1)
+            self.last_conf = cf.mean().detach()
+            self.last_cgate = c.mean().detach()
+            upd = c.view(B, 1, 1) * upd                        # deliver in proportion to retrieval strength
+        return h + upd.to(h.dtype)
 
 
 class MAGInjector:
     """Registers GatedMemoryTap forward-hooks on a set of frozen decoder layers, sharing one bank."""
 
-    def __init__(self, base, tap_layers, mem_dim, n_heads=8):
+    def __init__(self, base, tap_layers, mem_dim, n_heads=8, conf_gate=False):
         H = base.config.get_text_config().hidden_size
         self.layers = decoder_layers(base)
         self.tap_layers = list(tap_layers)
-        self.taps = nn.ModuleDict({str(L): GatedMemoryTap(H, mem_dim, n_heads) for L in self.tap_layers})
+        self.taps = nn.ModuleDict({str(L): GatedMemoryTap(H, mem_dim, n_heads, conf_gate=conf_gate)
+                                   for L in self.tap_layers})
         self._handles = []
 
     def to(self, dev):
@@ -119,15 +151,18 @@ class MAGInjector:
         self.taps.eval()
         return self
 
-    def set_bank(self, bank):
+    def set_bank(self, bank, conf=None):
         for t in self.taps.values():
-            t.set_bank(bank)
+            t.set_bank(bank, conf=conf)
 
     def gate_stats(self):
         return {L: float(self.taps[str(L)].last_gate) for L in self.tap_layers}
 
     def null_attn_stats(self):
         return {L: float(self.taps[str(L)].last_null_attn) for L in self.tap_layers}
+
+    def cgate_stats(self):
+        return {L: float(self.taps[str(L)].last_cgate) for L in self.tap_layers}
 
     def _hook(self, tap):
         def fn(module, inp, out):

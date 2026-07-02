@@ -334,11 +334,37 @@ All four editing desiderata at once on real CounterFact: **valid** (gate 0.96), 
 **local** (−0.008 to −0.023), **and generalizing** (0.56–0.67). Retrieval-strength gating roughly **triples**
 the generalization of the earlier prompt-novelty gating (which gave 0.167 at the same locality, because it
 keyed on the prompt and so nulled paraphrases too). The honest residual: locality still costs some
-generalization (0.667 vs 0.889 edit-only) — the learned sink is not perfectly retrieval-selective. Replacing
-it with an explicit **store-confidence-scalar gate** is the path to closing the last gap.
+generalization (0.667 vs 0.889 edit-only) — the learned sink is not perfectly retrieval-selective.
 
-**Verdict: surgical single-relation editing on real CounterFact — valid, delivered, LOCAL, and
-generalizing.** Scaling across relations (multi-relation docs) is the remaining open front.
+### Closing the gap — an explicit store-confidence gate (`--conf-gate`)
+
+The learned null slot gates on **prompt novelty**: a paraphrase of the edited subject *looks* as unfamiliar
+as a neighbour, so it gets suppressed alongside — that's the 0.667 ceiling. The fix is to gate on the thing
+that actually distinguishes them: **retrieval strength**. The product-key store's read RMSNorms magnitude
+away (the bypass fix), but the *pre-norm* factual-head retrieval magnitude `‖ctx‖` is a clean per-example
+signal — **large** when the query addresses written slots (subject bound → strong read) and **~0** when it
+addresses unwritten slots (neighbour → weak read). We surface it (`pk_store.read(return_conf=True)`) and
+scale the whole tap injection by `c = σ(scale·(conf/EMA − bias))` (`GatedMemoryTap`, learned `scale`/`bias`,
+EMA for an *absolute* scale — strong/weak arrive in separate forward passes, so per-batch norm would erase
+the distinction). A paraphrase retrieves its own edit (strong → c≈1 → deliver); a neighbour retrieves
+nothing (weak → c≈0 → inert) — delivery is decoupled from novelty.
+
+Clean control vs the null-only sink, identical bind/seed, same 135 held-out neighbours:
+
+| gate | `lw` | edit-success | **locality drop** (OFF→ON) | **generalization** |
+|---|---|---|---|---|
+| null slot (baseline) | 0.1 | 0.998 | 0.193 → 0.230 (LOCAL) | 0.611 |
+| **store-confidence** | 0.1 | 0.990 | 0.193 → 0.185 = **−0.008** (LOCAL) | **0.907** |
+| **store-confidence** | 0.3 | 0.996 | 0.193 → 0.215 (LOCAL) | **0.926** |
+
+The confidence gate lifts generalization **0.61 → 0.91–0.93** with locality intact and edit-success ≈1.0 —
+it closes the gap the learned sink could not, matching (and edging past) the 0.889 edit-only ceiling *while
+staying surgical*. The `neg_cgate` diagnostic confirms the mechanism: the gate scales the weak-bank read
+down (c→0) while paraphrases still deliver.
+
+**Verdict: surgical single-relation editing on real CounterFact — valid (0.96), delivered (≈1.0), LOCAL
+(−0.008), and generalizing (0.91–0.93).** Scaling across relations (multi-relation docs) is the remaining
+open front.
 
 ## 8. Still open
 
@@ -352,9 +378,10 @@ generalizing.** Scaling across relations (multi-relation docs) is the remaining 
   one relation delivers the counterfactual **perfectly (1.000)**. Retrieval-conditioned banking (each
   probe's bank is read for its OWN subject, as deployment does) shows generalization was never dead
   (**0.889** edit-only, not 0.074 — a measurement artifact), and a null-slot tap trained with
-  retrieval-strength (weak-bank) negatives makes it **local AND generalizing at once**: locality drop
-  **−0.008** with generalization **0.56–0.67** (tunable). Residual: locality still costs some
-  generalization (0.67 vs 0.89) — an explicit store-confidence gate would close it — and it's one relation
-  at a time ([#16](https://github.com/patcarter883/memory-organ/issues/16)).
+  retrieval-strength (weak-bank) negatives makes it **local AND generalizing at once**. An explicit
+  **store-confidence gate** (`--conf-gate`, scaling delivery by the store's pre-norm retrieval magnitude
+  rather than the null slot's prompt-novelty proxy) then closes the last gap: locality drop **−0.008** with
+  generalization **0.91–0.93** (up from 0.61 null-only), edit-success ≈1.0. Remaining front: multiple
+  relations at once ([#16](https://github.com/patcarter883/memory-organ/issues/16)).
 - **N-scaling** the store toward useful sizes (thousands of facts, not 8–128 per doc).
 - **Backend portability** — pure PyTorch, CPU/CUDA expected but unverified.
