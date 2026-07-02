@@ -20,9 +20,9 @@ Entry:
 """
 import argparse, os, sys, torch, torch.nn as nn, torch.nn.functional as F
 
-# flat package: make sibling modules importable whether run as `python -m cam.X` or `python cam/X.py`
-_HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, _HERE)
+# flat package: the sibling import (deep_memory) is lazy, inside TitansMemoryAdapter.__init__ —
+# it resolves relatively when imported as cam.X and falls back to a path-hacked absolute import
+# when run as a file (`python cam/m2_adapter.py`).
 
 MODEL = "Qwen/Qwen3.5-4B"
 DEV = "cuda" if torch.cuda.is_available() else "cpu"
@@ -55,7 +55,13 @@ class TitansMemoryAdapter(nn.Module):
         # this; binds frozen Qwen embeddings WITH it). Applied to both ingest and retrieve-query paths.
         self.norm = nn.LayerNorm(mem_dim)
         if memory == "deepmem":
-            from deep_memory import DeepMemory  # graph-free, depth-2 (mem_depth ignored)
+            try:
+                from .deep_memory import DeepMemory  # graph-free, depth-2 (mem_depth ignored)
+            except ImportError:
+                _here = os.path.dirname(os.path.abspath(__file__))
+                if _here not in sys.path:
+                    sys.path.insert(0, _here)
+                from deep_memory import DeepMemory
             self.mem = DeepMemory(dim=mem_dim, chunk_size=mem_chunk, heads=mem_heads,
                                   expansion=mem_expansion)
         elif memory == "lucidrains":
@@ -138,13 +144,16 @@ def lm_loss_segmented(base, adapter, ids, embeds, seg_len, detach_every=0):
     return total / max(nseg, 1), nseg
 
 
-def load_frozen_base():
+def load_frozen_base(model_id=None):
+    """Load + freeze the donor base. model_id=None keeps the historical default (MODEL, Qwen3.5-4B);
+    drivers expose it as --base1 so reproducers can swap donors / smaller cards without editing code."""
+    model_id = model_id or MODEL
     from transformers import AutoModelForCausalLM, AutoModelForImageTextToText, AutoTokenizer
-    tok = AutoTokenizer.from_pretrained(MODEL)
+    tok = AutoTokenizer.from_pretrained(model_id)
     last = None
     for loader in (AutoModelForCausalLM, AutoModelForImageTextToText):
         try:
-            m = loader.from_pretrained(MODEL, dtype=torch.bfloat16, low_cpu_mem_usage=True).to(DEV).eval()
+            m = loader.from_pretrained(model_id, dtype=torch.bfloat16, low_cpu_mem_usage=True).to(DEV).eval()
             for p in m.parameters():
                 p.requires_grad_(False)
             m.config.use_cache = False

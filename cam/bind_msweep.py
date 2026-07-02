@@ -21,15 +21,23 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-# flat package: make sibling modules importable whether run as `python -m cam.X` or `python cam/X.py`
-_HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, _HERE)
-
-from m2_adapter import MODEL, DEV, load_frozen_base                       # noqa: E402
-from recall_deepmem import NAME_CANDIDATES, CARGO_CANDIDATES, single_token_ids, DocBuilder  # noqa: E402
-from recall_boltA import BoltAdapter, eval_direct                         # noqa: E402
-from pk_store_adapter import PKStoreAdapter                               # noqa: E402
-import recall_mag                                                         # noqa: E402
+# flat package: sibling imports resolve relatively when imported as cam.X (`python -m cam.X`,
+# `import cam.X`) and fall back to a path-hacked absolute import when run as a file (`python cam/X.py`).
+try:
+    from .m2_adapter import MODEL, DEV, load_frozen_base
+    from .recall_deepmem import NAME_CANDIDATES, CARGO_CANDIDATES, single_token_ids, DocBuilder
+    from .recall_boltA import BoltAdapter, eval_direct
+    from .pk_store_adapter import PKStoreAdapter
+    from . import recall_mag
+except ImportError:
+    _HERE = os.path.dirname(os.path.abspath(__file__))
+    if _HERE not in sys.path:
+        sys.path.insert(0, _HERE)
+    from m2_adapter import MODEL, DEV, load_frozen_base                   # noqa: E402
+    from recall_deepmem import NAME_CANDIDATES, CARGO_CANDIDATES, single_token_ids, DocBuilder  # noqa: E402
+    from recall_boltA import BoltAdapter, eval_direct                     # noqa: E402
+    from pk_store_adapter import PKStoreAdapter                           # noqa: E402
+    import recall_mag                                                     # noqa: E402
 
 
 def bind_at_M(embed_weight, H, tok, args, M, seed):
@@ -82,6 +90,9 @@ def main():
     ap.add_argument("--expansion", type=float, default=4.0)
     ap.add_argument("--lr", type=float, default=5e-4)
     ap.add_argument("--seed", type=int, default=20260628)
+    ap.add_argument("--base1", type=str, default=MODEL,
+                    help=f"donor (frozen base-1) HF model id; default {MODEL}. Swapping it is an "
+                         f"untested-donor experiment, not a reproduction.")
     ap.add_argument("--store", type=str, default="bolt", choices=["bolt", "pk"],
                     help="memory mechanism: 'bolt' (DeepMemory v0) or 'pk' (product-key sparse, hub-free)")
     ap.add_argument("--n-sub", type=int, default=32, dest="n_sub",
@@ -98,14 +109,14 @@ def main():
 
     Ms = [int(x) for x in args.Ms.split(",") if x.strip()]
 
-    base, tok = load_frozen_base()
+    base, tok = load_frozen_base(args.base1)
     H = base.config.get_text_config().hidden_size
     embed_weight = base.get_input_embeddings().weight.detach().float().clone()
     _rh = args.pk_read_heads if args.pk_read_heads > 0 else args.heads
     store_desc = (f"pk(N={args.n_sub**2} n_sub={args.n_sub} topk={args.topk} sub_topk={args.sub_topk} "
                   f"read_heads={_rh} addr_sup_w={args.addr_sup_weight})"
                   if args.store == "pk" else "bolt(DeepMemory v0)")
-    print(f"[memcap] {MODEL} | H={H} | store={store_desc} | arch: K={args.k} mem_dim={args.mem_dim} "
+    print(f"[memcap] {args.base1} | H={H} | store={store_desc} | arch: K={args.k} mem_dim={args.mem_dim} "
           f"heads={args.heads} chunk={args.chunk} exp={args.expansion} | bind_steps={args.bind_steps} "
           f"batch={args.batch} lr={args.lr} | sweeping M={Ms}", flush=True)
 

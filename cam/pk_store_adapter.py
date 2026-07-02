@@ -45,9 +45,15 @@ import sys
 import torch
 import torch.nn as nn
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, _HERE)
-from pk_store import ProductKeyStore  # noqa: E402
+# flat package: sibling imports resolve relatively when imported as cam.X and fall back to a
+# path-hacked absolute import when run as a file.
+try:
+    from .pk_store import ProductKeyStore
+except ImportError:
+    _HERE = os.path.dirname(os.path.abspath(__file__))
+    if _HERE not in sys.path:
+        sys.path.insert(0, _HERE)
+    from pk_store import ProductKeyStore  # noqa: E402
 
 
 class PKStoreAdapter(nn.Module):

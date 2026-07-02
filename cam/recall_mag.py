@@ -20,16 +20,27 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-# flat package: make sibling modules importable whether run as `python -m cam.X` or `python cam/X.py`
-_HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, _HERE)
-from m2_adapter import MODEL, DEV, load_frozen_base                       # noqa: E402
-from recall_deepmem import (NAME_CANDIDATES, CARGO_CANDIDATES, MULTITOKEN_WORD_POOL,  # noqa: E402
-                            single_token_ids, DocBuilder, counterfactual_single_token,
-                            derange_capitals, COUNTERFACTUAL_HEADER, COUNTERFACTUAL_REL)
-from recall_boltA import BoltAdapter, eval_direct                         # noqa: E402
-from pk_store_adapter import PKStoreAdapter                               # noqa: E402
-from gated_tap import MAGInjector                                         # noqa: E402
+# flat package: sibling imports resolve relatively when imported as cam.X (`python -m cam.X`,
+# `import cam.X`) and fall back to a path-hacked absolute import when run as a file (`python cam/X.py`).
+try:
+    from .m2_adapter import MODEL, DEV, load_frozen_base
+    from .recall_deepmem import (NAME_CANDIDATES, CARGO_CANDIDATES, MULTITOKEN_WORD_POOL,
+                                 single_token_ids, DocBuilder, counterfactual_single_token,
+                                 derange_capitals, COUNTERFACTUAL_HEADER, COUNTERFACTUAL_REL)
+    from .recall_boltA import BoltAdapter, eval_direct
+    from .pk_store_adapter import PKStoreAdapter
+    from .gated_tap import MAGInjector
+except ImportError:
+    _HERE = os.path.dirname(os.path.abspath(__file__))
+    if _HERE not in sys.path:
+        sys.path.insert(0, _HERE)
+    from m2_adapter import MODEL, DEV, load_frozen_base                   # noqa: E402
+    from recall_deepmem import (NAME_CANDIDATES, CARGO_CANDIDATES, MULTITOKEN_WORD_POOL,  # noqa: E402
+                                single_token_ids, DocBuilder, counterfactual_single_token,
+                                derange_capitals, COUNTERFACTUAL_HEADER, COUNTERFACTUAL_REL)
+    from recall_boltA import BoltAdapter, eval_direct                     # noqa: E402
+    from pk_store_adapter import PKStoreAdapter                           # noqa: E402
+    from gated_tap import MAGInjector                                     # noqa: E402
 
 LN2 = math.log(2.0)
 # eval-batch cap: eb = EVAL_BATCH_CAP // (M*Kc), shrinking the eval forward as M/Kc grow so the
@@ -278,6 +289,9 @@ def save_ckpt(path, adapter, injector, tap_layer, args, d_carry, cf_meta=None):
         "tap_heads": args.tap_heads,
         "mem_dim": args.mem_dim, "heads": args.heads, "chunk": args.chunk,
         "expansion": args.expansion, "k": args.k, "d_carry": d_carry,
+        # donor id: v1 rebuilds the SAME base-1 (embed table + tokenizer) the memory was bound on.
+        # Absent in pre-flag checkpoints -> loaders fall back to the historical default (MODEL).
+        "base1": getattr(args, "base1", None),
         # store selector + pk knobs so load_ckpt rebuilds the right adapter (bolt path unchanged:
         # store defaults to 'bolt' and the pk_* keys are ignored when rebuilding a BoltAdapter).
         "store": getattr(args, "store", "bolt"),
@@ -554,6 +568,10 @@ def main():
                     help="train ALL --tap-layers together (escalation) instead of sweeping each")
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--seed", type=int, default=20260628)
+    ap.add_argument("--base1", type=str, default=MODEL,
+                    help=f"donor (frozen base-1) HF model id; default {MODEL} — the donor every "
+                         f"published number used. Swapping it is an untested-donor experiment, "
+                         f"not a reproduction.")
     ap.add_argument("--save-ckpt", type=str, default="", dest="save_ckpt",
                     help="after a single-layer run, save the frozen BoltAdapter+tap to this path")
     ap.add_argument("--load-ckpt", type=str, default="", dest="load_ckpt",
@@ -570,7 +588,7 @@ def main():
                          "issue #1 realism probe — subject=KEY, object=VALUE, answer=object; supports "
                          "--cargo-tokens K>1 for a K-token real-word object phrase '<Subj> lives in <w0 w1>') "
                          "or 'varied' (per-fact relation drawn from a small template set — heterogeneous "
-                         "facts; each binding slot m uses relations[m%R], subject=KEY, object=VALUE) "
+                         "facts; each binding slot m uses relations[m%%R], subject=KEY, object=VALUE) "
                          "or 'counterfactual' (KNOWLEDGE EDITING: real country->capital facts the base "
                          "KNOWS, with DERANGED capitals in memory. PROBE-FILTER-EDIT: probe the frozen "
                          "base first, keep only facts it demonstrably knows, bind the counterfactual "
@@ -619,7 +637,7 @@ def main():
     torch.manual_seed(args.seed)
     rng = np.random.default_rng(args.seed)
 
-    base, tok = load_frozen_base()
+    base, tok = load_frozen_base(args.base1)
     H = base.config.get_text_config().hidden_size
     n_layers = base.config.get_text_config().num_hidden_layers
     embed_weight = base.get_input_embeddings().weight.detach().float().clone()
@@ -653,7 +671,7 @@ def main():
     # ---- RELOAD path: reuse a fixed v0 memory checkpoint (no re-bind) and reproduce the V0 eval ----
     if args.load_ckpt:
         adapter, injector, L, ck = load_ckpt(args.load_ckpt, embed_weight, base, DEV, builder=builder)
-        print(f"[mag] {MODEL} | H={H} n_layers={n_layers} | RELOAD tap L={L} | "
+        print(f"[mag] {args.base1} | H={H} n_layers={n_layers} | RELOAD tap L={L} | "
               f"K={ck['k']} mem_dim={ck['mem_dim']} | chance acc={1/args.M:.3f}", flush=True)
         injector.attach()
         gen = eval_generative_mag(base, adapter, injector, builder, rng, args)
@@ -669,7 +687,7 @@ def main():
 
     layers = ([int(x) for x in args.tap_layers.split(",") if x != ""]
               if args.tap_layers else [n_layers // 2])
-    print(f"[mag] {MODEL} | H={H} n_layers={n_layers} | tap_layers={layers} multi={args.multi} | "
+    print(f"[mag] {args.base1} | H={H} n_layers={n_layers} | tap_layers={layers} multi={args.multi} | "
           f"K={args.k} mem_dim={args.mem_dim} | chance acc={1/args.M:.3f}", flush=True)
 
     # ---- stage 1: bind once ----

@@ -17,11 +17,20 @@ Only A, B, gamma2 train (LM-loss through the frozen base-2). Mirrors the gated_t
 the new gate can't diverge the L=16-style way.
 """
 import os
+import sys
 
 import torch
 import torch.nn as nn
 
-from gated_tap import GatedMemoryTap, decoder_layers
+# flat package: sibling imports resolve relatively when imported as cam.X and fall back to a
+# path-hacked absolute import when run as a file / with cam/ on sys.path.
+try:
+    from .gated_tap import GatedMemoryTap, decoder_layers
+except ImportError:
+    _HERE = os.path.dirname(os.path.abspath(__file__))
+    if _HERE not in sys.path:
+        sys.path.insert(0, _HERE)
+    from gated_tap import GatedMemoryTap, decoder_layers  # noqa: E402
 
 
 def save_translator(path, injector, meta):

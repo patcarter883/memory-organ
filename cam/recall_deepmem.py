@@ -49,9 +49,15 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, _HERE)
-from m2_adapter import MODEL, DEV, TitansMemoryAdapter, load_frozen_base  # noqa: E402
+# flat package: sibling imports resolve relatively when imported as cam.X and fall back to a
+# path-hacked absolute import when run as a file.
+try:
+    from .m2_adapter import MODEL, DEV, TitansMemoryAdapter, load_frozen_base
+except ImportError:
+    _HERE = os.path.dirname(os.path.abspath(__file__))
+    if _HERE not in sys.path:
+        sys.path.insert(0, _HERE)
+    from m2_adapter import MODEL, DEV, TitansMemoryAdapter, load_frozen_base  # noqa: E402
 
 LN2 = math.log(2.0)
 

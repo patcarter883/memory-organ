@@ -35,12 +35,19 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# flat package: make sibling modules importable whether run as `python -m cam.X` or `python cam/X.py`
-_HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, _HERE)
-from m2_adapter import MODEL, DEV, load_frozen_base  # noqa: E402
-from recall_deepmem import NAME_CANDIDATES, CARGO_CANDIDATES, single_token_ids, DocBuilder  # noqa: E402
-from deep_memory import DeepMemory  # noqa: E402
+# flat package: sibling imports resolve relatively when imported as cam.X (`python -m cam.X`,
+# `import cam.X`) and fall back to a path-hacked absolute import when run as a file (`python cam/X.py`).
+try:
+    from .m2_adapter import MODEL, DEV, load_frozen_base
+    from .recall_deepmem import NAME_CANDIDATES, CARGO_CANDIDATES, single_token_ids, DocBuilder
+    from .deep_memory import DeepMemory
+except ImportError:
+    _HERE = os.path.dirname(os.path.abspath(__file__))
+    if _HERE not in sys.path:
+        sys.path.insert(0, _HERE)
+    from m2_adapter import MODEL, DEV, load_frozen_base  # noqa: E402
+    from recall_deepmem import NAME_CANDIDATES, CARGO_CANDIDATES, single_token_ids, DocBuilder  # noqa: E402
+    from deep_memory import DeepMemory  # noqa: E402
 
 LN2 = math.log(2.0)
 
