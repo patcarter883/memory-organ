@@ -106,6 +106,13 @@ python -m cam.recall_v1 --load-ckpt ckpt/cf.pt --M 8 --steps 3000 --batch 16 --l
     --seed 20260625 --base2 unsloth/gemma-3-4b-pt
 ```
 
+### §7 Track 1 — real CounterFact benchmark
+
+> **Known gap:** §7's run (`--dataset counterfact`, locality + generalization probes) used code that
+> has not landed in this repo yet — `recall_mag` has no `--dataset` flag on main. The section's
+> config is recorded there (M=8, tap layer 24, bind 1500 / tap 200); the command becomes
+> reproducible when the Track 1 harness lands ([#16](https://github.com/patcarter883/memory-organ/issues/16)).
+
 ## Environment record
 
 Capture the environment alongside any result you report (and this is how the canonical record should
