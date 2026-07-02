@@ -997,6 +997,9 @@ def main():
                          "mem/no_mem PRIOR-acc + a VALID/INVALID gate on no_mem prior-acc)")
     ap.add_argument("--cf-probe-batch", type=int, default=16, dest="cf_probe_batch",
                     help="counterfactual: batch size for the base prior-knowledge probe/filter forward")
+    ap.add_argument("--cf-probe-cap", type=int, default=8000, dest="cf_probe_cap",
+                    help="counterfactual_multi: how many objects-single records to probe for base-known "
+                         "facts (bigger -> more facts per relation -> higher M reachable; slower probe)")
     ap.add_argument("--multi-relations", type=int, default=4, dest="multi_relations",
                     help="counterfactual_multi (#16): how many DISTINCT CounterFact relations to edit "
                          "together in one memory (top-N base-known relations by fact count). Each doc "

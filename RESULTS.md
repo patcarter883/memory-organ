@@ -444,6 +444,30 @@ batched prefill-train, see the engine repo) — and the locality/generalization 
 (the longer multi-token probes tip a 16GB card over; those two numbers are from the run that fit, the gate +
 edit reproduce every run).
 
+### How far does it scale? — capacity degrades gracefully, and does *not* scale for free
+
+The above edits ~50 facts but only **M = 8** coexist in any one store read. Pushing M (facts-per-read)
+higher — the "useful memory" question — the store's associative capacity **declines gradually** (bind
+carry = does the store retrieve the bound value; 3 language relations, full probe):
+
+| M (facts per store read) | 8 | 16 | 32 |
+|---|---|---|---|
+| bind carry (exact) | 0.93 | 0.76 | 0.58 |
+| edit-success | ~0.90 | 0.70 | — |
+| chance (1/M) | 0.125 | 0.062 | 0.031 |
+
+Still ~18× above chance at M=32, so it *works* — but this is **not** the flat-0.9-to-M=32 the store showed
+on distinct-object *recall* (§4). The realistic editing setting degrades earlier, and the leading suspect is
+**object aliasing**: these relations map many subjects onto a tiny object vocabulary (a handful of
+languages), so the store struggles to keep "which subject → which of the same few objects" straight as M
+grows (the subject-*last-token* keying holds up; it's the value side that saturates). A first control (M=16
+with six *diverse-object* relations) trended the same or lower, but was confounded (heterogeneous geometry +
+it hit the second wall) so object-aliasing stays a hypothesis, not a result. The second wall is **fact
+supply**: even a full probe yields only ~13–37 base-known single-token-object facts per relation, which caps
+M for the diverse set (the smaller relations run out of distinct subjects at M≈16). So "scale to a useful
+number of facts" has two real limits here — associative capacity under object-aliasing, and the size of the
+base-known editable pool — neither of which the M=8 headline exposes. `--cf-probe-cap` widens the pool.
+
 ## 8. Still open
 
 - **Multi-token cross-base transfer** — translator-bound (see §4); higher-capacity translator in progress.
