@@ -46,9 +46,16 @@ class GatedMemoryTap(nn.Module):
         self.to_v = nn.Linear(mem_dim, base_hidden, bias=False)
         self.to_o = nn.Linear(base_hidden, base_hidden, bias=False)
         self.gamma = nn.Parameter(torch.zeros(base_hidden))   # gate logit; tanh(0)=0 -> no-op at init
+        # NULL / sink slot: a learnable extra key with a ZERO value. softmax attention must sum to 1,
+        # so without an escape the tap injects SOMETHING for every query (even an out-of-store neighbour)
+        # -> collateral damage (the Track 1 locality leak). Attending to the null key (value 0) delivers
+        # ~nothing, so the tap CAN be inert for a query that doesn't match the bank. The locality loss
+        # (train_taps) teaches it to route non-matching queries here. Zero-init keeps the gate no-op.
+        self.null_key = nn.Parameter(torch.zeros(1, n_heads, 1, self.d_head))
         self._bank = None                                     # [B,K,mem_dim], set per-forward
         self.last_gate = torch.tensor(0.0)
         self.last_attn_entropy = torch.tensor(0.0)
+        self.last_null_attn = torch.tensor(0.0)               # mean softmax mass on the null slot
 
     def set_bank(self, bank):
         self._bank = bank
@@ -69,15 +76,21 @@ class GatedMemoryTap(nn.Module):
         wdt = self.to_q.weight.dtype                           # tap compute dtype (fp32)
         h32 = h.to(wdt)
         bank = bank.to(wdt)
+        B = h32.shape[0]
         q = self._split(self.to_q(h32))                        # [B,nh,T,dh]
         k = self._split(self.to_k(bank))                       # [B,nh,K,dh]
         v = self._split(self.to_v(bank))                       # [B,nh,K,dh]
-        a = torch.softmax(q @ k.transpose(-1, -2) / (self.d_head ** 0.5), dim=-1)   # [B,nh,T,K]
-        ctx = (a @ v).transpose(1, 2).reshape(h32.shape)       # [B,T,H]
+        # append the null slot: learnable key, ZERO value (so attending to it injects nothing).
+        nk = self.null_key.to(wdt).expand(B, self.n_heads, 1, self.d_head)          # [B,nh,1,dh]
+        k = torch.cat([k, nk], dim=2)                          # [B,nh,K+1,dh]
+        v = torch.cat([v, torch.zeros_like(nk)], dim=2)        # [B,nh,K+1,dh] (null value = 0)
+        a = torch.softmax(q @ k.transpose(-1, -2) / (self.d_head ** 0.5), dim=-1)   # [B,nh,T,K+1]
+        ctx = (a @ v).transpose(1, 2).reshape(h32.shape)       # [B,T,H]  (null contributes 0)
         y = self.to_o(ctx)
         g = torch.tanh(self.gamma)                             # [H]; 0 at init
         self.last_gate = g.abs().mean().detach()
         self.last_attn_entropy = (-(a.clamp_min(1e-9).log() * a).sum(-1)).mean().detach()
+        self.last_null_attn = a[..., -1].mean().detach()       # softmax mass routed to the null slot
         return h + (g * y).to(h.dtype)
 
 
@@ -112,6 +125,9 @@ class MAGInjector:
 
     def gate_stats(self):
         return {L: float(self.taps[str(L)].last_gate) for L in self.tap_layers}
+
+    def null_attn_stats(self):
+        return {L: float(self.taps[str(L)].last_null_attn) for L in self.tap_layers}
 
     def _hook(self, tap):
         def fn(module, inp, out):

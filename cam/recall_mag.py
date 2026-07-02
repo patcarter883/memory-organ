@@ -210,9 +210,22 @@ def bind_adapter(adapter, builder, rng, args):
 
 
 # ---- stage 2: train the MAG tap(s) by LM-loss through the frozen base ---------------------------
-def train_taps(base, adapter, injector, builder, rng, args, tag):
+def _loc_neg_batch(loc_buckets, rng, batch):
+    """Sample a same-length batch of negative (out-of-store) probe ids from the length-bucketed pool.
+    Returns [b, L] long on DEV (or None if empty)."""
+    lens = [L for L, v in loc_buckets.items() if v]
+    if not lens:
+        return None
+    L = lens[int(rng.integers(0, len(lens)))]
+    items = loc_buckets[L]
+    idx = rng.choice(len(items), size=min(batch, len(items)), replace=False)
+    return torch.tensor([items[i] for i in idx], dtype=torch.long, device=DEV)
+
+
+def train_taps(base, adapter, injector, builder, rng, args, tag, loc_buckets=None):
     injector.attach().train()
     Kc = _kc(builder)
+    lw = getattr(args, "locality_weight", 0.0)
     opt = torch.optim.AdamW(injector.parameters(), lr=args.lr)
     for step in range(args.steps):
         opt.zero_grad()
@@ -225,11 +238,35 @@ def train_taps(base, adapter, injector, builder, rng, args, tag):
         # logit positions predict the full answer sequence.
         ctx_emb = _leakfree_ctx(base, builder, ids, apos, end=apos + Kc - 1)
         logits = _answer_logits(base, ctx_emb, Kc)                       # [B,V] or [B,Kc,V]
-        loss = _seq_ce(logits, ans)
-        if not torch.isfinite(loss):                                     # NaN/Inf guard: skip the step
-            print(f"[mag][{tag}] step {step:4d} NON-FINITE loss -> skip", flush=True)
+        edit_loss = _seq_ce(logits, ans)
+        if not torch.isfinite(edit_loss):                                # NaN/Inf guard: skip the step
+            print(f"[mag][{tag}] step {step:4d} NON-FINITE edit loss -> skip", flush=True)
             opt.zero_grad(); continue
-        loss.backward()
+        edit_loss.backward()                                            # backprop + FREE the edit graph
+        # LOCALITY-PRESERVATION: on out-of-store (neighbour) prompts, the tap should NOT change the base's
+        # output. Run the base with the edit bank injected (tap ON) and match its answer distribution to
+        # the frozen base's tap-OFF distribution (KL). Teaches the tap to route non-matching queries to
+        # the null slot rather than leaking the edit. HELD-OUT neighbours only (no eval leak). Backprop
+        # SEPARATELY (after freeing the edit graph) so only one full base-forward graph is alive at a time
+        # -> peak memory ~= the edit-only step (avoids the 2x-forward OOM). lw=0 -> edit-only objective.
+        loc_val = 0.0
+        neg_null = float("nan")
+        if lw > 0 and loc_buckets:
+            neg = _loc_neg_batch(loc_buckets, rng, args.batch)
+            if neg is not None:
+                d_ids, _c, _p, d_apos = builder.build_cf(rng, neg.shape[0])
+                d_ids = d_ids.to(DEV)
+                with torch.no_grad():
+                    neg_bank = memory_bank(adapter, d_ids, args.seg_len, builder.qa_start, d_apos, carry=True)
+                    injector.set_bank(None)
+                    off = _last_logit(base, input_ids=neg)               # tap OFF (bank=None -> no-op)
+                injector.set_bank(neg_bank)
+                on = _last_logit(base, input_ids=neg)                    # tap ON, differentiable via taps
+                loc_loss = F.kl_div(F.log_softmax(on, -1), F.softmax(off, -1), reduction="batchmean")
+                if torch.isfinite(loc_loss):
+                    (lw * loc_loss).backward()                           # accumulate grad; FREE the loc graph
+                    loc_val = float(loc_loss)
+                neg_null = float(np.mean(list(injector.null_attn_stats().values())))
         gn = torch.nn.utils.clip_grad_norm_(list(injector.parameters()), 1.0)
         if not torch.isfinite(gn):                                       # NaN grad guard
             print(f"[mag][{tag}] step {step:4d} NON-FINITE grad -> skip", flush=True)
@@ -237,8 +274,9 @@ def train_taps(base, adapter, injector, builder, rng, args, tag):
         opt.step()
         if step % 200 == 0 or step == args.steps - 1:
             em, pt = _seq_metrics(logits, ans)
-            print(f"[mag][{tag}] step {step:4d} loss {loss.item():.3f} exact {em.mean().item():.3f} "
-                  f"per_tok {pt.mean().item():.3f} gate {injector.gate_stats()}", flush=True)
+            extra = (f" loc_kl {loc_val:.3f} neg_null {neg_null:.3f}" if lw > 0 else "")
+            print(f"[mag][{tag}] step {step:4d} loss {edit_loss.item():.3f} exact {em.mean().item():.3f} "
+                  f"per_tok {pt.mean().item():.3f} gate {injector.gate_stats()}{extra}", flush=True)
     injector.set_bank(None)
 
 
@@ -569,7 +607,28 @@ def setup_counterfact(base, tok, args):
 
 
 @torch.no_grad()
-def eval_locality_generalization(base, tok, injector, adapter, builder, kept, args, cap=256):
+def build_locality_split(records, tok, frac_train=0.5):
+    """Split each record's neighborhood_prompts into TRAIN (for the locality-preservation loss) and
+    EVAL (for the metric) halves, disjoint per record so there is no train/eval leak. Returns
+    (train_buckets, eval_probes): train_buckets = {token_len: [bos+prompt_ids,...]} out-of-store
+    negatives for train_taps; eval_probes = [(prompt_str, true_tid, subject_tid)] the held-out metric."""
+    from collections import defaultdict
+    bos = [tok.bos_token_id] if tok.bos_token_id is not None else []
+    train_buckets = defaultdict(list)
+    eval_probes = []
+    for r in records:
+        nb = list(r.neighborhood_prompts)
+        cut = int(len(nb) * frac_train)
+        for p in nb[:cut]:
+            pid = bos + tok(p, add_special_tokens=False).input_ids
+            train_buckets[len(pid)].append(pid)
+        for p in nb[cut:]:
+            eval_probes.append((p, r.true_tid, r.subject_tid))
+    return dict(train_buckets), eval_probes
+
+
+def eval_locality_generalization(base, tok, injector, adapter, builder, kept, args, cap=256,
+                                 loc_override=None):
     """Track 1 metrics beyond edit-success, using the memory bound on the kept edits.
 
     LOCALITY: over the kept edits' neighborhood_prompts (other subjects, SAME true object; the base
@@ -618,11 +677,15 @@ def eval_locality_generalization(base, tok, injector, adapter, builder, kept, ar
         return (hit / max(1, seen)), seen
 
     # LOCALITY probes: (neighborhood_prompt, target_true_tid). gold = the neighbour's TRUE object,
-    # which shares the edited fact's true object (CounterFact construction).
-    loc = []
-    for r in kept:
-        for p in r.neighborhood_prompts:
-            loc.append((p, r.true_tid, r.subject_tid))
+    # which shares the edited fact's true object (CounterFact construction). loc_override = the held-out
+    # EVAL half when the locality-preservation loss trains on the other half (no leak); else all neighbours.
+    if loc_override is not None:
+        loc = list(loc_override)
+    else:
+        loc = []
+        for r in kept:
+            for p in r.neighborhood_prompts:
+                loc.append((p, r.true_tid, r.subject_tid))
     loc = loc[:cap]
     # GENERALIZATION probes: (paraphrase_prompt, target_new_tid).
     gen = []
@@ -829,6 +892,11 @@ def main():
                     help="dir holding counterfact.json (for --dataset counterfact)")
     ap.add_argument("--locality-cap", type=int, default=256, dest="locality_cap",
                     help="max locality/generalization probe prompts to score (budget cap)")
+    ap.add_argument("--locality-weight", type=float, default=0.0, dest="locality_weight",
+                    help="Track 1 SURGICAL editing: weight on the locality-preservation KL loss during "
+                         "tap training (tap-on ≈ frozen-base tap-off on HELD-OUT neighbour prompts). >0 "
+                         "teaches the tap's null slot to leave out-of-store facts alone; 0 = edit-only "
+                         "(current behavior). Neighbours are split 50/50 train/eval (no leak).")
     ap.add_argument("--query-rel", type=str, default="", dest="query_rel",
                     help="ADVERSARIAL paraphrase probe (issue #10, natural phrasing only): bind and "
                          "train exactly as normal (bindings + training queries use ' lives in'), then "
@@ -911,6 +979,7 @@ def main():
     counterfactual = args.phrasing == "counterfactual"
     cf_meta = None
     cf_records = None                    # Track 1 (CounterFact) records for locality/generalization eval
+    loc_buckets, loc_eval = None, None   # surgical editing: train/eval split of neighbour prompts
     if counterfactual:
         assert args.cargo_tokens == 1, "counterfactual phrasing is single-token only"
         # PROBE the frozen base -> FILTER to demonstrably-known facts -> DERANGE the memory capitals.
@@ -920,6 +989,14 @@ def main():
             # Track 1: REAL CounterFact benchmark (probe with each record's own prompt, bind target_new).
             builder, cf_records, prior_acc_full = setup_counterfact(base, tok, args)
             cf_meta = {"kept": [(r.subject, r.true_str) for r in cf_records], "perm": None}
+            # Always split neighbours 50/50 so LOCALITY is scored on the HELD-OUT half — identical eval
+            # set whether or not the locality-preservation loss is on (a clean lw=0 vs lw>0 control). The
+            # train half is only consumed by train_taps when --locality-weight > 0.
+            loc_buckets, loc_eval = build_locality_split(cf_records, tok)
+            n_tr = sum(len(v) for v in loc_buckets.values())
+            print(f"[mag][cf] locality split: {n_tr} train-neighbour negatives, {len(loc_eval)} "
+                  f"held-out eval neighbours | locality-weight {args.locality_weight}"
+                  f"{' (SURGICAL)' if args.locality_weight > 0 else ' (edit-only control)'}", flush=True)
         else:
             builder, kept_facts, cf_perm, prior_acc_full = setup_counterfactual(base, tok, args)
             cf_meta = {"kept": kept_facts, "perm": cf_perm}  # persisted in the ckpt for v1 transfer
@@ -983,7 +1060,7 @@ def main():
         tag = "+".join(map(str, cfg))
         injector = MAGInjector(base, cfg, args.mem_dim, n_heads=args.tap_heads).to(DEV)
         with StageCost(f"stage-2 tap fit L={tag} ({args.steps} steps, batch {args.batch})"):
-            train_taps(base, adapter, injector, builder, rng, args, tag)
+            train_taps(base, adapter, injector, builder, rng, args, tag, loc_buckets=loc_buckets)
         with StageCost(f"delivery eval L={tag}"):
             gen = eval_generative_mag(base, adapter, injector, builder, rng, args)
         m_acc, nm_acc = verdict(tag, d_carry, gen, 1 / args.M)
@@ -1006,7 +1083,7 @@ def main():
                 # Track 1 real-editing metrics: LOCALITY (neighbours preserved) + GENERALIZATION (edit
                 # fires on paraphrases). Only for --dataset counterfact (records carry the probe prompts).
                 lg = eval_locality_generalization(base, tok, injector, adapter, builder, cf_records,
-                                                  args, cap=args.locality_cap)
+                                                  args, cap=args.locality_cap, loc_override=loc_eval)
                 verdict_locality_generalization(tag, lg)
         summary.append((tag, m_acc, nm_acc, gen["local_control"][1]))
         # save the FIRST passing single-layer tap as the reusable v0 memory checkpoint

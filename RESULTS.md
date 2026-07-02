@@ -301,8 +301,35 @@ WORKS** — the base holds the priors (0.969) *and* the memory overrides them to
 (1.000)** — the first-attempt INVALID was a real eval bug the gate correctly refused to certify, not a
 failure of the memory. What remains open is what the curated table could never test: the edit **leaks** to
 neighbouring facts (−0.145) and only **weakly generalizes** to paraphrases (0.074), and this is one
-relation at a time (multi-relation editing needs per-relation doc configs). Making the edit *surgical* and
-*paraphrase-robust*, and scaling across relations, is the open Track 1 work.
+relation at a time (multi-relation editing needs per-relation doc configs).
+
+### Making it surgical — the locality leak, fixed (with a generalization tradeoff)
+
+The leak is structural: the tap's cross-attention `softmax` must sum to 1, so it injects *something* for
+**every** query — including an out-of-store neighbour — and the trained gate delivers it. Two changes fix
+it: a **null / sink slot** (a learnable attention key with a *zero* value, so the tap *can* attend to
+"nothing") and a **locality-preservation loss** during tap training (on HELD-OUT neighbour prompts, match
+the tap-on answer distribution to the frozen base's tap-off distribution — a KL). `--locality-weight`
+turns it on; neighbours are split 50/50 train/eval so the metric is leak-free.
+
+Clean control, identical bind/seed, scored on the same 135 held-out neighbours:
+
+| `locality-weight` | edit-success (mem-on cf) | **locality drop** (mem OFF→ON) | generalization | null-slot mass |
+|---|---|---|---|---|
+| 0.0 (edit-only) | 0.996 (VALID) | 0.193 → 0.104 = **−0.089** (LEAKY) | 0.074 | — |
+| **0.3** | **1.000 (VALID)** | 0.193 → 0.185 = **−0.008** (LOCAL) | 0.019 | 0.59 |
+| 1.0 | 1.000 (VALID) | 0.193 → 0.178 = −0.015 (LOCAL) | 0.000 | 0.83 |
+
+**The leak is essentially eliminated** (−0.089 → −0.008, ~90%) with **edit-success fully preserved
+(1.000)**, and the null-slot attention mass (0.59–0.83) confirms the mechanism — neighbours route to the
+sink instead of the edit. The cost is the **locality↔generalization tension** known in the editing
+literature: teaching the tap to stay inert on non-training prompts also suppresses paraphrases (already
+weak at 0.074 → ~0.02), because the null slot keys on prompt-novelty, not on whether the store actually
+matched. Gating the sink on store-retrieval confidence (fire only when the store returns the queried
+subject) is the path to *both* local *and* paraphrase-robust — the open next step.
+
+**Verdict: surgical single-relation editing on real CounterFact — valid, delivered (1.000), and now
+LOCAL** — with paraphrase generalization the remaining open front, alongside scaling across relations.
 
 ## 8. Still open
 
@@ -311,11 +338,12 @@ relation at a time (multi-relation editing needs per-relation doc configs). Maki
   covers prose (single relation), **varied relations** (five mixed templates per doc), and **multi-token
   natural objects** (K-token phrase answers), all with `no_memory` = 0.000. Counterfactual editing — where
   the base has a prior — is demonstrated same-base AND cross-family on a *curated* table (§6).
-- **Real-benchmark editing — VALID (§7).** Track 1 on real ROME CounterFact: after fixing a filter/eval
-  prompt mismatch the validity gate caught (0.164 → **0.969, VALID**), editing one relation delivers the
-  counterfactual **perfectly (mem-on 1.000, prior fully suppressed)**. Genuine valid editing on real data.
-  Still open: the edit **leaks** to neighbours (locality −0.145) and only **weakly generalizes** (paraphrase
-  0.074), and it's one relation at a time — surgical + paraphrase-robust + multi-relation editing is the
-  remaining work ([#16](https://github.com/patcarter883/memory-organ/issues/16)).
+- **Real-benchmark editing — VALID + now LOCAL (§7).** Track 1 on real ROME CounterFact: after fixing a
+  filter/eval prompt mismatch the validity gate caught (0.164 → **0.969, VALID**), editing one relation
+  delivers the counterfactual **perfectly (mem-on 1.000)**. A null-slot tap + locality-preservation loss
+  then makes it **surgical** — the neighbour leak drops **−0.089 → −0.008** with edit-success intact — at
+  the cost of the (already weak) paraphrase generalization (0.074 → ~0.02). Still open: recover
+  generalization (gate the sink on store-retrieval confidence) and scale across relations
+  ([#16](https://github.com/patcarter883/memory-organ/issues/16)).
 - **N-scaling** the store toward useful sizes (thousands of facts, not 8–128 per doc).
 - **Backend portability** — pure PyTorch, CPU/CUDA expected but unverified.
