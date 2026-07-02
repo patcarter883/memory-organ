@@ -577,6 +577,18 @@ class DocBuilder:
                 vals.append(base + self.bind_vals[m])    # object (VALUE), after "<Subject><rel_m>"
         return keys, vals
 
+    def binding_key_spans(self, hstart):
+        """counterfactual_multi: (start, length) of each binding's SUBJECT token span. The default store
+        keys on the subject's LAST token; a POOLED key over the full span is more separable when subjects
+        are multi-token names (the N-scaling key-separation ceiling). Used by pk_store_adapter when
+        CAM_POOLED_SUBJ_KEY=1."""
+        assert self.phrasing == "counterfactual_multi", "binding_key_spans is counterfactual_multi-only"
+        spans = []
+        for m in range(self.M):
+            start = hstart + self.bind_bases[m] + self.slot_subj_off[m]   # subject START (after the prefix)
+            spans.append((start, self.rel_subj_len.get(self.slot_relid[m], 1)))
+        return spans
+
     def _binding_ids(self, name_tid, cargo, slot=None):
         """cargo is an int (single-token) or a tuple of K ints (multi-token phrase).
 
