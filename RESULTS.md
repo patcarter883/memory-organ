@@ -479,19 +479,27 @@ Two opt-in changes (`CAM_POOLED_SUBJ_KEY`, `CAM_SUBJ_ONLY_QUERY`): pool the full
 key instead of keying on the last token, and narrow the read query to the subject span (dropping the
 relation prefix). They lift the capacity curve, most where it hurt (high M):
 
-| M (3 language relations) | 8 | 16 | 32 |
+| M (3 language relations), bind carry | 8 | 16 | 32 |
 |---|---|---|---|
-| baseline (last-token key, full query) | 0.93 | 0.76 | 0.58 |
-| **+ pooled key + subject-only query** | ~0.93 | **0.80** | **0.82** |
+| baseline (last-token key, full query) | 0.93 | ~0.76 | ~0.55 (0.53–0.58) |
+| **+ pooled key + subject-only query** | ~0.93 | ~0.80 | **~0.74 (0.66–0.82)** |
 
-M=32 bind carry recovers **0.58 → 0.82** — closing ~60% of the gap to the curated ceiling (0.96) and beating
-the *M=16 baseline*. The bigger lever is the **subject-only query** (dropping the relation-prefix noise:
-0.63→0.82); pooling the key is secondary (0.58→0.63). So the ceiling was the read *addressing*, exactly as
-the mechanism argument said, and it's largely fixable. (The residual to 0.96 is likely multi-token *names*
-being inherently less separable than single-token entities, plus mixing three relations.) Second,
-independent wall: **fact supply** — even a full probe yields only ~13–37 base-known single-token-
-object facts per relation, capping M for the diverse set (`--cf-probe-cap` widens it). Neither limit is
-exposed by the M=8 headline.
+At M=32 the fix lifts bind carry from ~0.55 to ~0.74 (2 runs each; there's real ±0.08 run-to-run variance,
+so treat these as an average — the fix is *consistently* higher, not exactly 0.82). The bigger lever is the
+**subject-only query** (dropping the relation-prefix noise); pooling the key is secondary (0.58→0.63 in the
+one-factor-at-a-time run). So the ceiling was the read *addressing*, exactly as the mechanism argument said,
+and it's largely fixable — though the residual to the 0.96 curated ceiling is real (multi-token *names* are
+inherently less separable than single-token entities, plus mixing three relations).
+
+**End-to-end, the store gain shows up in editing** — at M=16 (where the whole eval fits), edit-success rises
+**0.697 → 0.754** with the fix on. But the *clean* edit-success test is at M=32, where the fix effect is
+large — and there **the eval OOMs** (the long M=32 docs fragment a 16GB card; not batch-fixable without
+`expandable_segments`, which this ROCm lacks). So the fix is kept **opt-in** (a scaling knob you turn on when
+pushing M high), not a default: it clearly helps store retrieval at scale, its low-M effect is within noise,
+and confirming the edit-success payoff at high M is gated on an **eval-memory fix**. Second, independent
+wall: **fact supply** — even a full probe yields only ~13–37 base-known single-token-object facts per
+relation, capping M for the diverse set (`--cf-probe-cap` widens it). Neither limit is exposed by the M=8
+headline.
 
 ## 8. Still open
 
