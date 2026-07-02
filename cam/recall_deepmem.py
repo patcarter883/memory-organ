@@ -285,7 +285,7 @@ class DocBuilder:
     name/cargo so every binding line is a constant token length)."""
 
     def __init__(self, tok, names, cargo, M, seg_len, qa_seg, pad_word=" and", phrasing="dict",
-                 cargo_tokens=1, cargo_words=None, facts=None):
+                 cargo_tokens=1, cargo_words=None, facts=None, cf_header_prefix=None, cf_rel=None):
         self.tok = tok
         self.names = names          # list[(word, tid)] — space-prefixed single tokens
         self.cargo = cargo          # dict: NO-space single tokens; manifest: space-prefixed
@@ -406,8 +406,15 @@ class DocBuilder:
             assert not self.multitoken, "counterfactual phrasing is single-token only"
             assert facts is not None and len(facts) >= M, \
                 "counterfactual phrasing needs a fact table with >= M facts (set via facts=)"
-            self.header = piece(tok, COUNTERFACTUAL_HEADER)            # "...The capital of"
-            self.rel = piece(tok, COUNTERFACTUAL_REL)                  # " is"
+            # Track 1: a REAL CounterFact relation is folded in exactly like the curated capital case —
+            # the relation's PREFIX ("The mother tongue of") goes in the shared header and its SUFFIX
+            # (" is") is the query rel, so the base is elicited under the fact's TRUE relation (fixing the
+            # filter/eval prompt mismatch that made the validity gate fail on "The capital of <X> is" for
+            # non-capital facts). cf_header_prefix/cf_rel default to the curated capital template.
+            hdr = COUNTERFACTUAL_HEADER if cf_header_prefix is None \
+                else "The following facts are given.\n" + cf_header_prefix
+            self.header = piece(tok, hdr)                              # "...<relation prefix>"
+            self.rel = piece(tok, COUNTERFACTUAL_REL if cf_rel is None else cf_rel)  # " is" / relation suffix
             self.dot = piece(tok, ".")
             self.nl = piece(tok, "\n")
             self.bind_len = 1 + len(self.rel) + 1 + len(self.dot) + len(self.nl)  # ctry is cap . \n

@@ -87,13 +87,14 @@ The base *knows* France→Paris; the memory makes it say France→**Tokyo** (0.9
 BOS-bug we caught and fixed in [RESULTS.md §7](RESULTS.md). (Facts here are real but curated; real-shaped
 phrasing — prose, varied relations, multi-token — is validated in §6.)
 
-> **The honest limit — the curated win does *not* survive the real benchmark yet.** Run against the real
-> **ROME CounterFact** set (21,919 records) with **locality** and **generalization** metrics the curated
-> table can't measure, the edit still *delivers* (mem-on 0.961 vs 0.000 no-memory) — but the run
-> **invalidates itself** (the base doesn't hold the priors under the eval phrasing: validity gate 0.164,
-> a filter/eval prompt-format mismatch), **leaks** to neighbouring facts (locality −0.199), and only
-> **weakly generalizes** to paraphrases (0.103). Curated editing was a best case; real-benchmark editing is
-> *delivered-but-not-yet-valid*. Full numbers and the concrete next steps in
+> **On real data — VALID, after the gate caught a bug.** Run against the real **ROME CounterFact** set
+> (21,919 records) with **locality** and **generalization** metrics the curated table can't measure, the
+> first attempt looked like it worked (mem-on 0.961) but the validity gate said **INVALID** — and it was
+> right: the eval hard-coded "The capital of &lt;X&gt; is" for *every* fact, so non-capital relations were
+> tested under a nonsense prompt. Fixed by editing one relation under its *true* prompt: validity gate
+> **0.164 → 0.969 (VALID)**, edit-success **1.000**, prior fully suppressed. Genuine valid editing on real
+> data — though still **leaky** to neighbours (locality −0.145) and only **weakly generalizing** (0.074),
+> one relation at a time. Full arc + numbers in
 > [RESULTS.md §8](RESULTS.md) ([#16](https://github.com/patcarter883/memory-organ/issues/16)).
 
 See **[RESULTS.md](RESULTS.md)** for every number with its baseline and the full story including the

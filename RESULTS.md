@@ -249,59 +249,58 @@ Gemma's own vocab and format*, so the override is measured on an honestly-establ
 So knowledge editing works **both same-base (Qwen) AND cross-family (Gemma)**: the memory drives a
 *different* frozen model to overwrite its own knowledge. (Part of [#1](https://github.com/patcarter883/memory-organ/issues/1).)
 
-## 8. Track 1 — the real CounterFact benchmark (edit *delivers*, but the run is INVALID and LEAKY)
+## 8. Track 1 — real CounterFact editing: **INVALID → VALID** (the validity gate caught a real bug)
 
 §7 edits a **curated** 40-fact country→capital table hand-picked to be single-token and well-known.
 Track 1 ([#16](https://github.com/patcarter883/memory-organ/issues/16)) is the honest scale test: the
-same PROBE → FILTER → EDIT pipeline run against the **real ROME CounterFact benchmark** (21,919 records)
-with the same validity gate *plus* two new metrics the curated table can't measure — **locality**
-(is the edit surgical, or does it damage neighbouring facts?) and **generalization** (does the edit fire
-on paraphrases of the prompt, or only the exact wording?). Config: product-key store + addr-sup, M=8,
-tap layer 24, bind 1500 / tap 200, frozen Qwen3.5-4B. `--dataset counterfact`.
+same PROBE → FILTER → EDIT pipeline against the **real ROME CounterFact benchmark** (21,919 records) with
+the same validity gate *plus* two new metrics the curated table can't measure — **locality** (is the edit
+surgical, or does it damage neighbouring facts?) and **generalization** (does the edit fire on paraphrases
+of the prompt, or only the exact wording?). Config: product-key store + addr-sup, M=8, tap layer 24, bind
+1500 / tap 200, frozen Qwen3.5-4B. `--dataset counterfact`.
 
-**Filtering.** Of 21,919 records, 783 have a single-token subject (tractable); probing each with its own
-prompt, the base holds **0.130** of them → **102 facts kept** as demonstrably-known edit targets.
+**First run — the gate said INVALID, and it was right.** Of 21,919 records, 783 have a single-token
+subject; probing each with its own prompt the base holds 0.130 → 102 kept. The edit *looked* like it took
+(mem-on cf-acc 0.961) — but the no_mem PRIOR-acc (validity gate) came out **0.164 ≪ 0.60 → INVALID**.
+Cause: the eval's doc-builder hard-coded **"The capital of &lt;X&gt; is"** for *every* fact, so non-capital
+relations (official language, mother tongue, twin city, …) were tested under a nonsense capital prompt the
+base can't answer — a filter/eval prompt-format mismatch, the *same* discipline that caught the Gemma BOS
+artifact in §7. The 0.961 "override" was meaningless: you can't override a prior the base doesn't hold *in
+the format you test it*.
 
-**Editing (same query position as §7):**
+**The fix — edit one relation, elicit under its true prompt.** Facts sharing a CounterFact relation share
+the exact prompt template, so the pipeline now groups the base-known facts by relation, edits the largest
+group, and folds *that relation's* real prompt into the doc header/query — exactly as the code already
+folded "The capital of". Filter and eval then elicit the identical, true relation; the subject stays the
+single-token KEY, so positions and addressing are unchanged.
 
-| metric | value | reading |
-|---|---|---|
-| mem-on counterfactual-acc | **0.961** | the edit takes: memory delivers the counterfactual |
-| no_mem counterfactual-acc | 0.000 | floor — base never emits the wrong answer on its own |
-| no_mem PRIOR-acc (VALIDITY gate) | **0.164** | **must be ≥0.60 — FAILS.** base does *not* hold the priors under the eval phrasing |
-| mem-on PRIOR-acc | 0.002 | delivery strongly suppresses whatever prior is there |
-| ceiling (in-context cf, tap off) | 0.805 | — (chance 0.125) |
+**Result — VALID, and the edit works** (relation P37 "The official language of &lt;X&gt; is", 27 base-known
+facts; e.g. Italy: Italian→Korean, Monaco: French→Ukrainian):
 
-Tap summary L=24: memory **0.955** / no_memory **0.000** / ceiling 0.799 — and the boltA/MAC reference
-stays at memory ≈ no_memory ≈ 0.000 (the wall). **GATE: INVALID.**
+| metric | before (capital template) | after (per-relation) | reading |
+|---|---|---|---|
+| no_mem PRIOR-acc (**VALIDITY gate**) | 0.164 → **INVALID** | **0.969 → VALID** | base demonstrably holds the priors |
+| mem-on counterfactual-acc | 0.961 | **1.000** | the edit takes: memory delivers the counterfactual |
+| no_mem counterfactual-acc | 0.000 | 0.000 | floor — base never emits the wrong answer on its own |
+| mem-on PRIOR-acc | 0.002 | **0.000** | delivery fully suppresses the true prior |
 
-**Locality + generalization** (mem OFF = tap off, mem ON = tap on):
+Bind carry 0.985, tap L=24 memory **1.000** / no_memory **0.000** / ceiling 0.594. **GATE: VALID + EDIT
+WORKS** — the base holds the priors (0.969) *and* the memory overrides them to the counterfactual (1.000 ≫
+0.000). This is genuine, *valid* knowledge editing on the real CounterFact benchmark.
+
+**But it is not yet surgical, and barely generalizes** (mem OFF = tap off, mem ON = tap on):
 
 | metric | mem OFF | mem ON | verdict |
 |---|---|---|---|
-| **Locality** — neighbour prior-acc (gold = *unedited* fact; 256 probes) | 0.270 | **0.070** | **LEAKY** — editing collaterally damages neighbours (−0.199) |
-| **Generalization** — paraphrase acc (gold = *new* fact; 204 probes) | 0.000 | **0.103** | generalizes (ON > OFF) but **weakly** |
+| **Locality** — neighbour prior-acc (gold = *unedited* fact; 256 probes) | 0.242 | **0.098** | **LEAKY** — editing collaterally damages neighbours (−0.145) |
+| **Generalization** — paraphrase acc (gold = *new* fact; 54 probes) | 0.000 | **0.074** | fires on rephrasings, but **weakly** |
 
-**Honest verdict — the curated win does *not* cleanly survive the real benchmark.** Three things the
-40-fact table hid all surface at once:
-
-1. **The delivery mechanism scales.** mem-on 0.955–0.961 vs no_memory 0.000 (above the MAC 0.000 wall)
-   says the tap still *delivers* a bound counterfactual on real, varied CounterFact facts — that part
-   holds. But delivery is the easy half.
-2. **The run INVALIDATES itself** (no_mem prior-acc 0.164 ≪ 0.60). The filter kept 102 facts the base knew
-   *under the probe prompt* (`"<Subject> is"`), yet under the doc-builder **eval** phrasing (seg_len-48
-   leak-free context) the base recalls only 16.4% of those same priors. This is the *same* validity
-   discipline that caught the Gemma BOS artifact in §7 — a prompt-format mismatch between the filter and
-   the eval — so the 0.961 "override" is **not a valid edit-success claim** until filter and eval elicit
-   the prior identically.
-3. **Even taken at face value, the edit is not surgical** (locality leaks −0.199) **and only weakly
-   generalizes** (paraphrase 0.000 → 0.103). The curated table has no neighbours or paraphrases, so it
-   could not have exposed either.
-
-The concrete next steps are specific, not vague: match the filter's eliciting prompt to the eval context
-so the validity gate can pass honestly, then attack the locality leak (the edit currently perturbs the
-tap output for prompts it should leave alone). This is the reality-check Track 1 was built to deliver:
-**curated editing was a best case; real-benchmark editing is delivered-but-not-yet-valid.**
+**Honest verdict.** On real CounterFact, editing a single relation is now **valid and delivered perfectly
+(1.000)** — the first-attempt INVALID was a real eval bug the gate correctly refused to certify, not a
+failure of the memory. What remains open is what the curated table could never test: the edit **leaks** to
+neighbouring facts (−0.145) and only **weakly generalizes** to paraphrases (0.074), and this is one
+relation at a time (multi-relation editing needs per-relation doc configs). Making the edit *surgical* and
+*paraphrase-robust*, and scaling across relations, is the open Track 1 work.
 
 ## 5. Still open
 
@@ -310,11 +309,11 @@ tap output for prompts it should leave alone). This is the reality-check Track 1
   covers prose (single relation), **varied relations** (five mixed templates per doc), and **multi-token
   natural objects** (K-token phrase answers), all with `no_memory` = 0.000. Counterfactual editing — where
   the base has a prior — is demonstrated same-base AND cross-family on a *curated* table (§7).
-- **Real-benchmark editing (attempted — mixed/negative, §8).** Track 1 ran the real ROME CounterFact
-  benchmark with locality + generalization: the edit still *delivers* (mem-on 0.961 vs 0.000), but the run
-  **invalidates itself** (validity gate 0.164 < 0.60, a filter/eval prompt-format mismatch), **leaks** to
-  neighbours (locality −0.199), and only **weakly generalizes** (paraphrase 0.103). The curated win did not
-  cleanly survive the real benchmark — fixing the validity phrasing and the locality leak are the open work
-  ([#16](https://github.com/patcarter883/memory-organ/issues/16)).
+- **Real-benchmark editing — VALID (§8).** Track 1 on real ROME CounterFact: after fixing a filter/eval
+  prompt mismatch the validity gate caught (0.164 → **0.969, VALID**), editing one relation delivers the
+  counterfactual **perfectly (mem-on 1.000, prior fully suppressed)**. Genuine valid editing on real data.
+  Still open: the edit **leaks** to neighbours (locality −0.145) and only **weakly generalizes** (paraphrase
+  0.074), and it's one relation at a time — surgical + paraphrase-robust + multi-relation editing is the
+  remaining work ([#16](https://github.com/patcarter883/memory-organ/issues/16)).
 - **N-scaling** the store toward useful sizes (thousands of facts, not 8–128 per doc).
 - **Backend portability** — pure PyTorch, CPU/CUDA expected but unverified.

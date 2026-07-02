@@ -34,14 +34,13 @@ across applications.
 - 🟡 **Multi-token *cross-base transfer* (largely closed)**: a per-position + non-linear translator lifts
   it from 0.393 to **0.812** (~84% of ceiling) — a strong pass, but short of single-token parity (~0.94).
   Closing the last gap to parity is open (see [RESULTS.md §4](RESULTS.md)).
-- 🟡 **Real *datasets* of facts — attempted, mixed/negative (Track 1, [RESULTS.md §8](RESULTS.md)).** Run
-  against the real ROME **CounterFact** benchmark with **locality + generalization**, the edit still
-  *delivers* (mem-on 0.961 vs 0.000 no-memory) — but the run **invalidates itself** (validity gate 0.164:
-  the base doesn't hold the priors under the eval phrasing), **leaks** to neighbours (locality −0.199), and
-  only **weakly generalizes** to paraphrases (0.103). Real-*shaped* facts are proven above; real-*dataset*
-  editing at scale is **not yet valid** — the curated country→capital win did not cleanly survive. Fixing
-  the filter/eval phrasing mismatch and the locality leak is the open work
-  ([#16](https://github.com/patcarter883/memory-organ/issues/16)).
+- ✅/🟡 **Real *datasets* of facts — VALID editing on ROME CounterFact (Track 1, [RESULTS.md §8](RESULTS.md)).**
+  The first attempt invalidated itself (validity gate 0.164 — the eval hard-coded a capital prompt for every
+  relation); the gate caught it. Fixed by editing one relation under its *true* prompt: validity gate
+  **0.969 (VALID)**, edit-success **1.000**, prior fully suppressed — genuine valid editing on real data.
+  🟡 Still open: the edit **leaks** to neighbours (locality −0.145), only **weakly generalizes** (paraphrase
+  0.074), and runs one relation at a time. Surgical + paraphrase-robust + multi-relation editing is the
+  remaining work ([#16](https://github.com/patcarter883/memory-organ/issues/16)).
 - ❔ Does it hold at the **N-scale** of a useful memory (thousands–millions of facts)?
 - ❌ **Translator reuse — answered NO (fundamental at affine capacity).** A translator fit for one memory
   gives 0.000 on a different memory, and *joint* training on multiple memories still gives 0.002 on a
