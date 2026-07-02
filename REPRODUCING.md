@@ -46,10 +46,13 @@ python -m cam.bind_msweep --store pk --addr-sup-weight 0.0 --Ms 8,16,32 \
     --bind-steps 6000 --batch 16 --lr 1e-3 --seed 20260625
 ```
 
-> **Known gap:** the §1 table's "uncompressed KV (control, upper bound)" row has no command — that
-> control was a one-off falsifier (RESULTS.md §2) and is not scripted in the current drivers
-> (`--store` offers only `bolt`/`pk`). Reproducing it needs a small custom store; a PR restoring it
-> as `--store kv` would be welcome.
+```bash
+# uncompressed KV control (the upper bound). NOTE: the published 1.000 row came from a one-off
+# falsifier that never landed; `--store kv` is its REIMPLEMENTATION (cam/kv_adapter.py) — exact
+# per-doc key/value storage behind the same periphery. Expect ~1.000 through M=32; a material
+# deviation from the published row is a finding about the reimplementation, and worth reporting.
+python -m cam.bind_msweep --store kv --Ms 8,16,32 --bind-steps 6000 --batch 16 --lr 1e-3 --seed 20260625
+```
 
 ### §3 Single-token pipeline (bind → deliver → transfer)
 

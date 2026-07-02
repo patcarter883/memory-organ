@@ -28,6 +28,7 @@ try:
     from .recall_deepmem import NAME_CANDIDATES, CARGO_CANDIDATES, single_token_ids, DocBuilder
     from .recall_boltA import BoltAdapter, eval_direct
     from .pk_store_adapter import PKStoreAdapter
+    from .kv_adapter import KVAdapter
     from . import recall_mag
 except ImportError:
     if __package__:  # real ImportError inside a sibling, not "run as a file" — don't mask it
@@ -39,6 +40,7 @@ except ImportError:
     from recall_deepmem import NAME_CANDIDATES, CARGO_CANDIDATES, single_token_ids, DocBuilder  # noqa: E402
     from recall_boltA import BoltAdapter, eval_direct                     # noqa: E402
     from pk_store_adapter import PKStoreAdapter                           # noqa: E402
+    from kv_adapter import KVAdapter                                      # noqa: E402
     import recall_mag                                                     # noqa: E402
 
 
@@ -60,6 +62,10 @@ def bind_at_M(embed_weight, H, tok, args, M, seed):
                                  sub_topk=args.sub_topk, addr_sup_weight=args.addr_sup_weight,
                                  read_heads=(args.pk_read_heads if args.pk_read_heads > 0 else None)).to(DEV)
         adapter.set_builder(builder)   # pk store needs the bind-block positions
+    elif args.store == "kv":
+        adapter = KVAdapter(embed_weight, H, args.mem_dim, args.heads, args.chunk,
+                            args.expansion, args.k).to(DEV)
+        adapter.set_builder(builder)   # kv control reads the bind-block positions too
     else:
         adapter = BoltAdapter(embed_weight, H, args.mem_dim, args.heads, args.chunk,
                               args.expansion, args.k).to(DEV)
@@ -95,8 +101,10 @@ def main():
     ap.add_argument("--base1", type=str, default=MODEL,
                     help=f"donor (frozen base-1) HF model id; default {MODEL}. Swapping it is an "
                          f"untested-donor experiment, not a reproduction.")
-    ap.add_argument("--store", type=str, default="bolt", choices=["bolt", "pk"],
-                    help="memory mechanism: 'bolt' (DeepMemory v0) or 'pk' (product-key sparse, hub-free)")
+    ap.add_argument("--store", type=str, default="bolt", choices=["bolt", "pk", "kv"],
+                    help="memory mechanism: 'bolt' (DeepMemory v0), 'pk' (product-key sparse, "
+                         "hub-free), or 'kv' (UNCOMPRESSED per-doc key->value control — the upper "
+                         "bound; reimplementation of the one-off falsifier in RESULTS.md §1/§2)")
     ap.add_argument("--n-sub", type=int, default=32, dest="n_sub",
                     help="pk: codebook size per half -> N=n_sub^2 slots")
     ap.add_argument("--topk", type=int, default=8, help="pk: global product-keys kept per query")
@@ -115,9 +123,10 @@ def main():
     H = base.config.get_text_config().hidden_size
     embed_weight = base.get_input_embeddings().weight.detach().float().clone()
     _rh = args.pk_read_heads if args.pk_read_heads > 0 else args.heads
-    store_desc = (f"pk(N={args.n_sub**2} n_sub={args.n_sub} topk={args.topk} sub_topk={args.sub_topk} "
-                  f"read_heads={_rh} addr_sup_w={args.addr_sup_weight})"
-                  if args.store == "pk" else "bolt(DeepMemory v0)")
+    store_desc = {"pk": f"pk(N={args.n_sub**2} n_sub={args.n_sub} topk={args.topk} "
+                        f"sub_topk={args.sub_topk} read_heads={_rh} addr_sup_w={args.addr_sup_weight})",
+                  "kv": "kv(uncompressed per-doc control — upper bound)",
+                  "bolt": "bolt(DeepMemory v0)"}[args.store]
     print(f"[memcap] {args.base1} | H={H} | store={store_desc} | arch: K={args.k} mem_dim={args.mem_dim} "
           f"heads={args.heads} chunk={args.chunk} exp={args.expansion} | bind_steps={args.bind_steps} "
           f"batch={args.batch} lr={args.lr} | sweeping M={Ms}", flush=True)

@@ -23,7 +23,7 @@ import torch.nn.functional as F
 # flat package: sibling imports resolve relatively when imported as cam.X (`python -m cam.X`,
 # `import cam.X`) and fall back to a path-hacked absolute import when run as a file (`python cam/X.py`).
 try:
-    from .m2_adapter import MODEL, DEV, load_frozen_base
+    from .m2_adapter import MODEL, DEV, StageCost, load_frozen_base
     from .recall_deepmem import (NAME_CANDIDATES, CARGO_CANDIDATES, MULTITOKEN_WORD_POOL,
                                  single_token_ids, DocBuilder, counterfactual_single_token,
                                  derange_capitals, COUNTERFACTUAL_HEADER, COUNTERFACTUAL_REL)
@@ -36,7 +36,7 @@ except ImportError:
     _HERE = os.path.dirname(os.path.abspath(__file__))
     if _HERE not in sys.path:
         sys.path.insert(0, _HERE)
-    from m2_adapter import MODEL, DEV, load_frozen_base                   # noqa: E402
+    from m2_adapter import MODEL, DEV, StageCost, load_frozen_base       # noqa: E402
     from recall_deepmem import (NAME_CANDIDATES, CARGO_CANDIDATES, MULTITOKEN_WORD_POOL,  # noqa: E402
                                 single_token_ids, DocBuilder, counterfactual_single_token,
                                 derange_capitals, COUNTERFACTUAL_HEADER, COUNTERFACTUAL_REL)
@@ -610,6 +610,12 @@ def main():
                          "mem/no_mem PRIOR-acc + a VALID/INVALID gate on no_mem prior-acc)")
     ap.add_argument("--cf-probe-batch", type=int, default=16, dest="cf_probe_batch",
                     help="counterfactual: batch size for the base prior-knowledge probe/filter forward")
+    ap.add_argument("--query-rel", type=str, default="", dest="query_rel",
+                    help="ADVERSARIAL paraphrase probe (issue #10, natural phrasing only): bind and "
+                         "train exactly as normal (bindings + training queries use ' lives in'), then "
+                         "ALSO evaluate with the query phrased as this relation (e.g. ' resides in') — "
+                         "does the memory address by the subject or by the literal relation tokens? "
+                         "Reported next to the standard eval; leading space matters for tokenization.")
     ap.add_argument("--readout", type=str, default="linear", choices=["linear", "decoder", "perpos"],
                     help="pk multi-token VALUE readout: 'linear' (default, byte-preserved: slot t -> "
                          "answer token t in one projection) or 'decoder' (tiny AR transformer-decoder "
@@ -698,6 +704,15 @@ def main():
     if args.cargo_tokens > 1:
         print(f"[mag] MULTI-TOKEN cargo: K={args.cargo_tokens} word_pool={len(cargo_words)} "
               f"(answer = K-token real-word phrase; acc = exact-match)", flush=True)
+    # PARAPHRASE probe (#10): an EVAL-ONLY builder whose docs are identical except the query relation.
+    # Bind/train never see it — the store must address by the subject, not the literal relation tokens.
+    builder_pq = None
+    if args.query_rel:
+        assert args.phrasing == "natural", "--query-rel is a natural-phrasing probe"
+        builder_pq = DocBuilder(tok, names, cargo, args.M, args.seg_len, args.qa_seg, phrasing="natural",
+                                cargo_tokens=args.cargo_tokens, cargo_words=cargo_words,
+                                query_rel=args.query_rel)
+        print(f"[mag] PARAPHRASE probe: bindings ' lives in' | eval query '{args.query_rel}'", flush=True)
 
     # ---- RELOAD path: reuse a fixed v0 memory checkpoint (no re-bind) and reproduce the V0 eval ----
     if args.load_ckpt:
@@ -710,6 +725,11 @@ def main():
         if counterfactual:
             cf = eval_counterfactual(base, adapter, injector, builder, rng, args)
             verdict_counterfactual(str(L), cf, 1 / args.M)
+        if builder_pq is not None:
+            pq_carry, pq_abl, _pc, _pa = eval_direct(adapter, builder_pq, rng, args)
+            print(f"[mag][{L}] PARAPHRASE carry: {pq_carry:.3f} (ablated {pq_abl:.3f})", flush=True)
+            gen_pq = eval_generative_mag(base, adapter, injector, builder_pq, rng, args)
+            verdict(f"{L}|paraphrase", pq_carry, gen_pq, 1 / args.M)
         injector.detach()
         print("\n[mag] RELOAD SANITY (tap -> memory / no_memory / ceiling):", flush=True)
         print(f"  L={L:>8}  {m_acc:.3f} / {nm_acc:.3f} / {gen['local_control'][1]:.3f}", flush=True)
@@ -723,7 +743,8 @@ def main():
 
     # ---- stage 1: bind once ----
     adapter = build_adapter(args, embed_weight, H, builder=builder)
-    d_carry = bind_adapter(adapter, builder, rng, args)
+    with StageCost(f"stage-1 bind (M={args.M}, {args.bind_steps} steps, batch {args.batch})"):
+        d_carry = bind_adapter(adapter, builder, rng, args)
 
     # ---- stage 2: MAG delivery ----
     configs = [layers] if args.multi else [[L] for L in layers]
@@ -731,9 +752,21 @@ def main():
     for cfg in configs:
         tag = "+".join(map(str, cfg))
         injector = MAGInjector(base, cfg, args.mem_dim, n_heads=args.tap_heads).to(DEV)
-        train_taps(base, adapter, injector, builder, rng, args, tag)
-        gen = eval_generative_mag(base, adapter, injector, builder, rng, args)
+        with StageCost(f"stage-2 tap fit L={tag} ({args.steps} steps, batch {args.batch})"):
+            train_taps(base, adapter, injector, builder, rng, args, tag)
+        with StageCost(f"delivery eval L={tag}"):
+            gen = eval_generative_mag(base, adapter, injector, builder, rng, args)
         m_acc, nm_acc = verdict(tag, d_carry, gen, 1 / args.M)
+        if builder_pq is not None:
+            # the store/tap were trained with ' lives in' queries ONLY; this asks the same questions
+            # phrased differently. carry = the store's own paraphrase addressing; the verdict block =
+            # paraphrase delivery through the frozen base.
+            pq_carry, pq_abl, _pc, _pa = eval_direct(adapter, builder_pq, rng, args)
+            print(f"[mag][{tag}] PARAPHRASE carry: {pq_carry:.3f} (ablated {pq_abl:.3f}) "
+                  f"vs standard {d_carry:.3f}", flush=True)
+            with StageCost(f"paraphrase delivery eval L={tag}"):
+                gen_pq = eval_generative_mag(base, adapter, injector, builder_pq, rng, args)
+            verdict(f"{tag}|paraphrase", pq_carry, gen_pq, 1 / args.M)
         if counterfactual:
             # the 4 knowledge-editing metrics + VALID/INVALID gate (scores mem/no_mem against BOTH the
             # counterfactual capital and the true prior at the SAME query position).

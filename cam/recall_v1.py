@@ -29,7 +29,7 @@ import torch.nn.functional as F
 # flat package: sibling imports resolve relatively when imported as cam.X (`python -m cam.X`,
 # `import cam.X`) and fall back to a path-hacked absolute import when run as a file (`python cam/X.py`).
 try:
-    from .m2_adapter import MODEL, DEV
+    from .m2_adapter import MODEL, DEV, StageCost
     from .recall_deepmem import (NAME_CANDIDATES, CARGO_CANDIDATES, MULTITOKEN_WORD_POOL,
                                  single_token_ids, DocBuilder, derange_capitals)
     from .recall_mag import (memory_bank, load_ckpt, EVAL_BATCH_CAP,
@@ -41,7 +41,7 @@ except ImportError:
     _HERE = os.path.dirname(os.path.abspath(__file__))
     if _HERE not in sys.path:
         sys.path.insert(0, _HERE)
-    from m2_adapter import MODEL, DEV                                      # noqa: E402
+    from m2_adapter import MODEL, DEV, StageCost                           # noqa: E402
     from recall_deepmem import (NAME_CANDIDATES, CARGO_CANDIDATES, MULTITOKEN_WORD_POOL,  # noqa: E402
                                 single_token_ids, DocBuilder, derange_capitals)
     from recall_mag import (memory_bank, load_ckpt, EVAL_BATCH_CAP,  # noqa: E402
@@ -462,8 +462,10 @@ def main():
         nparam = sum(p.numel() for p in injector.A_params())
         print(f"[v1] translator variant={args.xlator} (Kc={Kc_x}, mlp_mult={args.mlp_mult}) "
               f"trainable params: {nparam/1e6:.3f}M (base-2 d={H2} <-> tap d={frozen_tap.H})", flush=True)
-        train_translator(base2, adapter, injector, builder1, builder2, rng, args)
-        gen = eval_v1_counterfactual(base2, adapter, injector, builder1, builder2, rng, args)
+        with StageCost(f"stage-3 translator fit ({args.xlator}, {args.steps} steps, batch {args.batch})"):
+            train_translator(base2, adapter, injector, builder1, builder2, rng, args)
+        with StageCost("transfer eval (counterfactual)"):
+            gen = eval_v1_counterfactual(base2, adapter, injector, builder1, builder2, rng, args)
         verdict_v1_counterfactual(gen, 1 / args.M)
         if args.save_translator:
             save_translator(args.save_translator, injector, {
@@ -507,8 +509,10 @@ def main():
           f"trainable params: {nparam/1e6:.3f}M "
           f"(base-2 d={H2} <-> tap d={frozen_tap.H})", flush=True)
 
-    train_translator(base2, adapter, injector, builder1, builder2, rng, args)
-    gen = eval_v1(base2, adapter, injector, builder1, builder2, rng, args)
+    with StageCost(f"stage-3 translator fit ({args.xlator}, {args.steps} steps, batch {args.batch})"):
+        train_translator(base2, adapter, injector, builder1, builder2, rng, args)
+    with StageCost("transfer eval"):
+        gen = eval_v1(base2, adapter, injector, builder1, builder2, rng, args)
     m_acc, nm_acc = verdict(gen, 1 / args.M, xlator=args.xlator)
     if args.save_translator:
         save_translator(args.save_translator, injector, {

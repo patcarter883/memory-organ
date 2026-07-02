@@ -19,7 +19,7 @@ import torch
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 CAM_MODULES = [
-    "bind_msweep", "deep_mem_analytic", "deep_memory", "gated_tap", "m2_adapter",
+    "bind_msweep", "deep_mem_analytic", "deep_memory", "gated_tap", "kv_adapter", "m2_adapter",
     "persist_probe", "pk_store", "pk_store_adapter", "recall_boltA", "recall_deepmem",
     "recall_mag", "recall_v1", "store_recurrence", "translator",
 ]
@@ -147,6 +147,47 @@ def test_pk_adapter_inject_shapes():
     assert logits.shape == (B, vocab) and torch.isfinite(logits).all()
 
 
+# ---- KVAdapter: the uncompressed control (upper bound) -----------------------------------------
+def test_kv_adapter_shapes_and_floor():
+    from cam.kv_adapter import KVAdapter
+    torch.manual_seed(0)
+    vocab, H, mem_dim, K = 64, 32, 16, 4
+    adapter = KVAdapter(torch.randn(vocab, H), H, mem_dim, heads=2, chunk=4, expansion=2.0, k=K)
+    b = _StubDictBuilder()
+    adapter.set_builder(b)
+    B, S = 2, b.qa_start + 3
+    ids = torch.randint(0, vocab, (B, S))
+    apos = b.qa_start + 2
+    pref = adapter.inject(ids, 8, b.qa_start, apos, carry=True)
+    assert pref.shape == (B, K, 32) and torch.isfinite(pref).all()
+    abl = adapter.inject(ids, 8, b.qa_start, apos, carry=False)
+    assert torch.allclose(abl, torch.zeros_like(abl)), "ablated KV prefix must be exactly zero"
+    logits = adapter.direct_logits(pref)
+    assert logits.shape == (B, vocab) and torch.isfinite(logits).all()
+
+
+def test_kv_adapter_retrieval_addresses_the_queried_key():
+    """The control's storage is exact by construction, so even UNTRAINED, an exact-key query must
+    attend hardest to its own binding: the query token IS the stored key token, and a LayerNormed
+    vector's self-dot dominates its dot with other tokens' embeds."""
+    from cam.kv_adapter import KVAdapter
+    torch.manual_seed(0)
+    vocab, H, mem_dim = 64, 32, 32
+    adapter = KVAdapter(torch.randn(vocab, H), H, mem_dim, heads=2, chunk=4, expansion=2.0, k=4)
+    b = _StubDictBuilder()
+    adapter.set_builder(b)
+    hstart = len(b.bos) + len(b.header)
+    ids = torch.randint(10, vocab, (1, b.qa_start + 3))
+    keys = [20, 30, 40]                                    # distinct key tokens for the M=3 bindings
+    for m, ktid in enumerate(keys):
+        ids[0, hstart + m * b.bind_len + b.key_off] = ktid
+    queried = 1
+    ids[0, b.qa_start] = keys[queried]                     # query = binding 1's exact key token
+    emb = adapter._e(ids)
+    _, attn = adapter.retrieve(emb, b.qa_start, b.qa_start + 2)
+    assert int(attn[0, 0].argmax()) == queried, "exact-key query must address its own binding"
+
+
 # ---- DeepMemory (the naive-store baseline) ------------------------------------------------------
 def test_deep_memory_ingest_retrieve():
     from cam.deep_memory import DeepMemory
@@ -182,3 +223,15 @@ def test_docbuilder_with_real_tokenizer():
     assert getattr(b, "key_off", 0) == _StubDictBuilder.key_off
     voff = b.val_off if hasattr(b, "val_off") else 1 + len(b.colon)
     assert voff == _StubDictBuilder.val_off
+    # paraphrased-query builder (#10): identical docs except the query relation tokens
+    cargo_nat = single_token_ids(tok, CARGO_CANDIDATES, prefix=" ")   # natural objects: mid-sentence
+    nat = DocBuilder(tok, names, cargo_nat, M=4, seg_len=32, qa_seg=2, phrasing="natural")
+    par = DocBuilder(tok, names, cargo_nat, M=4, seg_len=32, qa_seg=2, phrasing="natural",
+                     query_rel=" resides in")
+    assert par.rel == nat.rel and par.bind_len == nat.bind_len, "bindings must be unchanged"
+    assert par.query_rel_piece != nat.query_rel_piece, "query relation must differ"
+    i_n, _, a_n = nat.build(np.random.default_rng(1), 2, local=False)
+    i_p, _, a_p = par.build(np.random.default_rng(1), 2, local=False)
+    assert torch.equal(i_n[:, :nat.qa_start], i_p[:, :par.qa_start]), \
+        "pre-QA doc (bindings) must be byte-identical; only the query changes"
+    assert a_p - par.qa_start == 1 + len(par.query_rel_piece)

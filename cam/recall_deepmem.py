@@ -293,7 +293,7 @@ class DocBuilder:
     name/cargo so every binding line is a constant token length)."""
 
     def __init__(self, tok, names, cargo, M, seg_len, qa_seg, pad_word=" and", phrasing="dict",
-                 cargo_tokens=1, cargo_words=None, facts=None):
+                 cargo_tokens=1, cargo_words=None, facts=None, query_rel=None):
         self.tok = tok
         self.names = names          # list[(word, tid)] — space-prefixed single tokens
         self.cargo = cargo          # dict: NO-space single tokens; manifest: space-prefixed
@@ -360,6 +360,12 @@ class DocBuilder:
             # multi-token: "lives in New York"). K==1 keeps the byte-identical single-token natural path.
             self.header = piece(tok, "The following facts are given.\n")
             self.rel = piece(tok, " lives in")                         # the single fixed relation
+            # PARAPHRASED QUERY (issue #10 adversarial probe): bindings always use self.rel, but the
+            # QUERY may use a DIFFERENT phrasing (e.g. " resides in") — does the memory address by the
+            # subject's meaning or by the literal relation tokens? None = query with the bind relation
+            # (byte-identical default). Eval-time knob: bind/train with the default builder, then eval
+            # with a query_rel builder (recall_mag --query-rel).
+            self.query_rel_piece = piece(tok, query_rel) if query_rel else self.rel
             self.dot = piece(tok, ".")
             self.nl = piece(tok, "\n")
             if self.multitoken:
@@ -369,7 +375,7 @@ class DocBuilder:
                 self.bind_len = 1 + len(self.rel) + self.cargo_tokens + len(self.dot) + len(self.nl)
             else:
                 self.bind_len = 1 + len(self.rel) + 1 + len(self.dot) + len(self.nl)  # subj rel obj . \n
-            self.qfix_len = 1 + len(self.rel)                          # "<Subject> lives in"
+            self.qfix_len = 1 + len(self.query_rel_piece)              # "<Subject> <query rel>"
             self.key_off = 0                                           # subject
             self.val_off = 1 + len(self.rel)                          # object (after "<Subject> lives in")
         elif phrasing == "varied":
@@ -448,6 +454,8 @@ class DocBuilder:
                 self.val_off = 1 + len(self.colon)                     # name
         else:
             raise ValueError(f"unknown phrasing {phrasing!r}")
+        assert query_rel is None or phrasing == "natural", \
+            "query_rel (paraphrased query) is implemented for natural phrasing only"
         pad = piece(tok, pad_word)
         assert len(pad) == 1, f"pad_word {pad_word!r} must be a single token (got {pad})"
         self.pad_tid = pad[0]
@@ -514,7 +522,8 @@ class DocBuilder:
             rel = self.rels[self.slot_rel[slot]]                       # queried slot's relation
             return [name_tid] + rel                                    # "<Subject><rel>"
         if self.phrasing == "natural":
-            return [name_tid] + self.rel                               # "<Subject> lives in"
+            return [name_tid] + self.query_rel_piece                   # "<Subject> lives in" (or the
+                                                                       # --query-rel paraphrase)
         if self.phrasing == "counterfactual":
             return [name_tid] + self.rel                               # "<Country> is"
         if self.phrasing == "manifest":

@@ -18,7 +18,7 @@ Smoke success = LM loss DROPS over the run (memory learns to carry cross-segment
 Entry:
   python -m cam.m2_adapter --steps 100
 """
-import argparse, os, sys, torch, torch.nn as nn, torch.nn.functional as F
+import argparse, os, sys, time, torch, torch.nn as nn, torch.nn.functional as F
 
 # flat package: the sibling import (deep_memory) is lazy, inside TitansMemoryAdapter.__init__ —
 # it resolves relatively when imported as cam.X and falls back to a path-hacked absolute import
@@ -26,6 +26,36 @@ import argparse, os, sys, torch, torch.nn as nn, torch.nn.functional as F
 
 MODEL = "Qwen/Qwen3.5-4B"
 DEV = "cuda" if torch.cuda.is_available() else "cpu"
+
+
+class StageCost:
+    """Wall-clock + peak-GPU-memory logger for a pipeline stage (issue #11: put a MEASURED cost line
+    on record for every stage instead of step-count arithmetic). Usage:
+
+        with StageCost("stage-1 bind (M=8, 6000 steps)"):
+            ...
+
+    Prints `[cost] <tag>: <sec>s | peak GPU <GiB> GiB` on exit (time-only off-GPU). Peak memory is
+    reset on entry, so the number is THIS stage's peak, not the process high-water mark."""
+
+    def __init__(self, tag):
+        self.tag = tag
+
+    def __enter__(self):
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+            torch.cuda.reset_peak_memory_stats()
+        self.t0 = time.time()
+        return self
+
+    def __exit__(self, *exc):
+        dt = time.time() - self.t0
+        mem = ""
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+            mem = f" | peak GPU {torch.cuda.max_memory_allocated() / 2**30:.2f} GiB"
+        print(f"[cost] {self.tag}: {dt:.0f}s{mem}", flush=True)
+        return False
 
 # distinct, structured-ish long passage -> several segments
 TEXT = (
