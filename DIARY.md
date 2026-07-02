@@ -376,3 +376,34 @@ drops 0.242 → 0.098 (−0.145 collateral) — and it only **weakly generalizes
 to "valid, but not yet surgical, paraphrase-robust, or multi-relation." That's real progress and a clear,
 specific open front. The nicest part of the story is unchanged from Phase 9: the validity control we built
 to keep ourselves honest did its job twice now — it caught a bug we'd otherwise have shipped as a result.
+
+## Phase 12 — making the edit surgical: the locality leak, and a tradeoff we won't hide
+
+Phase 11 left Track 1 valid but LEAKY: editing one relation dropped neighbouring facts' prior recall
+(collateral damage). The cause is structural and, once seen, obvious. The delivery tap is a gated
+cross-attention whose `softmax` must sum to 1 — so for *every* query, including an out-of-store neighbour,
+it attends to *something* in the memory bank and injects it, scaled by a gate that training opened to
+deliver edits. The tap literally has no way to say "this query isn't mine; inject nothing."
+
+Two changes give it that option. A **null / sink slot**: a learnable extra attention key with a *zero*
+value, so the residual can attend to "nothing" and the injection collapses to ~0 — the *capacity* to be
+inert. And a **locality-preservation loss**: on held-out neighbour prompts, run the base with the edit
+bank loaded and match the tap-on answer distribution to the frozen base's tap-off distribution (a KL) —
+the *signal* that teaches the tap to route non-matching queries to the sink. Neighbours are split 50/50 so
+the metric never sees a prompt the loss trained on.
+
+It works, cleanly, and the mechanism is visible in the logs: the fraction of attention mass on the null
+slot climbs from ~0.06 to ~0.83 over training. On a clean control (same bind, same seed, same 135
+held-out neighbours), the locality drop goes from **−0.089** (edit-only) to **−0.008** at
+locality-weight 0.3 — ~90% of the leak gone — while edit-success stays pinned at **1.000** and the gate
+stays VALID. A modest weight is enough; you do not have to crank it.
+
+And here is the part we are not going to bury: it **costs generalization**. Paraphrase firing drops from
+0.074 (already weak) to ~0.02. This is the locality↔generalization tension that the knowledge-editing
+literature has documented for years, and we reproduced it from first principles — because the null slot
+keys on *prompt novelty*, and a paraphrase of the edited fact is, to the tap, just another unfamiliar
+prompt, so it gets routed to the sink exactly like a neighbour. The fix that would get *both* is to gate
+the sink on **store-retrieval confidence** — fire the injection only when the store actually returns the
+queried subject (paraphrases share the subject; neighbours don't) — rather than on prompt familiarity.
+That's the open next step. For now: surgical single-relation editing on real CounterFact is valid,
+delivered at 1.000, and LOCAL, with paraphrase-robustness the honest remaining gap.

@@ -38,9 +38,11 @@ across applications.
   The first attempt invalidated itself (validity gate 0.164 — the eval hard-coded a capital prompt for every
   relation); the gate caught it. Fixed by editing one relation under its *true* prompt: validity gate
   **0.969 (VALID)**, edit-success **1.000**, prior fully suppressed — genuine valid editing on real data.
-  🟡 Still open: the edit **leaks** to neighbours (locality −0.145), only **weakly generalizes** (paraphrase
-  0.074), and runs one relation at a time. Surgical + paraphrase-robust + multi-relation editing is the
-  remaining work ([#16](https://github.com/patcarter883/memory-organ/issues/16)).
+  A null-slot tap + locality-preservation loss then makes it **surgical** — the neighbour leak drops
+  **−0.089 → −0.008** with edit-success intact. 🟡 Still open: this costs paraphrase generalization
+  (0.074 → ~0.02, the classic locality↔generalization tension) — recover it by gating the sink on
+  store-retrieval confidence — and it runs one relation at a time
+  ([#16](https://github.com/patcarter883/memory-organ/issues/16)).
 - ❔ Does it hold at the **N-scale** of a useful memory (thousands–millions of facts)?
 - ❌ **Translator reuse — answered NO (fundamental at affine capacity).** A translator fit for one memory
   gives 0.000 on a different memory, and *joint* training on multiple memories still gives 0.002 on a
