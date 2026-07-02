@@ -292,3 +292,45 @@ PRIOR-acc **0.004** — **GATE VALID**. So knowledge editing works **both same-b
 (Gemma)**: one frozen memory drives a *different* frozen model to overwrite its own parametric knowledge. The
 invalid→valid arc, and the fact that our own validity gate caught the artifact, is the more honest telling.
 Part of #1.
+
+---
+
+## Phase 10 — A reader's suggestion: swappable LoRA adapters, doc-to-LoRA, and the persona/knowledge line
+
+Not an experiment — a direction note, prompted by a reader (Reddit) who suggested the project consider
+**hot-swappable LoRA adapters** to tailor a model to a "persona, memory, tools," and floated **doc-to-LoRA**
+(encode a document into an adapter). It's a good, generous suggestion, and worth engaging honestly rather
+than waving off — the useful part of the reply is the part that says where it *collides* with the thesis.
+
+**Where LoRA is the better tool: persona, style, tools.** For "how the model talks and which skills it
+reaches for," a swappable LoRA is clean and proven, and memory-organ says nothing about it — our whole
+surface is *factual recall and editing*. So persona/tool adapters are **complementary**, not competitive, and
+they mark a real gap: nothing here shapes *who the model is*. If you wanted a full assistant you'd plausibly
+want both — which is the interesting synthesis below.
+
+**Where it collides with the thesis: memory.** The founding argument (Entry 0) is that durable *factual*
+memory should be a **base-agnostic module you carry across model families through a tiny translator**, with
+**no base weights trained, ever** (see the METHOD training table). A LoRA is the opposite shape: it is welded
+to one base's weight space. So "doc-to-LoRA" is, for the *knowledge* axis, a bet against the one property this
+project exists to demonstrate — **transfer**. Two things we already know bear on it directly:
+
+- **Doc-to-LoRA ≈ per-document weight edits, per base.** Our answer to "encode this document's facts" is
+  *bind into the store + zero-init MAG gate*, and the differentiator is that the same frozen memory then
+  **delivers into Gemma and cross-family Llama** through a small translator. A LoRA fit on base-1 does not
+  transport to a foreign tokenizer/architecture at all — you would refit per base. That is a *stronger* form
+  of exactly the wall **#5** recorded as answered-NO for the affine translator (a mapping fit for one
+  memory/base doesn't reuse) — LoRA doesn't even have a translator to reuse.
+- **Locality is the make-or-break, and it's where doc-to-LoRA tends to be "meh."** The reader's own POC came
+  out "meh," which tracks: fine-tuning a small fact set into weights is prone to clobbering unrelated priors —
+  precisely the *locality/specificity* metric **#16** names as the thing that separates real editing from
+  "break the model into saying one thing." Our editing result already reports mem-on prior-acc collapse *on
+  the edited fact* while leaving the mechanism gated (zero-init γ) elsewhere; a fair head-to-head would be a
+  locality comparison, not a recall comparison.
+
+**The synthesis worth naming.** The clean division of labor is **persona/tools = base-specific (LoRA)**,
+**facts = base-agnostic (this memory)** — separate "who the model is" from "what it knows," and swap each on
+its own axis. That framing is currently absent from the ROADMAP; it's added there as a *related-approaches*
+note, not a committed track, because it's a design stance, not a result. If it ever becomes a track, the
+honest first test is the adversarial one: **doc-to-LoRA vs bind+gate on the same facts, scored on locality and
+on cross-family transfer** — the two axes where we expect the memory to win and the LoRA to refit-or-degrade.
+That would either sharpen the thesis or falsify it, which is the only kind of comparison this repo keeps.

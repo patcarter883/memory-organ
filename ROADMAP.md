@@ -64,6 +64,24 @@ delivery, and translator behind a small surface; packaged, documented, examples.
 "for everyone" artifact. The current flat harness gets reorganized into `store / delivery / transfer`
 subpackages on the way here.
 
+## Related approaches — why not just swap LoRA adapters?
+
+A recurring, fair suggestion (raised by a reader; see [DIARY.md](DIARY.md) Phase 10) is to tailor a model
+with **hot-swappable LoRA adapters** — including **doc-to-LoRA** (encode a document into an adapter). Our
+honest read: it depends on the axis.
+
+- **Persona, style, tools → LoRA is the right tool, and complementary.** memory-organ shapes *what a model
+  knows*, not *who it is*; a swappable persona/tool adapter is a clean fit and a genuine gap here.
+- **Facts / knowledge → this is where LoRA collides with the thesis.** A LoRA is welded to one base's weight
+  space, so doc-to-LoRA gives up **cross-family transfer** — the property this repo exists to demonstrate —
+  and must be refit per base (a stronger version of the reuse wall recorded in #5). It also tends to be weak
+  on **locality** (#16), the metric that separates real editing from "break the model into saying one thing."
+
+The framing we'd carry forward: **persona/tools = base-specific (LoRA), facts = base-agnostic (this
+memory)** — two axes, swapped independently. This is a *design stance, not a result*; if promoted to a track,
+its first test is adversarial — doc-to-LoRA vs bind+gate on the same facts, scored on **locality** and
+**cross-family transfer**.
+
 ## Tracking
 
 Live work is tracked in **[GitHub Issues](../../issues)**, grouped by
