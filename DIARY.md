@@ -292,3 +292,50 @@ PRIOR-acc **0.004** — **GATE VALID**. So knowledge editing works **both same-b
 (Gemma)**: one frozen memory drives a *different* frozen model to overwrite its own parametric knowledge. The
 invalid→valid arc, and the fact that our own validity gate caught the artifact, is the more honest telling.
 Part of #1.
+
+## Phase 10 — Track 1: the real CounterFact benchmark bites back
+
+Phase 9 edited a **curated** 40-fact country→capital table — hand-picked to be single-token, well-known,
+and (we'd later realise) unusually friendly. Track 1 ([#16](https://github.com/patcarter883/memory-organ/issues/16))
+is the honest scale-up: run the exact same PROBE → FILTER → EDIT pipeline against the **real ROME
+CounterFact benchmark** (21,919 records), and add the two metrics the curated table structurally *cannot*
+measure — **locality** (does editing one fact damage its neighbours?) and **generalization** (does the edit
+fire on paraphrases, or only the exact prompt?). This is the test that turns "a mechanism" into "a mechanism
+that survives real data," or finds where it breaks. It found where it breaks.
+
+First, an engineering aside that's worth recording because it nearly masqueraded as a result: the eval
+kept OOMing on a 16 GB card, and the first fix capped the *wrong* function. The real culprit was the
+ceiling forward materialising the full `[batch, tokens, vocab=151936]` logits tensor in fp32 (~1 GB) on
+top of a 13 GB training-tail — right at the end of a good run, so it looked like the mechanism had a
+memory bug when it was just the eval harness. Fix: run the LM head on only the last `Kc` answer positions
+(`logits_to_keep`), collapsing `[B,T,V]→[B,Kc,V]`. Numerically identical, ~200× smaller, and the run
+completed clean. Mentioning it because "the eval crashed" is exactly the kind of thing that gets silently
+worked around; here it's in the record.
+
+Now the result, and it is a genuinely mixed one. **The delivery mechanism scales**: mem-on
+counterfactual-acc **0.961** against a no_memory floor of **0.000** (and the boltA/MAC reference pinned at
+memory ≈ no_memory ≈ 0.000), so the tap still *delivers* a bound counterfactual on real, varied
+CounterFact facts. That's the encouraging half — and it's the *easy* half. Three things the 40-fact table
+had hidden all surfaced at once:
+
+1. **The run invalidates itself.** no_mem PRIOR-acc came out **0.164**, far below the 0.60 validity
+   threshold. The filter kept 102 facts the base demonstrably knew *under the probe prompt* (`"<Subject>
+   is"`), but under the doc-builder **eval** phrasing (a seg-len-48 leak-free context) the base recalls
+   only 16% of those same priors. This is the *same* validity discipline that caught the Gemma BOS artifact
+   in Phase 9 — a prompt-format mismatch between filter and eval — so the impressive-looking 0.961 override
+   is **not a valid edit-success claim** until both elicit the prior identically. The gate did its job
+   again: it refused to certify an override of a prior the base doesn't demonstrably hold *in the format we
+   test it*.
+2. **The edit leaks.** Locality: neighbour prior-acc drops from 0.270 (tap off) to **0.070** (tap on) over
+   256 probes — a −0.199 collateral hit. The edit is not surgical; delivering one counterfactual perturbs
+   the base on facts it should leave untouched.
+3. **It barely generalizes.** Paraphrase acc for the *new* fact rises from 0.000 to only **0.103** over 204
+   probes — the edit is largely tied to the exact prompt wording.
+
+The honest headline: **curated editing was a best case; real-benchmark editing is delivered-but-not-yet-
+valid.** This is not a failure of the delivery mechanism (which scaled fine) but of everything *around* it
+that a curated table let us skip — establishing the prior in the same format we evaluate, keeping the edit
+local, and making it robust to rephrasing. The next steps are concrete rather than hand-wavy: match the
+filter's eliciting prompt to the eval context so the validity gate can pass honestly, then attack the
+locality leak directly. Recorded here undramatised because the point of Track 1 was to find exactly this,
+and it did.
