@@ -133,6 +133,12 @@ def memory_bank(adapter, ids, seg_len, qa_start, answer_pos, carry=True):
     return attn @ retrieved                                              # [B,K,mem_dim] pooled
 
 
+def _set_bank(injector, adapter, bank):
+    """Set the tap bank AND forward the adapter's per-example store-confidence scalar (pk-store only;
+    None for bolt). The tap uses conf only when its confidence gate is enabled — harmless otherwise."""
+    injector.set_bank(bank, conf=getattr(adapter, "_last_conf", None))
+
+
 def _leakfree_ctx(base, builder, ids, apos, end=None):
     """header (FORMAT only, no bindings) + query tokens -> base inputs_embeds. Same context boltA used.
 
@@ -233,7 +239,7 @@ def train_taps(base, adapter, injector, builder, rng, args, tag, loc_buckets=Non
         ids, ans = ids.to(DEV), ans.to(DEV)
         with torch.no_grad():
             bank = memory_bank(adapter, ids, args.seg_len, builder.qa_start, apos, carry=True)
-        injector.set_bank(bank)                                          # memory frozen -> bank detached
+        _set_bank(injector, adapter, bank)                              # memory frozen -> bank detached
         # multi-token: teacher-force the answer prefix into the context (end=apos+Kc-1) so the last Kc
         # logit positions predict the full answer sequence.
         ctx_emb = _leakfree_ctx(base, builder, ids, apos, end=apos + Kc - 1)
@@ -262,12 +268,12 @@ def train_taps(base, adapter, injector, builder, rng, args, tag, loc_buckets=Non
                 neg_bank = memory_bank(adapter, neg_ids, args.seg_len, builder.qa_start, neg_apos, carry=True)
                 injector.set_bank(None)
                 off = _answer_logits(base, neg_ctx, 1)                    # tap OFF -> the base's true prior
-            injector.set_bank(neg_bank)
+            _set_bank(injector, adapter, neg_bank)                        # weak bank + its (low) confidence
             on = _answer_logits(base, neg_ctx, 1)                         # tap ON (weak bank), differentiable
             loc_loss = F.kl_div(F.log_softmax(on, -1), F.softmax(off, -1), reduction="batchmean")
             if torch.isfinite(loc_loss):
                 (lw * loc_loss).backward()                               # accumulate grad; FREE the loc graph
-                loc_val = float(loc_loss)
+                loc_val = float(loc_loss.detach())                       # scalar read post-backward (no grad warning)
             neg_null = float(np.mean(list(injector.null_attn_stats().values())))
         gn = torch.nn.utils.clip_grad_norm_(list(injector.parameters()), 1.0)
         if not torch.isfinite(gn):                                       # NaN grad guard
@@ -277,6 +283,11 @@ def train_taps(base, adapter, injector, builder, rng, args, tag, loc_buckets=Non
         if step % 200 == 0 or step == args.steps - 1:
             em, pt = _seq_metrics(logits, ans)
             extra = (f" loc_kl {loc_val:.3f} neg_null {neg_null:.3f}" if lw > 0 else "")
+            # confidence gate: cgate_pos = c on the STRONG (positive) bank just delivered — want ->1;
+            # neg_cgate = c on the WEAK negative bank (last set) — want ->0. The spread is the gate working.
+            if getattr(args, "conf_gate", False):
+                neg_cg = float(np.mean(list(injector.cgate_stats().values())))
+                extra += f" neg_cgate {neg_cg:.3f}"
             print(f"[mag][{tag}] step {step:4d} loss {edit_loss.item():.3f} exact {em.mean().item():.3f} "
                   f"per_tok {pt.mean().item():.3f} gate {injector.gate_stats()}{extra}", flush=True)
     injector.set_bank(None)
@@ -318,7 +329,7 @@ def eval_generative_mag(base, adapter, injector, builder, rng, args, n=512):
         ctx_emb = _leakfree_ctx(base, builder, ids, apos, end=apos + Kc - 1)
         for cond, carry in (("memory", True), ("no_memory", False)):
             bank = memory_bank(adapter, ids, args.seg_len, builder.qa_start, apos, carry=carry)
-            injector.set_bank(bank)
+            _set_bank(injector, adapter, bank)
             lg = _answer_logits(base, ctx_emb, Kc)
             res[cond][0].extend(_nll_bits(lg, ans))
             em, pt = _seq_metrics(lg, ans)
@@ -348,6 +359,7 @@ def save_ckpt(path, adapter, injector, tap_layer, args, d_carry, cf_meta=None):
         "taps": injector.taps.state_dict(),
         "tap_layer": tap_layer,
         "tap_heads": args.tap_heads,
+        "conf_gate": getattr(args, "conf_gate", False),     # store-confidence gate (retrieval-strength delivery)
         "mem_dim": args.mem_dim, "heads": args.heads, "chunk": args.chunk,
         "expansion": args.expansion, "k": args.k, "d_carry": d_carry,
         # donor id + embed-table shape: loaders rebuild the SAME base-1 the memory was bound on and
@@ -423,7 +435,8 @@ def load_ckpt(path, embed_weight, base, dev, builder=None):
         p.requires_grad_(False)
     adapter.eval()
     L = ck["tap_layer"]
-    injector = MAGInjector(base, [L], ck["mem_dim"], n_heads=ck["tap_heads"]).to(dev)
+    injector = MAGInjector(base, [L], ck["mem_dim"], n_heads=ck["tap_heads"],
+                           conf_gate=ck.get("conf_gate", False)).to(dev)
     injector.taps.load_state_dict(ck["taps"])
     for p in injector.parameters():
         p.requires_grad_(False)
@@ -678,7 +691,7 @@ def eval_locality_generalization(base, tok, injector, adapter, builder, kept, ar
                     d_ids, _cf, _pr, d_apos = builder.build_cf(np.random.default_rng(args.seed + i), cur)
                 d_ids = d_ids.to(DEV)
                 bank = memory_bank(adapter, d_ids, args.seg_len, builder.qa_start, d_apos, carry=carry)
-                injector.set_bank(bank)
+                _set_bank(injector, adapter, bank)
                 emb = base.get_input_embeddings()(ids)
                 pred = _last_logit(base, inputs_embeds=emb).argmax(-1)
                 hit += (pred == gold).sum().item(); seen += cur
@@ -745,7 +758,7 @@ def eval_counterfactual(base, adapter, injector, builder, rng, args, n=512):
         ctx_emb = _leakfree_ctx(base, builder, ids, apos)
         for cond, carry in (("memory", True), ("no_memory", False)):
             bank = memory_bank(adapter, ids, args.seg_len, builder.qa_start, apos, carry=carry)
-            injector.set_bank(bank)
+            _set_bank(injector, adapter, bank)
             lg = _answer_logits(base, ctx_emb, 1)
             cf_hit = (lg.argmax(-1) == ans_cf).sum().item()
             prior_hit = (lg.argmax(-1) == ans_prior).sum().item()
@@ -909,6 +922,13 @@ def main():
                          "tap training (tap-on ≈ frozen-base tap-off on HELD-OUT neighbour prompts). >0 "
                          "teaches the tap's null slot to leave out-of-store facts alone; 0 = edit-only "
                          "(current behavior). Neighbours are split 50/50 train/eval (no leak).")
+    ap.add_argument("--conf-gate", action="store_true", dest="conf_gate",
+                    help="Track 1: gate the tap injection by an explicit STORE-CONFIDENCE scalar "
+                         "(pk_store factual-head pre-norm retrieval magnitude) instead of relying on the "
+                         "learned null slot. c=sigmoid(scale*(conf/EMA-bias)) scales the whole injection: "
+                         "a paraphrase retrieves its own edit (strong->deliver) while a neighbour retrieves "
+                         "nothing (weak->inert), decoupling delivery from PROMPT NOVELTY (the null slot's "
+                         "proxy) -> closes the locality<->generalization gap. pk-store only.")
     ap.add_argument("--query-rel", type=str, default="", dest="query_rel",
                     help="ADVERSARIAL paraphrase probe (issue #10, natural phrasing only): bind and "
                          "train exactly as normal (bindings + training queries use ' lives in'), then "
@@ -1070,7 +1090,8 @@ def main():
     summary = []
     for cfg in configs:
         tag = "+".join(map(str, cfg))
-        injector = MAGInjector(base, cfg, args.mem_dim, n_heads=args.tap_heads).to(DEV)
+        injector = MAGInjector(base, cfg, args.mem_dim, n_heads=args.tap_heads,
+                               conf_gate=getattr(args, "conf_gate", False)).to(DEV)
         with StageCost(f"stage-2 tap fit L={tag} ({args.steps} steps, batch {args.batch})"):
             train_taps(base, adapter, injector, builder, rng, args, tag, loc_buckets=loc_buckets)
         with StageCost(f"delivery eval L={tag}"):

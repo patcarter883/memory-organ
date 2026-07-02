@@ -336,6 +336,7 @@ class PKStoreAdapter(nn.Module):
         emb = self._e(ids)                              # [B,S,mem_dim]
         B = emb.shape[0]
         self._last_aux_loss = None
+        self._last_conf = None                          # per-example store-confidence scalar (MAG conf gate)
         want_sup = self.training and carry and self.addr_sup_weight > 0
         if carry:
             V = self._write_episode(emb, ids=ids if want_sup else None)
@@ -381,7 +382,9 @@ class PKStoreAdapter(nn.Module):
             read, _head_norms, ctxs = self.store.read(V, q, return_ctx=True)  # +per-head value-mix ctx
             self._compute_addr_sup(q, ctxs, ids, qa_start)
         else:
-            read, _head_norms = self.store.read(V, q)   # [B,Lq,mem_dim] multi-head product-key read
+            # frozen Stage-2/eval: also pull the store-confidence scalar (factual-head pre-norm retrieval
+            # magnitude) so the MAG tap's confidence gate can fire in proportion to retrieval strength.
+            read, _head_norms, self._last_conf = self.store.read(V, q, return_conf=True)
         pq = self.readout_q.unsqueeze(0).expand(B, -1, -1)
         attn = torch.softmax(pq @ read.transpose(1, 2) / (self.mem_dim ** 0.5), dim=-1)
         return attn @ read                              # [B,K,mem_dim] pooled (PRE out_proj)

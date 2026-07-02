@@ -443,3 +443,35 @@ it. The residual is honest and specific: locality still costs some generalizatio
 instead gate the injection on an explicit **store-confidence scalar** — fire in proportion to how strongly
 the store matched. That's the next step. Three measurement bugs in three phases, each surfaced by a control
 we'd built to keep ourselves honest; the pattern is the point.
+
+## Phase 14 — the store-confidence gate: closing the generalization gap
+
+Phase 13 left a specific residual: a *learned* null sink gates on the wrong thing. Softmax attention must
+sum to 1, so the sink is the tap's only escape from delivering — but training it to "be inert" makes it key
+on how *novel* the prompt looks, and a paraphrase of the edited subject looks about as novel as a neighbour.
+That's why locality cost generalization (0.67, not 0.89): the sink was throwing out paraphrases with the
+neighbours.
+
+The fix is to gate on the one signal that actually separates them — **retrieval strength** — read straight
+off the store instead of inferred by a learned proxy. There's a wrinkle: the product-key store deliberately
+RMSNorms magnitude away on read (the "bypass fix" — a head shouldn't dominate the gate by sheer norm), so
+the bank handed to the tap carries *no* strength signal by the time the tap sees it. But the magnitude is
+right there one step earlier: the factual head's **pre-norm** retrieved-value norm `‖ctx‖`. It's large when
+the read query addresses *written* slots (the subject is bound → strong read) and ≈0 when it addresses
+*unwritten* ones (a neighbour → weak read). We surface it (`pk_store.read(return_conf=True)`), thread it
+through the adapter's `memory_bank` to the tap alongside the bank, and scale the whole injection by
+`c = σ(scale·(conf/EMA − bias))`. Two details earned their keep: the confidence is standardized by a running
+**EMA** rather than per-batch, because strong (positive) and weak (negative) reads arrive in *separate*
+forward passes — a per-batch mean would normalize each to ≈1 and erase the very distinction we gate on; and
+`scale`/`bias` are learned, so training shapes the sigmoid. The gate is zero-init-safe: `gamma=0` still
+makes the whole tap a no-op regardless of `c`.
+
+The training signal is unchanged from Phase 13 (weak-bank negatives) — only the *mechanism* the tap uses to
+act on it changed. Head-to-head, same bind/seed, same 135 held-out neighbours: the null slot gives
+generalization **0.611** at locality −0.008…+0.037; the store-confidence gate gives **0.907** (lw 0.1) and
+**0.926** (lw 0.3) at the *same* locality (−0.008 / +0.022), edit-success ≈1.0. That's +0.30 absolute
+generalization for free — it closes the gap the sink couldn't, and even edges past the 0.889 edit-only
+ceiling while staying surgical. The `neg_cgate` diagnostic makes the mechanism legible: the gate drives the
+weak-bank read's multiplier toward 0 while paraphrases (strong reads) still deliver. Editing on real
+CounterFact is now valid, delivered, local, *and* generalizing — with delivery driven by what the memory
+actually retrieved, not by how the prompt looked. The remaining front is multiple relations per document.

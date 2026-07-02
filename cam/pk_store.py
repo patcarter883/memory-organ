@@ -176,15 +176,26 @@ class ProductKeyStore(nn.Module):
         return Vnew
 
     # ---- multi-head read -------------------------------------------------
-    def read(self, V, query, return_ctx=False):
+    def read(self, V, query, return_ctx=False, return_conf=False):
         """query:[B,Q,d_hub] hub-space read query -> (read_out[B,Q,d_hub], head_norms list).
         Each head: q_h = read_q[h](query) + head_bias[h]; address V; weighted-sum selected slot values
         -> RMSNorm (strip magnitude, the bypass fix) -> read_o[h]. Heads summed. Returns per-head
         output norms (specialisation diagnostic). If return_ctx, also returns the per-head retrieved
-        context ctx[h] [B,Q,d_hub] (PRE read_o/norm) — used for the addressing-supervision loss."""
+        context ctx[h] [B,Q,d_hub] (PRE read_o/norm) — used for the addressing-supervision loss.
+
+        If return_conf, ALSO returns a per-example STORE-CONFIDENCE scalar conf[B]: the factual head's
+        PRE-RMSNorm retrieved-value magnitude (mean over query positions of ‖ctx‖). read_norm deliberately
+        strips this magnitude before read_o (the bypass fix), so the bank handed downstream carries NO
+        retrieval-strength signal — but conf recovers it. It is LARGE when the query addresses WRITTEN
+        slots (the subject IS bound -> strong read) and ~0 when it addresses UNWRITTEN slots (a neighbour /
+        unbound subject -> weak read). This is the honest retrieval signal the MAG tap's confidence gate
+        keys on, instead of the learned null slot's prompt-novelty proxy. return_ctx/return_conf do not
+        co-occur (return_ctx = bind-stage addr-sup; return_conf = frozen Stage-2)."""
+        assert not (return_ctx and return_conf), "return_ctx and return_conf do not co-occur"
         B, Q, _ = query.shape
         out = query.new_zeros(B, Q, self.d_hub)
         head_norms, ctxs = [], []
+        conf = None
         for h in range(self.n_heads):
             qh = self.read_q[h](query) + self.head_bias[h]
             slot_idx, slot_w = self._address(qh)             # [B,Q,topk]
@@ -193,6 +204,8 @@ class ProductKeyStore(nn.Module):
             vals = torch.gather(V, 1, slot_idx.reshape(B, Q * self.topk, 1).expand(-1, -1, self.d_hub)
                                 ).reshape(B, Q, self.topk, self.d_hub).float()
             ctx = (slot_w.unsqueeze(-1) * vals).sum(dim=2)   # [B,Q,d_hub]  retrieved value mix (fp32)
+            if return_conf and h == 0:                       # factual head = the content-addressed read
+                conf = ctx.norm(dim=-1).mean(dim=1)          # [B] pre-norm retrieval magnitude
             oh = self.read_o[h](self.read_norm[h](ctx))      # RMSNorm strips magnitude
             out = out + oh
             head_norms.append(float(oh.detach().norm(dim=-1).mean()))
@@ -201,4 +214,6 @@ class ProductKeyStore(nn.Module):
         out = self.read_out_norm(out)            # bound the bank norm; gate carries the scale
         if return_ctx:
             return out, head_norms, ctxs
+        if return_conf:
+            return out, head_norms, conf
         return out, head_norms

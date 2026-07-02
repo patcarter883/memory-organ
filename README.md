@@ -100,10 +100,11 @@ phrasing — prose, varied relations, multi-token — is validated in §5.)
 > measurement bugs surfaced and got fixed, each caught by a control: the validity gate flagged a filter/eval
 > prompt mismatch (fixed by editing one relation under its *true* prompt: gate **0.164 → 0.969, VALID**);
 > and generalization looked dead (0.074) only because each probe's memory was read for a *random* subject —
-> conditioned on the query's own subject, as deployment does, it's **0.889**. With a null-slot tap trained
-> to gate on *retrieval strength*, single-relation editing is now **valid (0.96), delivered (1.000), local
-> (−0.008), and generalizing (0.56–0.67) all at once** — a tunable knob. Remaining: locality still costs a
-> little generalization, and it's one relation at a time. Full arc + numbers in
+> conditioned on the query's own subject, as deployment does, it's **0.889**. Gating the tap on an explicit
+> **store-confidence scalar** (the store's own retrieval strength, not the null slot's prompt-novelty proxy)
+> makes single-relation editing **valid (0.96), delivered (≈1.0), local (−0.008), and generalizing
+> (0.91–0.93) all at once** — up from 0.61 generalization with the learned sink. Remaining: it's one relation
+> at a time. Full arc + numbers in
 > [RESULTS.md §7](RESULTS.md) ([#16](https://github.com/patcarter883/memory-organ/issues/16)).
 
 See **[RESULTS.md](RESULTS.md)** for every number with its baseline and the full story including the
