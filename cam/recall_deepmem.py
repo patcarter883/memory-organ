@@ -294,7 +294,7 @@ class DocBuilder:
 
     def __init__(self, tok, names, cargo, M, seg_len, qa_seg, pad_word=" and", phrasing="dict",
                  cargo_tokens=1, cargo_words=None, facts=None, cf_header_prefix=None, cf_rel=None,
-                 query_rel=None):
+                 query_rel=None, fact_relid=None, rel_templates=None):
         self.tok = tok
         self.names = names          # list[(word, tid)] — space-prefixed single tokens
         self.cargo = cargo          # dict: NO-space single tokens; manifest: space-prefixed
@@ -436,6 +436,52 @@ class DocBuilder:
             self.qfix_len = 1 + len(self.rel)                         # "<Country> is"
             self.key_off = 0                                          # country
             self.val_off = 1 + len(self.rel)                         # capital (after "<Country> is")
+        elif phrasing == "counterfactual_multi":
+            # MULTI-RELATION knowledge editing (issue #16, FAITHFUL prefix): each fact keeps its REAL
+            # CounterFact prompt — prefix ("The capital of") + subject + suffix (" is") — so ONE doc mixes
+            # facts from DIFFERENT relations, each edited under its own true relation. Unlike single-relation
+            # counterfactual (prefix folded into the shared header, subject@qa_start), here the subject sits
+            # MID-block after the per-fact prefix, so KEY/VALUE positions VARY per binding (like `varied`) —
+            # the pk-store adapter reads them via binding_positions(), and addr-sup locates the queried
+            # subject at qa_start + q_subj_off (NOT qa_start). Batch-rectangularity is kept varied-style:
+            # slot m always uses relation rel_order[m%R], so per-slot block geometry is relation-determined
+            # (batch-uniform) even though the specific fact is drawn per row.
+            assert not self.multitoken, "counterfactual_multi is single-token only"
+            assert facts is not None and rel_templates is not None and fact_relid is not None, \
+                ("counterfactual_multi needs facts + rel_templates {relid:(prefix,suffix)} + fact_relid "
+                 "(relation id per fact, parallel to facts)")
+            assert len(fact_relid) == len(facts), "fact_relid must be parallel to facts"
+            self.header = piece(tok, "The following facts are given.\n")
+            self.dot = piece(tok, ".")
+            self.nl = piece(tok, "\n")
+            self.fact_relid = list(fact_relid)
+            # relation id -> its prefix / suffix token pieces (all facts of a relation share the template)
+            self.rel_prefix = {rid: piece(tok, pre) for rid, (pre, _suf) in rel_templates.items()}
+            self.rel_suffix = {rid: piece(tok, suf) for rid, (_pre, suf) in rel_templates.items()}
+            groups = {}
+            for i, rid in enumerate(self.fact_relid):
+                groups.setdefault(rid, []).append(i)
+            self.rel_groups = groups                                  # relation id -> [fact indices]
+            self.rel_order = sorted(groups.keys())                    # deterministic relation cycle
+            self.R = len(self.rel_order)
+            assert self.R >= 1 and all(rid in self.rel_prefix for rid in self.rel_order), \
+                "every fact's relation id must have a template in rel_templates"
+            # slot m -> relation rel_order[m % R]; per-slot block geometry (relation-determined => uniform)
+            self.slot_relid = [self.rel_order[m % self.R] for m in range(M)]
+            self.slot_key_off, self.slot_val_off, self.slot_bind_len = [], [], []
+            for m in range(M):
+                rid = self.slot_relid[m]
+                pl, sl = len(self.rel_prefix[rid]), len(self.rel_suffix[rid])
+                self.slot_key_off.append(pl)                          # subject offset within block
+                self.slot_val_off.append(pl + 1 + sl)                 # object offset within block
+                self.slot_bind_len.append(pl + 1 + sl + 1 + len(self.dot) + len(self.nl))  # pre subj suf obj . \n
+            self.bind_bases = [sum(self.slot_bind_len[:m]) for m in range(M)]
+            self.bind_total = sum(self.slot_bind_len)
+            self.key_off = 0                                          # not scalar (per-slot); via binding_positions
+            self.val_off = None
+            self.bind_len = None
+            self.qfix_len = None                                      # set per build (queried relation)
+            self.q_subj_off = 0                                       # set per build (= len(queried prefix))
         elif phrasing == "dict":
             # the basecheck-validated best format (acc 0.61): "Cargo to ship:\n<cargo>: <name>\n..." with
             # query "<cargo>:" -> answer " <name>". cargo is line-initial (NO-space single token),
@@ -473,6 +519,10 @@ class DocBuilder:
         if self.phrasing == "varied":
             bind_block = len(self.bos) + len(self.header) + self.bind_total
             worst_qfix = 1 + max(len(r) for r in self.rels)          # "<Subject><rel>" (longest rel)
+        elif self.phrasing == "counterfactual_multi":
+            bind_block = len(self.bos) + len(self.header) + self.bind_total
+            worst_qfix = max(len(self.rel_prefix[r]) + 1 + len(self.rel_suffix[r])   # "<pre><subj><suf>"
+                             for r in self.rel_order)
         else:
             bind_block = len(self.bos) + len(self.header) + M * self.bind_len
             worst_qfix = self.qfix_len
@@ -495,12 +545,17 @@ class DocBuilder:
         start offset hstart (=len(bos)+len(header)). key = subject (block offset 0), value = object
         (block offset 1+len(rel_m)). The pk-store adapter uses these instead of the constant-bind_len
         arithmetic (which does not hold when relation lengths vary)."""
-        assert self.phrasing == "varied", "binding_positions is varied-only"
+        assert self.phrasing in ("varied", "counterfactual_multi"), \
+            "binding_positions is for per-binding-length phrasings (varied / counterfactual_multi)"
         keys, vals = [], []
         for m in range(self.M):
             base = hstart + self.bind_bases[m]
-            keys.append(base + 0)                        # subject (KEY)
-            vals.append(base + self.bind_vals[m])        # object (VALUE), after "<Subject><rel_m>"
+            if self.phrasing == "counterfactual_multi":
+                keys.append(base + self.slot_key_off[m])   # subject (KEY), after the per-fact prefix
+                vals.append(base + self.slot_val_off[m])   # object (VALUE), after "<pre><subj><suf>"
+            else:
+                keys.append(base + 0)                    # subject (KEY)
+                vals.append(base + self.bind_vals[m])    # object (VALUE), after "<Subject><rel_m>"
         return keys, vals
 
     def _binding_ids(self, name_tid, cargo, slot=None):
@@ -519,6 +574,11 @@ class DocBuilder:
         if self.phrasing == "counterfactual":
             # name_tid = country (KEY), cargo = capital tid (VALUE, the counterfactual capital in memory)
             return [name_tid] + self.rel + [cargo] + self.dot + self.nl  # "<Country> is <Capital>.\n"
+        if self.phrasing == "counterfactual_multi":
+            # per-slot relation: "<prefix><subject><suffix> <cf-object>.\n" (subject mid-block = KEY)
+            rid = self.slot_relid[slot]
+            return (self.rel_prefix[rid] + [name_tid] + self.rel_suffix[rid]
+                    + [cargo] + self.dot + self.nl)
         if self.phrasing == "manifest":
             return [name_tid] + self.carries + [cargo] + self.dot
         if self.multitoken:
@@ -534,6 +594,9 @@ class DocBuilder:
                                                                        # --query-rel paraphrase)
         if self.phrasing == "counterfactual":
             return [name_tid] + self.rel                               # "<Country> is"
+        if self.phrasing == "counterfactual_multi":
+            rid = self.slot_relid[slot]
+            return self.rel_prefix[rid] + [name_tid] + self.rel_suffix[rid]   # "<pre><subj><suf>"
         if self.phrasing == "manifest":
             return self.qfix1 + [cargo] + self.qfix2
         if self.multitoken:
@@ -545,7 +608,8 @@ class DocBuilder:
         as the binding VALUE / answer. cf_tid[i] is the (deranged) capital token for fact i; the TRUE
         capital (self.facts[i][3]) is used only by build_cf() for the prior-recall answer. Called by
         recall_mag AFTER the probe/filter narrows self.facts to the base-known set + deranges."""
-        assert self.phrasing == "counterfactual", "set_counterfactual is counterfactual-only"
+        assert self.phrasing in ("counterfactual", "counterfactual_multi"), \
+            "set_counterfactual is for the counterfactual phrasings"
         assert len(cf_tid) == len(self.facts), "cf_tid must be parallel to self.facts"
         self.cf_tid = list(cf_tid)
 
@@ -588,10 +652,115 @@ class DocBuilder:
         return (ids, torch.tensor(ans_cf, dtype=torch.long),
                 torch.tensor(ans_prior, dtype=torch.long), len(rows[0]) - 1)
 
+    # ---- MULTI-RELATION counterfactual (faithful prefix) --------------------------------------------
+    def _set_query_geom(self, q_slot):
+        """Per-build query geometry for the queried slot's relation: subject offset within the query
+        region (= len(prefix), so the subject sits at qa_start + q_subj_off) and the total query length."""
+        rid = self.slot_relid[q_slot]
+        self.q_subj_off = len(self.rel_prefix[rid])
+        self.qfix_len = len(self.rel_prefix[rid]) + 1 + len(self.rel_suffix[rid])
+
+    def _draw_multi_row(self, rng, force=None, exclude_subj=frozenset()):
+        """One fact index per slot (slot m drawn from relation slot_relid[m]) with DISTINCT subject tids
+        across the doc (the store keys on the subject — no collisions). `force` = {slot: fact_idx} pins
+        specific slots; `exclude_subj` = subject tids that must not appear. Returns list[fact_idx] len M."""
+        picked = [None] * self.M
+        used = set(exclude_subj)
+        force = force or {}
+        for m, fi in force.items():
+            picked[m] = fi
+            used.add(self.facts[fi][2])
+        for m in range(self.M):
+            if picked[m] is not None:
+                continue
+            rid = self.slot_relid[m]
+            cands = [i for i in self.rel_groups[rid] if self.facts[i][2] not in used]
+            assert cands, (f"relation {rid} has no distinct-subject fact left for slot {m} — widen the "
+                           f"per-relation fact count or lower M")
+            fi = int(cands[rng.integers(0, len(cands))])
+            picked[m] = fi
+            used.add(self.facts[fi][2])
+        return picked
+
+    def _assemble_multi(self, picked, q_slot, q_subj, q_cap, local=False):
+        """Assemble one row: M bindings ("<pre><subj><suf> <cf-obj>.\\n") + query for q_subj at q_slot's
+        relation. Returns (seq, answer_pos)."""
+        bindings = []
+        for m in range(self.M):
+            fi = picked[m]
+            bindings += self._binding_ids(self.facts[fi][2], self.cf_tid[fi], slot=m)
+        qa = self._query_ids(q_subj, q_cap, slot=q_slot)
+        if not local:
+            pre = self.bos + self.header + bindings
+            assert len(pre) <= self.qa_start, "multi binding block overflows qa_start (raise --qa-seg)"
+            pre = pre + [self.pad_tid] * (self.qa_start - len(pre))
+            seq = pre + qa
+        else:
+            pre = self.bos + [self.pad_tid] * (self.qa_start - len(self.bos))
+            seq = pre + bindings + qa
+        return seq, len(seq)                                    # answer_pos = position of the answer token
+
+    def _build_counterfactual_multi(self, rng, batch, local=False):
+        """MULTI-RELATION counterfactual doc: each row draws one distinct-subject fact per slot (slot m's
+        relation = slot_relid[m]) and queries slot q_slot (batch-uniform, so the query length is uniform).
+        Returns (ids[B,S], ans_cf[B], ans_prior[B], answer_pos)."""
+        assert self.cf_tid is not None, "call set_counterfactual(cf_tid) before building"
+        q_slot = int(rng.integers(0, self.M))
+        self._set_query_geom(q_slot)
+        rows, ans_cf, ans_prior, S = [], [], [], None
+        for _ in range(batch):
+            picked = self._draw_multi_row(rng)
+            qfi = picked[q_slot]
+            seq, apos = self._assemble_multi(picked, q_slot, self.facts[qfi][2], self.cf_tid[qfi], local=local)
+            seq = seq + [self.cf_tid[qfi]]                      # gold = the queried fact's counterfactual
+            if S is None:
+                S = len(seq)
+            assert len(seq) == S, "row length mismatch (multi) — non-uniform tokenization"
+            rows.append(seq)
+            ans_cf.append(self.cf_tid[qfi])
+            ans_prior.append(self.facts[qfi][3])
+        ids = torch.tensor(rows, dtype=torch.long)
+        return (ids, torch.tensor(ans_cf, dtype=torch.long),
+                torch.tensor(ans_prior, dtype=torch.long), len(rows[0]) - 1)
+
+    def _build_cf_query_multi(self, rng, q_fact_idx, batch, bind_target=True):
+        """Retrieval-conditioned MULTI-RELATION banking: each row queries a SPECIFIED fact. All queried
+        facts must share ONE relation (rectangular batch — bucket probes by relation). bind_target=True:
+        the target is BOUND at its relation's slot (STRONG read); False: that slot holds a DIFFERENT fact
+        of the same relation and the target's subject is excluded everywhere (WEAK read). Returns
+        (ids[B,S], answer_pos)."""
+        assert self.cf_tid is not None, "call set_counterfactual before build_cf_query"
+        rids = {self.fact_relid[int(q)] for q in q_fact_idx}
+        assert len(rids) == 1, "build_cf_query (multi) needs one relation per call — bucket probes by relation"
+        q_rid = rids.pop()
+        q_slot = self.slot_relid.index(q_rid)                  # first slot carrying that relation
+        self._set_query_geom(q_slot)
+        rows, S = [], None
+        for b in range(batch):
+            tgt = int(q_fact_idx[b])
+            q_subj, q_cap = self.facts[tgt][2], self.cf_tid[tgt]
+            if bind_target:
+                picked = self._draw_multi_row(rng, force={q_slot: tgt})
+            else:
+                # WEAK: target NOT bound. q_slot gets a different fact of q_rid; exclude the target subject.
+                alt = [i for i in self.rel_groups[q_rid]
+                       if self.facts[i][2] != q_subj]
+                force = {q_slot: int(alt[rng.integers(0, len(alt))])} if alt else {}
+                picked = self._draw_multi_row(rng, force=force, exclude_subj={q_subj})
+            seq, _apos = self._assemble_multi(picked, q_slot, q_subj, q_cap, local=False)
+            seq = seq + [q_cap]
+            if S is None:
+                S = len(seq)
+            assert len(seq) == S, "row length mismatch (multi cf_query)"
+            rows.append(seq)
+        return torch.tensor(rows, dtype=torch.long), len(rows[0]) - 1
+
     def build_cf(self, rng, batch, local=False):
         """Counterfactual build exposing BOTH answers: (ids, ans_cf[B], ans_prior[B], answer_pos).
         ans_cf = the counterfactual capital the memory teaches; ans_prior = the base's TRUE prior."""
-        assert self.phrasing == "counterfactual", "build_cf is counterfactual-only"
+        assert self.phrasing in ("counterfactual", "counterfactual_multi"), "build_cf is counterfactual-only"
+        if self.phrasing == "counterfactual_multi":
+            return self._build_counterfactual_multi(rng, batch, local=local)
         return self._build_counterfactual(rng, batch, local=local)
 
     def build_cf_query(self, rng, q_fact_idx, batch, bind_target=True):
@@ -602,6 +771,8 @@ class DocBuilder:
         is NOT retrievable — the out-of-store / neighbour case). The gold answer token is still the target's
         counterfactual (only meaningful when bound). Returns (ids[B,S], answer_pos)."""
         assert self.cf_tid is not None, "call set_counterfactual(cf_tid) before build_cf_query"
+        if self.phrasing == "counterfactual_multi":
+            return self._build_cf_query_multi(rng, q_fact_idx, batch, bind_target=bind_target)
         n = len(self.facts)
         rows, S = [], None
         for b in range(batch):
@@ -637,6 +808,9 @@ class DocBuilder:
                       position of the FIRST answer token (the K answer tokens occupy apos..apos+K-1)."""
         if self.phrasing == "counterfactual":
             ids, ans_cf, _ans_prior, apos = self._build_counterfactual(rng, batch, local=local)
+            return ids, ans_cf, apos
+        if self.phrasing == "counterfactual_multi":
+            ids, ans_cf, _ans_prior, apos = self._build_counterfactual_multi(rng, batch, local=local)
             return ids, ans_cf, apos
         rows, ans = [], []
         S = None

@@ -363,8 +363,36 @@ staying surgical*. The `neg_cgate` diagnostic confirms the mechanism: the gate s
 down (c→0) while paraphrases still deliver.
 
 **Verdict: surgical single-relation editing on real CounterFact — valid (0.96), delivered (≈1.0), LOCAL
-(−0.008), and generalizing (0.91–0.93).** Scaling across relations (multi-relation docs) is the remaining
-open front.
+(−0.008), and generalizing (0.91–0.93).**
+
+### Multiple relations in one memory (`--phrasing counterfactual_multi`)
+
+Everything above edits **one relation at a time**. The next step is editing facts from **different
+relations** in a *single* memory — each fact keeping its **real** CounterFact prompt ("The capital of X
+is", "The official language of X is"). This is the *faithful-prefix* format: unlike single-relation (the
+relation prefix folded into a shared header, subject at `qa_start`), here the subject sits **mid-block**
+after each fact's own prefix, so the KEY (subject) / VALUE (object) positions **vary per binding**. We read
+them via `binding_positions()` (the per-binding machinery the `varied` phrasing introduced), keep the batch
+rectangular by cycling relations across doc slots (slot m → relation `m % R`), and teach addressing
+supervision to find the queried subject at `qa_start + q_subj_off` rather than a fixed offset. A
+tokenizer-only selftest (`tools/cf_multi_selftest.py`) pins the positions before any GPU spend.
+
+Result (Qwen3.5-4B, **4 relation-templates edited together**, 42 edits, conf-gate, lw 0.1):
+
+| metric | value | |
+|---|---|---|
+| validity gate (no_mem prior-acc) | **0.990** | VALID — the base holds all four relations' priors |
+| edit-success (mem-on cf) | **0.928** | the memory overrides the prior across mixed relations |
+| generalization (paraphrase, mem-on) | **0.679** | edits fire on rephrasings across relations (0.000 off) |
+| locality drop (OFF→ON) | **−0.066** | LEAKY — the honest residual |
+
+**Multi-relation editing works** — valid, delivered, and generalizing across four relation templates in one
+memory. The open item is **locality**: at −0.066 it leaks more than single-relation (−0.008), and the `lw`
+knob does *not* tighten it the way it did single-relation (a higher-lw run came out leakier, not cleaner).
+The likely cause is that the confidence gate's retrieval-strength EMA is shared across relations with
+different retrieval magnitudes — **per-relation gate calibration** is the next lever. Scaling to many
+semantically-distinct relations is also base-limited: Qwen3.5-4B parametrically holds only ~13% of
+CounterFact, so the base-known editable set is dominated by a few relations.
 
 ## 8. Still open
 
@@ -381,7 +409,9 @@ open front.
   retrieval-strength (weak-bank) negatives makes it **local AND generalizing at once**. An explicit
   **store-confidence gate** (`--conf-gate`, scaling delivery by the store's pre-norm retrieval magnitude
   rather than the null slot's prompt-novelty proxy) then closes the last gap: locality drop **−0.008** with
-  generalization **0.91–0.93** (up from 0.61 null-only), edit-success ≈1.0. Remaining front: multiple
-  relations at once ([#16](https://github.com/patcarter883/memory-organ/issues/16)).
+  generalization **0.91–0.93** (up from 0.61 null-only), edit-success ≈1.0. **Multiple relations at once
+  (§7) now works too** — 4 relation-templates edited in one memory (faithful prefix), VALID (0.99),
+  edit-success 0.928, generalization 0.679; locality still leaks (−0.066) and needs per-relation gate
+  calibration ([#16](https://github.com/patcarter883/memory-organ/issues/16)).
 - **N-scaling** the store toward useful sizes (thousands of facts, not 8–128 per doc).
 - **Backend portability** — pure PyTorch, CPU/CUDA expected but unverified.

@@ -260,7 +260,13 @@ def train_taps(base, adapter, injector, builder, rng, args, tag, loc_buckets=Non
         neg_null = float("nan")
         if lw > 0 and getattr(builder, "facts", None):
             nfac = len(builder.facts)
-            tgt = [int(t) for t in rng.integers(0, nfac, size=args.batch)]
+            if getattr(builder, "phrasing", None) == "counterfactual_multi":
+                # build_cf_query needs one relation per call -> draw this step's negatives from ONE relation
+                rid = builder.rel_order[int(rng.integers(0, builder.R))]
+                pool = builder.rel_groups[rid]
+                tgt = [int(pool[int(rng.integers(0, len(pool)))]) for _ in range(args.batch)]
+            else:
+                tgt = [int(t) for t in rng.integers(0, nfac, size=args.batch)]
             neg_ids, neg_apos = builder.build_cf_query(rng, tgt, args.batch, bind_target=False)  # weak bank
             neg_ids = neg_ids.to(DEV)
             neg_ctx = _leakfree_ctx(base, builder, neg_ids, neg_apos)     # header + "<subject> is"
@@ -621,6 +627,63 @@ def setup_counterfact(base, tok, args):
     return builder, kept, prior_acc_full
 
 
+def setup_counterfact_multi(base, tok, args):
+    """Track 1 MULTI-RELATION setup (#16): probe/filter the base, then keep the top-N base-known relations
+    (by fact count) and edit them TOGETHER in one memory. Each fact keeps its OWN real CounterFact prompt
+    (faithful prefix); the DocBuilder cycles relations across doc slots. Returns (builder, kept, prior_acc)."""
+    path = os.path.join(args.data_dir, "counterfact.json")
+    records, stats = load_counterfact(path, tok, single_token_only=True)
+    print(f"[mag][cf-multi] CounterFact <- {path} | ALL-single (tractable) {stats['all_single']}", flush=True)
+    kept, prior_acc_full = probe_and_filter_counterfact(base, tok, records, batch=args.cf_probe_batch)
+    print(f"[mag][cf-multi] PROBE/FILTER base prior-acc = {prior_acc_full:.3f} | {len(kept)} known facts",
+          flush=True)
+    from collections import defaultdict
+    by_rel = defaultdict(list)
+    for r in kept:
+        by_rel[(r.relation_id, r.prompt)].append(r)
+
+    def _split(prompt):
+        pre, _, suf = prompt.partition("{}")
+        return pre.rstrip(), suf
+    # editable relation = non-empty prefix + short suffix; rank by base-known fact count
+    cand = []
+    for (rid, prompt), recs in by_rel.items():
+        if "{}" not in prompt:
+            continue
+        pre, suf = _split(prompt)
+        if not pre or len(tok(suf, add_special_tokens=False).input_ids) > 6:
+            continue
+        cand.append((len(recs), rid, prompt, pre, suf, recs))
+    cand.sort(reverse=True, key=lambda c: c[0])
+    R = max(2, args.multi_relations)
+    # each relation must supply enough distinct subjects for its share of the M doc slots (+margin)
+    per_rel_min = max(2, (args.M + R - 1) // R + 1)
+    chosen = [c for c in cand if c[0] >= per_rel_min][:R]
+    assert len(chosen) >= 2, (f"need >= 2 editable relations with >= {per_rel_min} base-known facts each "
+                              f"(got {[(c[1], c[0]) for c in cand[:6]]}); lower --multi-relations or --M")
+    print(f"[mag][cf-multi] EDITING {len(chosen)} relations: "
+          f"{[(rid, n) for (n, rid, _p, _pre, _suf, _r) in chosen]}", flush=True)
+    facts, fact_relid, cf_tid, kept_multi = [], [], [], []
+    rel_templates = {}
+    for (_n, rid, prompt, pre, suf, recs) in chosen:
+        relkey = f"{rid}|{prompt}"
+        rel_templates[relkey] = (pre, suf)
+        for r in recs:
+            facts.append((r.subject, r.true_str, r.subject_tid, r.true_tid))
+            fact_relid.append(relkey)
+            cf_tid.append(r.new_tid)
+            r._relkey = relkey                       # tag the record so eval can bucket by relation
+            kept_multi.append(r)
+    builder = DocBuilder(tok, None, None, args.M, args.seg_len, args.qa_seg,
+                         phrasing="counterfactual_multi", facts=facts,
+                         fact_relid=fact_relid, rel_templates=rel_templates)
+    builder.set_counterfactual(cf_tid)
+    ex = "; ".join(f"{r.subject} [{r._relkey.split('|')[0]}]: {r.true_str}->{r.new_str}"
+                   for r in kept_multi[:5])
+    print(f"[mag][cf-multi] {len(kept_multi)} edits across {len(chosen)} relations | e.g. {ex}", flush=True)
+    return builder, kept_multi, prior_acc_full
+
+
 @torch.no_grad()
 def build_locality_split(records, tok, frac_train=0.5):
     """Split each record's neighborhood_prompts into TRAIN (for the locality-preservation loss) and
@@ -638,7 +701,7 @@ def build_locality_split(records, tok, frac_train=0.5):
             pid = bos + tok(p, add_special_tokens=False).input_ids
             train_buckets[len(pid)].append(pid)
         for p in nb[cut:]:
-            eval_probes.append((p, r.true_tid, r.subject_tid))
+            eval_probes.append((p, r.true_tid, r.subject_tid, getattr(r, "_relkey", None)))
     return dict(train_buckets), eval_probes
 
 
@@ -657,34 +720,42 @@ def eval_locality_generalization(base, tok, injector, adapter, builder, kept, ar
     dict of the four numbers + probe counts. cap bounds how many prompts we score (CPU/GPU budget)."""
     bos = [tok.bos_token_id] if tok.bos_token_id is not None else []
     injector.eval()
-    # subject-tid -> fact index, so a probe's bank can be conditioned on the probe's OWN subject.
-    subj2fact = {builder.facts[i][2]: i for i in range(len(builder.facts))} \
-        if getattr(builder, "facts", None) else {}
+    multi = getattr(builder, "phrasing", None) == "counterfactual_multi"
+    # subject-tid -> fact index, so a probe's bank can be conditioned on the probe's OWN subject. For
+    # MULTI-RELATION a subject can appear in >1 relation, so key by (subject_tid, relation) instead.
+    if not getattr(builder, "facts", None):
+        subj2fact = {}
+    elif multi:
+        subj2fact = {(builder.facts[i][2], builder.fact_relid[i]): i for i in range(len(builder.facts))}
+    else:
+        subj2fact = {builder.facts[i][2]: i for i in range(len(builder.facts))}
+
+    def _key(subj, relkey):
+        return (subj, relkey) if multi else subj
 
     def _score(prompts_golds, carry, cond=False, weak=False):
-        """prompts_golds: list of (prompt_str, gold_tid, subject_tid). Returns (acc, n). Batched by equal
-        tokenized length. cond=True (RETRIEVAL-CONDITIONED banking): build each probe's bank from a cf doc
-        that QUERIES the probe's own subject (build_cf_query). weak=False -> the subject's edit is BOUND
-        (STRONG read; used for GENERALIZATION — a paraphrase retrieves its own edit). weak=True -> the
-        subject is queried but NOT bound (WEAK read; used for LOCALITY — the out-of-store / neighbour case,
-        the store returns nothing so the tap must stay inert). cond=False: legacy shared random cf-doc bank.
+        """prompts_golds: list of (prompt_str, gold_tid, subject_tid, relkey). Returns (acc, n). Batched by
+        equal tokenized length (AND relation, for multi — build_cf_query needs one relation per call).
+        cond=True (RETRIEVAL-CONDITIONED banking): build each probe's bank from a cf doc that QUERIES the
+        probe's own subject (build_cf_query). weak=False -> subject's edit BOUND (STRONG, GENERALIZATION);
+        weak=True -> queried but NOT bound (WEAK, LOCALITY). cond=False: shared random cf-doc bank.
         carry=False resets memory (floor)."""
         from collections import defaultdict
         buckets = defaultdict(list)
-        for (p, g, subj) in prompts_golds:
+        for (p, g, subj, relkey) in prompts_golds:
             pid = tok(p, add_special_tokens=False).input_ids
-            buckets[len(pid)].append((pid, g, subj))
+            buckets[(len(pid), relkey if multi else None)].append((pid, g, subj, relkey))
         hit, seen = 0, 0
         eb = max(1, min(args.batch, EVAL_BATCH_CAP // max(1, args.M)))
-        for _plen, items in buckets.items():
+        for _bkey, items in buckets.items():
             for i in range(0, len(items), eb):
                 chunk = items[i:i + eb]
                 torch.cuda.empty_cache() if torch.cuda.is_available() else None
-                ids = torch.tensor([bos + pid for (pid, _g, _s) in chunk], dtype=torch.long, device=DEV)
-                gold = torch.tensor([g for (_p, g, _s) in chunk], dtype=torch.long, device=DEV)
+                ids = torch.tensor([bos + pid for (pid, _g, _s, _r) in chunk], dtype=torch.long, device=DEV)
+                gold = torch.tensor([g for (_p, g, _s, _r) in chunk], dtype=torch.long, device=DEV)
                 cur = ids.shape[0]
-                if cond and all(s in subj2fact for (_p, _g, s) in chunk):
-                    fidx = [subj2fact[s] for (_p, _g, s) in chunk]
+                if cond and all(_key(s, r) in subj2fact for (_p, _g, s, r) in chunk):
+                    fidx = [subj2fact[_key(s, r)] for (_p, _g, s, r) in chunk]
                     d_ids, d_apos = builder.build_cf_query(np.random.default_rng(args.seed + i), fidx, cur,
                                                            bind_target=not weak)
                 else:
@@ -702,18 +773,18 @@ def eval_locality_generalization(base, tok, injector, adapter, builder, kept, ar
     # which shares the edited fact's true object (CounterFact construction). loc_override = the held-out
     # EVAL half when the locality-preservation loss trains on the other half (no leak); else all neighbours.
     if loc_override is not None:
-        loc = list(loc_override)
+        loc = [t if len(t) == 4 else (t[0], t[1], t[2], None) for t in loc_override]
     else:
         loc = []
         for r in kept:
             for p in r.neighborhood_prompts:
-                loc.append((p, r.true_tid, r.subject_tid))
+                loc.append((p, r.true_tid, r.subject_tid, getattr(r, "_relkey", None)))
     loc = loc[:cap]
-    # GENERALIZATION probes: (paraphrase_prompt, target_new_tid).
+    # GENERALIZATION probes: (paraphrase_prompt, target_new_tid, subject_tid, relkey).
     gen = []
     for r in kept:
         for p in r.paraphrase_prompts:
-            gen.append((p, r.new_tid, r.subject_tid))
+            gen.append((p, r.new_tid, r.subject_tid, getattr(r, "_relkey", None)))
     gen = gen[:cap]
 
     # LOCALITY with WEAK (out-of-store) banking: the neighbour's subject is not in the store, so the read
@@ -894,7 +965,7 @@ def main():
                     help="K: multi-token answer cargo phrase length (1=single-token; >1=role-swapped "
                          "'name: <K-token real-word phrase>', answer = the K-token sequence)")
     ap.add_argument("--phrasing", type=str, default="dict",
-                    choices=["dict", "natural", "varied", "counterfactual"],
+                    choices=["dict", "natural", "varied", "counterfactual", "counterfactual_multi"],
                     help="doc format: 'dict' (terse '<cargo>: <name>', default, byte-preserved) or "
                          "'natural' (natural-language single-relation facts '<Subject> lives in <Object>.'; "
                          "issue #1 realism probe — subject=KEY, object=VALUE, answer=object; supports "
@@ -908,6 +979,10 @@ def main():
                          "mem/no_mem PRIOR-acc + a VALID/INVALID gate on no_mem prior-acc)")
     ap.add_argument("--cf-probe-batch", type=int, default=16, dest="cf_probe_batch",
                     help="counterfactual: batch size for the base prior-knowledge probe/filter forward")
+    ap.add_argument("--multi-relations", type=int, default=4, dest="multi_relations",
+                    help="counterfactual_multi (#16): how many DISTINCT CounterFact relations to edit "
+                         "together in one memory (top-N base-known relations by fact count). Each doc "
+                         "slot m cycles relations[m%%N]; each fact keeps its own real prompt.")
     ap.add_argument("--dataset", type=str, default="curated", choices=["curated", "counterfact"],
                     help="counterfactual fact source: 'curated' (the hand-picked country->capital table, "
                          "default, unchanged) or 'counterfact' (REAL ROME CounterFact benchmark — Track 1: "
@@ -1008,7 +1083,8 @@ def main():
     cargo_words = single_token_ids(tok, MULTITOKEN_WORD_POOL) if args.cargo_tokens > 1 else None
     assert not (args.phrasing == "varied" and args.cargo_tokens > 1), \
         "varied phrasing is single-token only (no multi-token cargo)"
-    counterfactual = args.phrasing == "counterfactual"
+    counterfactual = args.phrasing in ("counterfactual", "counterfactual_multi")
+    multi_relation = args.phrasing == "counterfactual_multi"
     cf_meta = None
     cf_records = None                    # Track 1 (CounterFact) records for locality/generalization eval
     loc_buckets, loc_eval = None, None   # surgical editing: train/eval split of neighbour prompts
@@ -1017,7 +1093,10 @@ def main():
         # PROBE the frozen base -> FILTER to demonstrably-known facts -> DERANGE the memory capitals.
         # (this is the GPU probe forward the orchestrator runs; the filtered set size + example edits
         # are logged above the bind loop.)
-        if args.dataset == "counterfact":
+        if args.dataset == "counterfact" and multi_relation:
+            # Track 1 MULTI-RELATION (#16): edit N distinct relations in ONE memory (faithful prefix).
+            builder, cf_records, prior_acc_full = setup_counterfact_multi(base, tok, args)
+        elif args.dataset == "counterfact":
             # Track 1: REAL CounterFact benchmark (probe with each record's own prompt, bind target_new).
             builder, cf_records, prior_acc_full = setup_counterfact(base, tok, args)
             cf_meta = {"kept": [(r.subject, r.true_str) for r in cf_records], "perm": None}
