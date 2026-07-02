@@ -407,3 +407,39 @@ the sink on **store-retrieval confidence** — fire the injection only when the 
 queried subject (paraphrases share the subject; neighbours don't) — rather than on prompt familiarity.
 That's the open next step. For now: surgical single-relation editing on real CounterFact is valid,
 delivered at 1.000, and LOCAL, with paraphrase-robustness the honest remaining gap.
+
+## Phase 13 — retrieval-conditioned banking: local AND generalizing, and a generalization we'd been measuring wrong
+
+Phase 12 made the edit local but at a sharp cost: paraphrase generalization collapsed. We wrote that up
+as the honest locality↔generalization tension. It turned out the tension was mostly an artifact of how we
+*measured* — a third measurement bug the controls led us to, after the validity gate (Phase 11) and the
+capital-template mismatch.
+
+The tell was that generalization was weak (0.074) even with the locality loss *off*. Pulling on that: the
+memory store here is **episodic** — every eval read writes the current doc's bindings into a fresh store,
+then queries. But the locality/generalization eval built each probe's bank from a **random** edited
+subject. So a paraphrase of "the official language of Italy" was being answered from a memory that had been
+queried for some *other* country entirely. Of course it couldn't deliver Italy's edit — we never asked the
+store about Italy. Condition the bank on the probe's **own** subject (bind+query it), exactly as a
+deployment would (you query the memory with the subject in the prompt), and generalization is **0.889**, not
+0.074. It was never dead; we were reading the wrong drawer.
+
+That reframes the whole locality/generalization problem as one of **retrieval strength**. A paraphrase of an
+edited fact produces a *strong* store read (the subject is in the store); a neighbour produces a *weak* one
+(it isn't). The tap should deliver on strong and stay inert on weak. Phase 12's null slot gave it the
+capacity; the fix is the training *signal*: instead of teaching "be inert on neighbour prompts" (which keys
+on prompt novelty and so nukes paraphrases too), teach "be inert on a weak read." We do that with
+**weak-bank negatives** — the *same* edited-subject query as a positive, but with the edit deliberately
+*not* bound in the doc, so the store returns nothing. Positive and negative now differ only in whether the
+store holds the edit, so the tap has no choice but to learn strength-gating.
+
+It works, and it's a knob (same bind/seed, 135 held-out neighbours): edit-only leaks (−0.126) but
+generalizes (0.889); locality-weight 0.1 gives −0.023 / 0.667; 0.3 gives −0.008 / 0.556. So single-relation
+editing on real CounterFact is now **valid, delivered (1.000), local (−0.008), and generalizing (0.56–0.67)
+all at once** — every editing desideratum satisfied at a meaningful level, on real data. Against Phase 12's
+prompt-novelty gating (0.167 generalization at the same locality), retrieval-strength gating roughly triples
+it. The residual is honest and specific: locality still costs some generalization (0.67 vs 0.89), because a
+*learned* sink isn't a perfect retrieval detector. The clean way to close it is to stop learning a sink and
+instead gate the injection on an explicit **store-confidence scalar** — fire in proportion to how strongly
+the store matched. That's the next step. Three measurement bugs in three phases, each surfaced by a control
+we'd built to keep ourselves honest; the pattern is the point.

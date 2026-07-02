@@ -243,30 +243,32 @@ def train_taps(base, adapter, injector, builder, rng, args, tag, loc_buckets=Non
             print(f"[mag][{tag}] step {step:4d} NON-FINITE edit loss -> skip", flush=True)
             opt.zero_grad(); continue
         edit_loss.backward()                                            # backprop + FREE the edit graph
-        # LOCALITY-PRESERVATION: on out-of-store (neighbour) prompts, the tap should NOT change the base's
-        # output. Run the base with the edit bank injected (tap ON) and match its answer distribution to
-        # the frozen base's tap-OFF distribution (KL). Teaches the tap to route non-matching queries to
-        # the null slot rather than leaking the edit. HELD-OUT neighbours only (no eval leak). Backprop
-        # SEPARATELY (after freeing the edit graph) so only one full base-forward graph is alive at a time
-        # -> peak memory ~= the edit-only step (avoids the 2x-forward OOM). lw=0 -> edit-only objective.
+        # RETRIEVAL-STRENGTH LOCALITY: teach the tap to gate on the STORE READ, not the prompt. Build a
+        # negative with the SAME prompt type as the positive (an edited-subject query) but with the edit
+        # NOT bound in the doc -> the episodic store read is WEAK. Match tap-on to the frozen base tap-off
+        # (KL) so the tap injects nothing when the store lacks the edit. Since positive (strong bank) and
+        # negative (weak bank) share the prompt distribution and differ ONLY in retrieval strength, the tap
+        # learns strength-gating -> at eval it DELIVERS paraphrases (their edit IS retrievable) yet stays
+        # inert on neighbours (not retrievable). Backprop separately so one graph is alive at a time.
         loc_val = 0.0
         neg_null = float("nan")
-        if lw > 0 and loc_buckets:
-            neg = _loc_neg_batch(loc_buckets, rng, args.batch)
-            if neg is not None:
-                d_ids, _c, _p, d_apos = builder.build_cf(rng, neg.shape[0])
-                d_ids = d_ids.to(DEV)
-                with torch.no_grad():
-                    neg_bank = memory_bank(adapter, d_ids, args.seg_len, builder.qa_start, d_apos, carry=True)
-                    injector.set_bank(None)
-                    off = _last_logit(base, input_ids=neg)               # tap OFF (bank=None -> no-op)
-                injector.set_bank(neg_bank)
-                on = _last_logit(base, input_ids=neg)                    # tap ON, differentiable via taps
-                loc_loss = F.kl_div(F.log_softmax(on, -1), F.softmax(off, -1), reduction="batchmean")
-                if torch.isfinite(loc_loss):
-                    (lw * loc_loss).backward()                           # accumulate grad; FREE the loc graph
-                    loc_val = float(loc_loss)
-                neg_null = float(np.mean(list(injector.null_attn_stats().values())))
+        if lw > 0 and getattr(builder, "facts", None):
+            nfac = len(builder.facts)
+            tgt = [int(t) for t in rng.integers(0, nfac, size=args.batch)]
+            neg_ids, neg_apos = builder.build_cf_query(rng, tgt, args.batch, bind_target=False)  # weak bank
+            neg_ids = neg_ids.to(DEV)
+            neg_ctx = _leakfree_ctx(base, builder, neg_ids, neg_apos)     # header + "<subject> is"
+            with torch.no_grad():
+                neg_bank = memory_bank(adapter, neg_ids, args.seg_len, builder.qa_start, neg_apos, carry=True)
+                injector.set_bank(None)
+                off = _answer_logits(base, neg_ctx, 1)                    # tap OFF -> the base's true prior
+            injector.set_bank(neg_bank)
+            on = _answer_logits(base, neg_ctx, 1)                         # tap ON (weak bank), differentiable
+            loc_loss = F.kl_div(F.log_softmax(on, -1), F.softmax(off, -1), reduction="batchmean")
+            if torch.isfinite(loc_loss):
+                (lw * loc_loss).backward()                               # accumulate grad; FREE the loc graph
+                loc_val = float(loc_loss)
+            neg_null = float(np.mean(list(injector.null_attn_stats().values())))
         gn = torch.nn.utils.clip_grad_norm_(list(injector.parameters()), 1.0)
         if not torch.isfinite(gn):                                       # NaN grad guard
             print(f"[mag][{tag}] step {step:4d} NON-FINITE grad -> skip", flush=True)
@@ -642,19 +644,24 @@ def eval_locality_generalization(base, tok, injector, adapter, builder, kept, ar
     dict of the four numbers + probe counts. cap bounds how many prompts we score (CPU/GPU budget)."""
     bos = [tok.bos_token_id] if tok.bos_token_id is not None else []
     injector.eval()
+    # subject-tid -> fact index, so a probe's bank can be conditioned on the probe's OWN subject.
+    subj2fact = {builder.facts[i][2]: i for i in range(len(builder.facts))} \
+        if getattr(builder, "facts", None) else {}
 
-    def _score(prompts_golds, carry):
-        """prompts_golds: list of (prompt_str, gold_tid, subject_tid_for_bank). Returns acc.
-        The memory bank is built from a single-fact counterfactual doc keyed on subject_tid so the tap
-        carries THAT edit; carry=False resets memory (floor). Batched by equal tokenized length."""
+    def _score(prompts_golds, carry, cond=False, weak=False):
+        """prompts_golds: list of (prompt_str, gold_tid, subject_tid). Returns (acc, n). Batched by equal
+        tokenized length. cond=True (RETRIEVAL-CONDITIONED banking): build each probe's bank from a cf doc
+        that QUERIES the probe's own subject (build_cf_query). weak=False -> the subject's edit is BOUND
+        (STRONG read; used for GENERALIZATION — a paraphrase retrieves its own edit). weak=True -> the
+        subject is queried but NOT bound (WEAK read; used for LOCALITY — the out-of-store / neighbour case,
+        the store returns nothing so the tap must stay inert). cond=False: legacy shared random cf-doc bank.
+        carry=False resets memory (floor)."""
         from collections import defaultdict
         buckets = defaultdict(list)
         for (p, g, subj) in prompts_golds:
             pid = tok(p, add_special_tokens=False).input_ids
             buckets[len(pid)].append((pid, g, subj))
         hit, seen = 0, 0
-        # cap the probe batch like the other evals: each row rebuilds an M-binding cf doc for the bank,
-        # so memory scales with (batch * M). Shrinks as M grows; overridable via CAM_EVAL_BATCH_CAP.
         eb = max(1, min(args.batch, EVAL_BATCH_CAP // max(1, args.M)))
         for _plen, items in buckets.items():
             for i in range(0, len(items), eb):
@@ -662,11 +669,13 @@ def eval_locality_generalization(base, tok, injector, adapter, builder, kept, ar
                 torch.cuda.empty_cache() if torch.cuda.is_available() else None
                 ids = torch.tensor([bos + pid for (pid, _g, _s) in chunk], dtype=torch.long, device=DEV)
                 gold = torch.tensor([g for (_p, g, _s) in chunk], dtype=torch.long, device=DEV)
-                # drive the memory bank from a counterfactual doc so the tap is ON with the edits loaded.
-                # We reuse a freshly-built cf doc (all M kept facts visible in memory) for this batch; the
-                # bank is query-conditioned so it retrieves per the probe subject via the base's own attn.
                 cur = ids.shape[0]
-                d_ids, _cf, _pr, d_apos = builder.build_cf(np.random.default_rng(args.seed + i), cur)
+                if cond and all(s in subj2fact for (_p, _g, s) in chunk):
+                    fidx = [subj2fact[s] for (_p, _g, s) in chunk]
+                    d_ids, d_apos = builder.build_cf_query(np.random.default_rng(args.seed + i), fidx, cur,
+                                                           bind_target=not weak)
+                else:
+                    d_ids, _cf, _pr, d_apos = builder.build_cf(np.random.default_rng(args.seed + i), cur)
                 d_ids = d_ids.to(DEV)
                 bank = memory_bank(adapter, d_ids, args.seg_len, builder.qa_start, d_apos, carry=carry)
                 injector.set_bank(bank)
@@ -694,10 +703,13 @@ def eval_locality_generalization(base, tok, injector, adapter, builder, kept, ar
             gen.append((p, r.new_tid, r.subject_tid))
     gen = gen[:cap]
 
-    loc_on, n_loc = _score(loc, carry=True)
-    loc_off, _ = _score(loc, carry=False)
-    gen_on, n_gen = _score(gen, carry=True)
-    gen_off, _ = _score(gen, carry=False)
+    # LOCALITY with WEAK (out-of-store) banking: the neighbour's subject is not in the store, so the read
+    # is weak and the tap must stay inert (retrieval-strength gating). GENERALIZATION with STRONG banking:
+    # the paraphrase retrieves its OWN edit. Both mirror deployment (query the memory with the subject).
+    loc_on, n_loc = _score(loc, carry=True, cond=True, weak=True)
+    loc_off, _ = _score(loc, carry=False, cond=True, weak=True)
+    gen_on, n_gen = _score(gen, carry=True, cond=True)
+    gen_off, _ = _score(gen, carry=False, cond=True)
     return {"locality_mem_on": loc_on, "locality_mem_off": loc_off, "n_locality": n_loc,
             "generalization_mem_on": gen_on, "generalization_mem_off": gen_off, "n_generalization": n_gen}
 
