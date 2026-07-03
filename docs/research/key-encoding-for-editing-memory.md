@@ -85,6 +85,28 @@ at chance 12.42; delivery 0.000). 2936/2936 lookup hits, so not a bug — the an
 Kills pooled/single-vector GTE. GTE-MaxSim (multi-vector) untested but would need the late-interaction
 store redesign, and its raw margin already trails whitened input-embeds.
 
+## 3.5 P0 GATE PASSED — quantization-aware proxy validated (2026-07-03)
+
+Proxy = per-key total product-key **slot-overlap load** within disjoint banks (`tools/pk_proxy.py`).
+Metric v1 (mean-per-pair) FAILED (flat across B — caught by the gate); fixed to per-key total load
+(÷N not ÷pairs). Validated table (lower=better):
+
+| encoder | BN | B=1 | B=8 | B=16 | B=32 |
+|---|---|---|---|---|---|
+| inembed raw | off | 2.225 | 0.263 | 0.137 | 0.067 |
+| inembed whitened | off | 1.464 | 0.186 | 0.089 | 0.045 |
+| inembed raw | on | 1.477 | 0.194 | 0.101 | 0.057 |
+| GTE raw | off | 85.9 | 10.5 | 5.1 | 2.67 |
+| **GTE raw** | **on** | 1.356 | 0.156 | 0.073 | **0.038** |
+| GTE whitened | off | 1.369 | 0.164 | 0.072 | 0.041 |
+
+**Validation:** raw-inembed collision 2.225→0.067 tracks delivery 0.255→0.655 (rank-inverse, monotone);
+GTE-raw catastrophic (85.9) matches delivery 0.000. → proxy trustworthy for the combinatorial screen.
+**Interactions surfaced (proxy):** (1) whitening ≈ query-BatchNorm (both −30-35% collision, substitutive —
+both de-anisotropize). (2) **negative×positive confirmed: GTE raw 85.9 (dead) → 0.038 with BatchNorm /
+0.041 whitened** — de-anisotropized GTE is the BEST cell. **We killed GTE prematurely (tested only raw);
+OFAT confounding, empirically demonstrated.** Delivery confirmation of these predictions = P2.
+
 ## 4. Theory connections *(from the 2026 literature pass)*
 
 One-line map: **whitening = the "make quantization error data-independent" half of modern PQ (OPQ/RaBitQ);
@@ -244,3 +266,14 @@ Resolution:
   **MEMOIR** analog (theory-validated). Anti-rec: no semantic embedders / neural PQ (theory-confirmed).
   Next: **run Grid B (query BatchNorm) first**, then Grid A (soft-ZCA+rotation); start with the CPU
   quantization-aware proxy screen (top-k slot overlap).
+- **2026-07-03 (P0 gate + P2 build)** — Proxy GATE **PASSED** (§3.5): quantization-aware proxy (per-key
+  slot-overlap load, `tools/pk_proxy.py`) reproduces the raw B-sweep + GTE death → combinatorial screen
+  trustworthy. Proxy surfaced whitening≈query-BatchNorm (substitutive) and **empirically confirmed the
+  negative×positive class: de-anisotropized GTE (BatchNorm/whitened) = BEST cell** (OFAT killed GTE
+  prematurely). Built: query BatchNorm (`CAM_QUERY_BATCHNORM`, native H4 lever, in `pk_store._address`);
+  whitened key tables (`whiten_inembed_keys.pkl` 2560-d, `whiten_gte_keys.pkl` 128-d, soft-ZCA ε=0.05);
+  P2 delivery grid (`tools/p2_grid.sh`, 6 cells × 3 reps: raw/whitened/BatchNorm/whitened-GTE × banks).
+  **P2 BLOCKED on GPU contention** (another agent's `lease-serve-serve` container co-resident on the
+  leased card → OOM at model load; gpu-status shows FREE but VRAM occupied — the known hazard). Queued
+  behind a GPU-clear waiter (`tools/p2_wait_run.sh`). Next: harvest P2 delivery, confirm/deny H1/H4 + the
+  GTE revival, update §3.

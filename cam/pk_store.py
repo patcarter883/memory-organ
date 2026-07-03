@@ -32,6 +32,7 @@ measures whether per-purpose specialists even differentiate before any head is e
 fp32 compute throughout (delta-write surprise + scores need precision); the additive update is cast
 back to the base dtype only at the MAG tap (gated_tap.py owns that).
 """
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -101,6 +102,12 @@ class ProductKeyStore(nn.Module):
         # head biases: factual=0, positional=learned position code, recency=learned recency code.
         # head 0 (factual) has no bias; heads >=1 add a learned query bias (their "retrieval mode").
         self.head_bias = nn.Parameter(torch.zeros(n_heads, d_hub))
+        # QUERY BATCHNORM (H4, native PK collision fix — Lample et al. 2019 raised slot utilization
+        # 25.8%->80.3%). Standardize the addressing query per-dim before the sub-codebook top-k so no
+        # dimension dominates slot selection -> balanced slot usage -> fewer collisions. Opt-in
+        # CAM_QUERY_BATCHNORM=1 (affine=False = pure de-anisotropization, like whitening). Running stats
+        # fit during bind, used frozen at eval.
+        self._q_bn = nn.BatchNorm1d(d_hub, affine=False) if os.environ.get("CAM_QUERY_BATCHNORM") == "1" else None
 
     # ---- per-episode value state -----------------------------------------
     def init_state(self, batch, device, dtype=torch.float32):
@@ -121,6 +128,8 @@ class ProductKeyStore(nn.Module):
         Product-key top-k: score each half against its codebook, take sub_topk per half, expand to the
         sub_topk^2 candidate product slots, score = s1+s2, keep global topk, softmax over them."""
         B, Q, _ = q.shape
+        if self._q_bn is not None:                            # query BatchNorm before addressing (H4)
+            q = self._q_bn(q.reshape(B * Q, -1)).reshape(B, Q, -1)
         q1, q2 = q[..., :self.d_half], q[..., self.d_half:]
         s1 = q1 @ self.codebook1.t()                          # [B,Q,n_sub]
         s2 = q2 @ self.codebook2.t()
