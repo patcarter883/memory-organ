@@ -491,15 +491,20 @@ one-factor-at-a-time run). So the ceiling was the read *addressing*, exactly as 
 and it's largely fixable — though the residual to the 0.96 curated ceiling is real (multi-token *names* are
 inherently less separable than single-token entities, plus mixing three relations).
 
-**End-to-end, the store gain shows up in editing** — at M=16 (where the whole eval fits), edit-success rises
-**0.697 → 0.754** with the fix on. But the *clean* edit-success test is at M=32, where the fix effect is
-large — and there **the eval OOMs** (the long M=32 docs fragment a 16GB card; not batch-fixable without
-`expandable_segments`, which this ROCm lacks). So the fix is kept **opt-in** (a scaling knob you turn on when
-pushing M high), not a default: it clearly helps store retrieval at scale, its low-M effect is within noise,
-and confirming the edit-success payoff at high M is gated on an **eval-memory fix**. Second, independent
-wall: **fact supply** — even a full probe yields only ~13–37 base-known single-token-object facts per
-relation, capping M for the diverse set (`--cf-probe-cap` widens it). Neither limit is exposed by the M=8
-headline.
+**End-to-end, the store gain shows up in editing.** At M=16 (full metrics, reproducible across two runs)
+edit-success rises **0.70 → 0.76** with the fix on (generalization 0.70; locality −0.055 — the three
+language relations share objects, so neighbours are harder). So the fix helps *editing*, not just store
+retrieval. Getting the full metric set at M=16 needed an **eval-memory fix** (`CAM_SKIP_CEILING`: the
+in-context ceiling forward runs the whole M·bind_len-token doc and was the eval's OOM hog; plus a
+`gc`/`empty_cache` between training and eval) — otherwise loc/gen fragments a 16GB card.
+
+The *cleanest* edit test is at M=32, where the fix effect is largest — but there the **full pipeline is
+memory-bound** on a single 16GB card (base ~8GB + adapter ~5GB resident leaves too little for stage-2
+training + eval; M≥24 OOMs). That needs the model-parallel 2-card path (`CAM_DEVICE_MAP=auto`, already
+built) to run. So the fix is kept **opt-in** — a scaling knob you turn on when pushing M high: validated to
+help both store retrieval (M=32) and editing (M=16), neutral near the M=8 default. Second, independent wall:
+**fact supply** — even a full probe yields only ~13–37 base-known single-token-object facts per relation,
+capping M for the diverse set (`--cf-probe-cap` widens it). Neither limit is exposed by the M=8 headline.
 
 ## 8. Still open
 

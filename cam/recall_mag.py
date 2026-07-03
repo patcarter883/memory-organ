@@ -332,9 +332,12 @@ def eval_generative_mag(base, adapter, injector, builder, rng, args, n=512):
         ids, ans, apos = builder.build(rng, cur, local=False)
         ids, ans = ids.to(DEV), ans.to(DEV)
         torch.cuda.empty_cache() if torch.cuda.is_available() else None
-        # ceiling: full in-context doc up to apos+Kc-1 (teacher-forced), last Kc logits
+        # ceiling: full in-context doc up to apos+Kc-1 (teacher-forced), last Kc logits. The whole-doc
+        # forward is the eval's memory hog; CAM_SKIP_CEILING=1 skips it (a diagnostic) so the eval fits at
+        # high M on a 16GB card.
         injector.set_bank(None)                                          # tap OFF -> ceiling
-        lc = _answer_logits(base, base_embed(ids[:, :apos + Kc - 1]), Kc)
+        skip_ceiling = os.environ.get("CAM_SKIP_CEILING") == "1"
+        lc = None if skip_ceiling else _answer_logits(base, base_embed(ids[:, :apos + Kc - 1]), Kc)
         ctx_emb = _leakfree_ctx(base, builder, ids, apos, end=apos + Kc - 1)
         for cond, carry in (("memory", True), ("no_memory", False)):
             bank = memory_bank(adapter, ids, args.seg_len, builder.qa_start, apos, carry=carry)
@@ -344,14 +347,16 @@ def eval_generative_mag(base, adapter, injector, builder, rng, args, n=512):
             em, pt = _seq_metrics(lg, ans)
             res[cond][1] += em.sum().item(); res[cond][2] += pt.sum().item()
         injector.set_bank(None)
-        res["local_control"][0].extend(_nll_bits(lc, ans))
-        em, pt = _seq_metrics(lc, ans)
-        res["local_control"][1] += em.sum().item(); res["local_control"][2] += pt.sum().item()
+        if not skip_ceiling:
+            res["local_control"][0].extend(_nll_bits(lc, ans))
+            em, pt = _seq_metrics(lc, ans)
+            res["local_control"][1] += em.sum().item(); res["local_control"][2] += pt.sum().item()
         seen += cur
         # heartbeat: the multi-token eval (small eb -> many batches) is otherwise silent for minutes
         # and trips the watchdog's log-idle STALL guard. Print progress so the run stays alive.
         print(f"[mag] eval progress {seen}/{n}", flush=True)
-    return {c: (float(np.mean(res[c][0])), res[c][1] / seen, res[c][2] / seen) for c in res}
+    return {c: (float(np.mean(res[c][0])) if res[c][0] else float("nan"),
+                res[c][1] / seen, res[c][2] / seen) for c in res}
 
 
 # ---- checkpoint: persist the frozen v0 memory front-end (BoltAdapter) + a passing GatedMemoryTap ----
@@ -839,10 +844,13 @@ def eval_counterfactual(base, adapter, injector, builder, rng, args, n=512):
         ids, ans_cf, ans_prior = ids.to(DEV), ans_cf.to(DEV), ans_prior.to(DEV)
         torch.cuda.empty_cache() if torch.cuda.is_available() else None
         # ceiling: the full in-context doc (bindings visible) — the base CAN read the counterfactual
-        # capital from context (upper bound on delivery through pure attention, tap off).
+        # capital from context (upper bound on delivery through pure attention, tap off). It runs the WHOLE
+        # doc (M*bind_len tokens) so it's the eval's memory hog; CAM_SKIP_CEILING=1 skips it (a diagnostic,
+        # not a headline metric) so the gate/edit metrics fit at high M on a 16GB card.
         injector.set_bank(None)
-        lc = _answer_logits(base, base_embed(ids[:, :apos]), 1)
-        res["ceiling_cf"] += (lc.argmax(-1) == ans_cf).sum().item()
+        if os.environ.get("CAM_SKIP_CEILING") != "1":
+            lc = _answer_logits(base, base_embed(ids[:, :apos]), 1)
+            res["ceiling_cf"] += (lc.argmax(-1) == ans_cf).sum().item()
         # leak-free query context: header ("...The capital of") + "<Country> is" -> predict capital
         ctx_emb = _leakfree_ctx(base, builder, ids, apos)
         for cond, carry in (("memory", True), ("no_memory", False)):
@@ -864,7 +872,8 @@ def eval_counterfactual(base, adapter, injector, builder, rng, args, n=512):
         "no_memory_cf_acc": res["no_memory_cf"] / seen,
         "memory_prior_acc": res["memory_prior"] / seen,
         "no_memory_prior_acc": res["no_memory_prior"] / seen,
-        "ceiling_cf_acc": res["ceiling_cf"] / seen,
+        "ceiling_cf_acc": (float("nan") if os.environ.get("CAM_SKIP_CEILING") == "1"
+                           else res["ceiling_cf"] / seen),
         "nll_mem_cf": float(np.mean(res["nll_mem_cf"])),
         "nll_nomem_cf": float(np.mean(res["nll_nomem_cf"])),
         "nll_nomem_prior": float(np.mean(res["nll_nomem_prior"])),
@@ -1196,6 +1205,11 @@ def main():
                                conf_gate=getattr(args, "conf_gate", False), n_rel=n_rel).to(DEV)
         with StageCost(f"stage-2 tap fit L={tag} ({args.steps} steps, batch {args.batch})"):
             train_taps(base, adapter, injector, builder, rng, args, tag, loc_buckets=loc_buckets)
+        # free the training-phase CUDA memory (AdamW optimizer states + autograd graph fragments) before
+        # eval — on a 16GB card the leftover fragmentation is what OOMs the high-M eval forwards.
+        import gc as _gc
+        _gc.collect()
+        torch.cuda.empty_cache() if torch.cuda.is_available() else None
         with StageCost(f"delivery eval L={tag}"):
             gen = eval_generative_mag(base, adapter, injector, builder, rng, args)
         m_acc, nm_acc = verdict(tag, d_carry, gen, 1 / args.M)
