@@ -287,6 +287,31 @@ empty store, query it; average over edits. If ~0.85 → the floor is tap/value f
 lever); if ~1.0 → the B=32 ceiling was still residual collision after all. Establishes the true ceiling and
 which side to attack. Then sweep the top store/tap lever at fixed B=32.
 
+### Phase-R theory (2026 lit pass) — the ceiling is the SINGLE-SITE INJECTION mechanism, not the store
+
+**~0.6–0.7 is a documented, cross-literature single-site-injection ceiling.** WISE ([2405.14768](https://arxiv.org/abs/2405.14768)),
+a *trained gated side-memory* — our exact analog — tops out at reliability **0.70–0.77** on single-fact
+edits (locality 1.0). MEMIT's unconstrained single-site update = **0.6565**. Our ~0.66 is that ceiling.
+⇒ it's intrinsic to a single additive gated residual edit, NOT our addressing/store. Store tuning can't
+remove it; the ceiling-breakers are architectural. Ranked fidelity levers:
+
+1. **Calibrated closed-form gate (GCAV, [2501.05764](https://arxiv.org/pdf/2501.05764)) replacing the learned scalar** —
+   *high impact, LOW cost.* Solve per-token for the minimal ε that pushes the object's logit past the flip
+   threshold, capped at a fraction of ‖h‖ (a per-token, norm-relative target a scalar gate can't represent;
+   +31% rel. over fixed coeffs). A gate-formula swap, no new params. **← do first.**
+2. **Project the value onto the OBJECT'S UNEMBEDDING direction** — *high, low.* Spend the nudge on the
+   argmax, not generic residual displacement; makes "reach the flip threshold" well-defined.
+3. **Multi-layer injection** (~3 adjacent layers at ~65–80% depth) + sweep L24 DOWNWARD (L24 may be slightly
+   deep for a 4B model) — *high, moderate.* Single-site has the ~0.7 wall; layer-separated injection is the
+   field-standard way past it.
+4. **Multi-vector value bank (k>1, softmax-pooled) + subject-final-token keying + KL/norm penalty** —
+   *moderate, moderate.* k=1 is a degenerate product-key readout (memory layers pool top-k, [2412.09764]);
+   the keying + distribution-preservation constraint are AlphaEdit's 65→99% efficacy levers ([2410.02355]).
+
+Logit-level injection (add the calibrated direction at the final layer) is the guaranteed-to-flip fallback
+if residual-space stays capped. R0 should read ~0.7 (confirming the WISE/MEMIT ceiling); then **P-R1 = the
+GCAV calibrated gate.**
+
 ## 7. Methodology notes
 
 - **Metric noise:** persistent-sweep delivery at cohort=10 swings ±0.10 run-to-run (GPU tap-fit
