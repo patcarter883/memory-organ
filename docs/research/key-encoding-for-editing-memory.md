@@ -154,6 +154,20 @@ theory's robust "past the single-site ceiling" lever, reusing `--tap-layers`/`--
 tap at ~3 layers (e.g. 16,20,24) with `--multi`, and a single-layer sweep (L18/L20 vs L24 — is L24 too
 deep for a 4B model?). Metric: solo-fidelity vs the 0.69 single-L24 ceiling.
 
+## 3.9 P-R2 (multi-layer) NEGATIVE — the ~0.7 wall is ROBUST (2026-07-03)
+
+solo-fidelity vs single-L24 (~0.69): **multi[16,20,24] = 0.698** (0.745/0.686/0.664, ≈ baseline);
+single-L18 = 0.565 (worse — L24 not too deep). Multi-layer injection did NOT break the ceiling.
+
+**CONVERGED CONCLUSION:** ~0.7 is the robust reliability ceiling of a trained gated *residual* injection
+into a frozen LM — stable across encoder (P2), gate calibration (P-R1), layer count + depth (P-R2), and
+matching WISE (0.70–0.77) / MEMIT (0.66). Four independent confirmations of the lit's "single additive
+nudge has a hard reliability wall no store tuning removes." **Remaining lever = leave residual space:**
+**P-R3 logit-level / unembedding-direction injection** (the theory's guaranteed-to-flip fallback — directly
+boost the object token's logit) — bigger architecture change, with a locality trade-off to watch. Decision
+point: attempt P-R3, or conclude Phase R with the characterization (the ceiling is now well-established and
+matches the literature).
+
 ## 4. Theory connections *(from the 2026 literature pass)*
 
 One-line map: **whitening = the "make quantization error data-independent" half of modern PQ (OPQ/RaBitQ);
