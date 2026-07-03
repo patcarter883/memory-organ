@@ -133,6 +133,27 @@ cf-delivery, 3 reps (`tools/p2_grid.sh`):
   SATURATED. The ~0.6–0.7 ceiling is now **per-bank RETRIEVAL FIDELITY** (store/value/tap readout), not
   key collision. Untouched all campaign — the next research phase.
 
+## 3.7 R0 RESULT — the ceiling is the injection mechanism, confirmed (2026-07-03)
+
+Single-fact fidelity (`--persistent-solo`, each edit ALONE, no collision possible), 3 reps:
+**solo-delivery 0.657 / 0.657 / 0.745 → mean 0.69**, vs same-run N=137@B=32 = 0.606/0.628/0.715 → 0.65.
+
+- Solo (zero collision) ≈ **0.69** — dead in the WISE (0.70–0.77) / MEMIT (0.66) single-site-injection
+  band. Removing ALL collision buys only **+0.04** over B=32. ⇒ disjoint banks already captured ~all the
+  collision headroom; the remaining ~0.31 to 1.0 is the **single additive gated residual injection**, NOT
+  the store/addressing. Phase-R thesis confirmed. Next: **P-R1 = GCAV calibrated gate.**
+
+## 3.8 P-R1 (norm-relative gate) — NEGATIVE; pivot to P-R2 multi-layer (2026-07-03)
+
+`CAM_NORM_GATE` (inject value DIRECTION at α·‖h‖) **collapsed**: solo 0.002 (vs baseline 0.674), N=137
+0.000, prior ~0.99 — the tap learned nothing. Diagnosis: normalizing `y` discards the tap's learned
+per-dim magnitude, and one global α scaling by ‖h‖ can't calibrate it → optimizer drives α→0 (no-op). The
+crude norm-relative swap destabilizes training; the real GCAV lever needs to target the OBJECT LOGIT
+(needs the object direction) — a bigger change, deferred. **Pivot to P-R2 (multi-layer injection)** — the
+theory's robust "past the single-site ceiling" lever, reusing `--tap-layers`/`--multi` (no gate surgery):
+tap at ~3 layers (e.g. 16,20,24) with `--multi`, and a single-layer sweep (L18/L20 vs L24 — is L24 too
+deep for a 4B model?). Metric: solo-fidelity vs the 0.69 single-L24 ceiling.
+
 ## 4. Theory connections *(from the 2026 literature pass)*
 
 One-line map: **whitening = the "make quantization error data-independent" half of modern PQ (OPQ/RaBitQ);
