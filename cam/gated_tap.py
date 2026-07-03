@@ -14,6 +14,7 @@ Injected via a forward hook on base.model.layers[L] (HF decoder layers return a 
 rewrites output[0]). The bank ([B,K,mem_dim], query-conditioned, leak-free) is stashed before each
 base(...) call and read by the hook.
 """
+import os
 import torch
 import torch.nn as nn
 
@@ -46,6 +47,12 @@ class GatedMemoryTap(nn.Module):
         self.to_v = nn.Linear(mem_dim, base_hidden, bias=False)
         self.to_o = nn.Linear(base_hidden, base_hidden, bias=False)
         self.gamma = nn.Parameter(torch.zeros(base_hidden))   # gate logit; tanh(0)=0 -> no-op at init
+        # NORM-RELATIVE CALIBRATED GATE (Phase-R P-R1, #19): the single-site-injection ceiling (~0.7,
+        # WISE/MEMIT) partly comes from a fixed/unnormalized scalar gate that can't hit a per-token,
+        # norm-relative target (steering is non-monotonic in a raw coefficient). CAM_NORM_GATE=1 injects
+        # the value DIRECTION at a learned fraction alpha=sigmoid(gate_alpha) of the local residual norm
+        # ||h||, per token (Norm-Preserving Steering). gate_alpha init -6 -> alpha~0 -> ~no-op at init.
+        self.gate_alpha = nn.Parameter(torch.tensor(-6.0))
         # NULL / sink slot: a learnable extra key with a ZERO value. softmax attention must sum to 1,
         # so without an escape the tap injects SOMETHING for every query (even an out-of-store neighbour)
         # -> collateral damage (the Track 1 locality leak). Attending to the null key (value 0) delivers
@@ -112,11 +119,17 @@ class GatedMemoryTap(nn.Module):
         a = torch.softmax(q @ k.transpose(-1, -2) / (self.d_head ** 0.5), dim=-1)   # [B,nh,T,K+1]
         ctx = (a @ v).transpose(1, 2).reshape(h32.shape)       # [B,T,H]  (null contributes 0)
         y = self.to_o(ctx)
-        g = torch.tanh(self.gamma)                             # [H]; 0 at init
-        self.last_gate = g.abs().mean().detach()
         self.last_attn_entropy = (-(a.clamp_min(1e-9).log() * a).sum(-1)).mean().detach()
         self.last_null_attn = a[..., -1].mean().detach()       # softmax mass routed to the null slot
-        upd = g * y                                            # [B,T,H] gated injection
+        if os.environ.get("CAM_NORM_GATE") == "1":             # P-R1: inject value DIRECTION at alpha*||h||
+            ydir = y / (y.norm(dim=-1, keepdim=True) + 1e-6)   # [B,T,H] unit direction
+            alpha = torch.sigmoid(self.gate_alpha)             # learned fraction in (0,1)
+            upd = alpha * h32.norm(dim=-1, keepdim=True) * ydir  # per-token norm-relative magnitude
+            self.last_gate = alpha.detach()
+        else:
+            g = torch.tanh(self.gamma)                         # [H]; 0 at init
+            self.last_gate = g.abs().mean().detach()
+            upd = g * y                                        # [B,T,H] gated injection
         if self.conf_gate and self._conf is not None:
             cf = self._conf.to(device=h.device, dtype=wdt).detach()   # [B] store frozen -> no grad; to layer's device
             ri = int(self._relidx) if self._relidx is not None else 0
