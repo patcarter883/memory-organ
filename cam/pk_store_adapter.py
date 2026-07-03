@@ -227,6 +227,19 @@ class PKStoreAdapter(nn.Module):
             pooled = span.mean(dim=1)                                                      # [B,mem]
         return pooled.unsqueeze(1) if keepdim else pooled
 
+    def _maxsim_reduce(self, read):
+        """MULTI-VECTOR READ RULE (Phase B, #19). read [B,H,mem] = the H per-head store retrievals for one
+        subject's H key vectors. Phase A showed pooling the H reads collides at scale; ColBERT's MaxSim
+        instead takes the SINGLE best-matching key. Soft-MaxSim: weight heads by retrieval STRENGTH (the
+        read-value norm — a clean, confident match has larger norm; a collided/averaged one is smaller) at
+        a low temperature so the discriminative head dominates. Differentiable (train + eval consistent).
+        No-op unless CAM_KEY_MAXSIM=1 and H>1."""
+        if read.shape[1] <= 1 or os.environ.get("CAM_KEY_MAXSIM") != "1":
+            return read
+        temp = float(os.environ.get("CAM_KEY_MAXSIM_TEMP", "0.1"))
+        w = torch.softmax(read.norm(dim=-1) / temp, dim=1)          # [B,H] concentrate on the best head
+        return (w.unsqueeze(-1) * read).sum(dim=1, keepdim=True)    # [B,1,mem]
+
     def _pos_key(self, name_key, t):
         """Fold answer position t into the name key -> the per-position store key/query [..., mem_dim].
         name_key: [..., mem_dim] (the binding's name-token mem embed). Applied IDENTICALLY at write
@@ -450,6 +463,7 @@ class PKStoreAdapter(nn.Module):
             # frozen Stage-2/eval: also pull the store-confidence scalar (factual-head pre-norm retrieval
             # magnitude) so the MAG tap's confidence gate can fire in proportion to retrieval strength.
             read, _head_norms, self._last_conf = self.store.read(V, q, return_conf=True)
+        read = self._maxsim_reduce(read)                # multi-vector MaxSim: best head, not pool (Phase B)
         pq = self.readout_q.unsqueeze(0).expand(B, -1, -1)
         attn = torch.softmax(pq @ read.transpose(1, 2) / (self.mem_dim ** 0.5), dim=-1)
         return attn @ read                              # [B,K,mem_dim] pooled (PRE out_proj)
@@ -466,6 +480,7 @@ class PKStoreAdapter(nn.Module):
         the store-confidence scalar (self._last_conf). A doc-independent mirror of memory_bank's
         read+readout — the query is just the subject, the bank is the standing store."""
         read, _hn, self._last_conf = self.store.read(V, q, return_conf=True)
+        read = self._maxsim_reduce(read)                # multi-vector MaxSim: best head, not pool (Phase B)
         B = q.shape[0]
         pq = self.readout_q.unsqueeze(0).expand(B, -1, -1)
         attn = torch.softmax(pq @ read.transpose(1, 2) / (self.mem_dim ** 0.5), dim=-1)
