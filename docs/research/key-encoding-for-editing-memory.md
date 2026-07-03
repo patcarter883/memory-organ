@@ -85,44 +85,94 @@ at chance 12.42; delivery 0.000). 2936/2936 lookup hits, so not a bug — the an
 Kills pooled/single-vector GTE. GTE-MaxSim (multi-vector) untested but would need the late-interaction
 store redesign, and its raw margin already trails whitened input-embeds.
 
-## 4. Theory connections *(to be filled by the literature pass — placeholder)*
+## 4. Theory connections *(from the 2026 literature pass)*
 
-- **Optimized Product Quantization (OPQ, Ge et al. 2013) & learned rotations** — align keys to the PQ
-  sub-codebook axes to minimize quantization error. Likely the principled version of our whitening win.
-- **Isotropy for quantized/hashing retrieval** — does isotropy help PQ/LSH specifically, or only cosine?
-- **Online/streaming whitening** (shrinkage / Ledoit-Wolf / online PCA) — does a whitening fit on an
-  initial population generalize to new items in a growing memory?
-- **Learned hashing / LSH** — could a learned router beat our stable-random hash bucketing?
-- **Editing-memory key encoding** (GRACE ε-ball, MEMOIR disjoint sparse masks, WISE) — what's portable.
+One-line map: **whitening = the "make quantization error data-independent" half of modern PQ (OPQ/RaBitQ);
+disjoint-bank hashing = the "spread load, kill collision" half of learned-hashing / MoE balancing.** Both
+of our empirical wins are established theory with cheaper-and-better modern successors — and there's one
+native product-key lever we never tried.
+
+- **OPQ → RaBitQ (the transform).** OPQ (Ge et al. 2013) learns a rotation aligning data to the PQ
+  sub-codebook axes; our ZCA whitening is a *special case* (decorrelate+equalize variance globally, but not
+  rotated to the product-key half-split). The 2024 successor **RaBitQ** (Gao & Long, SIGMOD 2024,
+  [2405.12497](https://arxiv.org/abs/2405.12497)) applies a **random orthogonal rotation** after
+  normalization → removes the codebook's directional preference → **unbiased, data-distribution-independent
+  error bound O(1/√D)**. That is the theorem behind our "whitening made every encoder isotropic and stopped
+  collisions." **Zero training** (vs OPQ's alternating opt — bad for a growing store). Ranked for us:
+  ZCA whitening (have it) < **ZCA + fixed random Hadamard rotation** (free, RaBitQ guarantee) < OPQ
+  (moderate, must retrain as store grows) < neural PQ (QINCo, [2401.14732] — major, overkill).
+- **Isotropy IS the quantized-retrieval mechanism** (not cosine-only). RaBitQ's bound depends on
+  directional uniformity; anisotropy → dominant eigen-directions over-crowd their cells → collision.
+  Isotropizing equalizes per-cell occupancy → min expected collision at fixed cell budget. The discrete
+  analog of product-key "usage collapse" (below).
+- **Online/streaming whitening generalizes — with a cheap safety.** A whitening/mean-bias fit on a fixed
+  population transfers to new items from the same encoder distribution (mean-bias fit once on Wikipedia
+  generalizes across 38 models, [2511.11041](https://arxiv.org/html/2511.11041v1)). Failure modes:
+  covariance under-sampling early + domain shift → amplified noise in small eigen-directions. Fix:
+  **Ledoit-Wolf/OAS shrinkage covariance** (analytic, no tuning) + an **ε eigenvalue floor** (also the
+  "don't over-whiten" knob). Periodic **incremental PCA** refit for drift.
+- **Don't over-whiten.** Soft-ZCA (ε∈{0.01,0.1}) beats full ZCA, which "collapses the eigenvalue
+  hierarchy" ([2411.17538](https://arxiv.org/pdf/2411.17538)); "All-but-the-Top" (Mu & Viswanath, ICLR'18,
+  [1702.01417](https://arxiv.org/pdf/1702.01417)) — removing mean + top-few directions captures most of the
+  win. ⇒ use **soft-ZCA with an ε floor**, not full ZCA.
+- **The lever we missed — native product-key usage balancing.** The ORIGINAL PK paper (Lample et al. 2019,
+  [1907.05242](https://arxiv.org/pdf/1907.05242)) hit *our exact collision problem* and fixed it with
+  **query BatchNorm**, raising key utilization **25.8% → 80.3%** (ppl 19.8→18.0). This is native, cheap,
+  and directly maximizes distinct-slot coverage — a quantization-aware objective, not a cosine proxy.
+  Complementary: **ScaNN's anisotropic loss** (Guo et al., ICML'20, [1908.10396](https://arxiv.org/abs/1908.10396))
+  weights the query-*parallel* residual more (parallel error is what flips top-k ranking / causes slot
+  collision).
+- **Editing-memory analogs.** **MEMOIR** (NeurIPS'25, [2506.07899](https://arxiv.org/abs/2506.07899)) =
+  our disjoint banks but with *content-derived sparse masks* (a learned router), scaling to thousands of
+  edits. **GRACE** ε-ball = *reactive* collision fix (split on collision) — combine with whitening
+  (*preventive*). **WISE** = side-memory + router + sharding. None use rotation/quantization-aware keys ⇒
+  **whitening+rotation is a genuinely novel, portable upgrade to the editing-memory family.**
+- **Anti-recommendation (theory-confirmed):** do NOT use a semantic embedder/retriever or neural PQ for
+  keys — semantic clustering is the anti-feature we observed; representation-degeneration / "All-but-the-Top"
+  explain *why* those spaces are anisotropic cones. Stay with **whitened input-embeddings + rotation**.
 
 ## 5. Open questions & hypotheses
 
 - **H1 (whitening × banks interaction).** Complementary (whitening lifts every B), substitutive (whitening
   at B=1 recovers most of B=32 → *drop the banks*, simpler store), or redundant (banks already saturate
   addressing). Each is decision-relevant.
-- **H2 (rotation > whitening).** A learned rotation aligned to the product-key sub-codebooks (OPQ-style)
-  beats generic ZCA whitening for *quantized* addressing.
-- **H3 (generalization).** Whitening fit on an initial subject set holds for held-out/new subjects (a real
-  memory grows). If not → need streaming/shrinkage covariance.
-- **H4 (objective).** A quantization-aware separation objective (minimize expected top-k slot overlap)
-  beats optimizing raw cosine separability.
+- **H2 (rotation > whitening).** ZCA + a fixed **random orthogonal rotation** (RaBitQ) beats plain ZCA for
+  *quantized* addressing (data-independent uniform-collision bound).
+- **H3 (generalization).** Soft-ZCA (+shrinkage covariance +ε floor) fit on an initial subject set holds
+  for **held-out** subjects (a real memory grows). Test on a train/test split.
+- **H4 (native objective beats encoder tricks) — PROMOTED, likely the biggest lever.** **Query BatchNorm /
+  product-key usage balancing** (native PK collision fix, 25.8%→80.3% in the original paper) beats or
+  subsumes the encoder-side whitening, because it directly maximizes distinct-slot coverage under the
+  store's own quantizer. We never tried it. Cheap to add.
+- **H5 (soft not full).** Soft-ZCA (ε∈{0.01,0.1}) ≥ full ZCA (avoid eigenvalue-hierarchy collapse).
 
 ## 6. Experimental design — factorial, not one-off A/Bs
 
-Primary grid (delivery @ N=137, 3 reps each), key-transform × disjoint-banks:
+Two orthogonal axes now: the **key transform** (encoder-side) and the **native store objective** (query
+BatchNorm) — H4 says the latter may dominate, so test both.
+
+**Grid A — transform × disjoint-banks** (delivery @ N=137, 3 reps each):
 
 | transform \ B | 1 | 8 | 32 |
 |---|---|---|---|
 | raw keys | 0.26 | 0.42 | 0.66 |  ← known
-| whitened (ZCA) | ? | ? | ? |
-| learned rotation / OPQ | ? | ? | ? |  ← pending H2
+| soft-ZCA whitened | ? | ? | ? |  ← H1
+| soft-ZCA + random rotation (RaBitQ) | ? | ? | ? |  ← H2
 
-Distinguishes H1 (read the whitened row vs raw row) and, with row 3, H2. Protocol: **screen cheap →
-confirm expensive**:
-1. Proxy screen (CPU): NN-confusability **+ a quantization-aware metric** (expected top-k slot overlap
-   under the actual product-key codebook — closer to the store than raw cosine). Rank transforms first.
-2. Delivery confirmation (GPU): run proxy survivors on the grid, 3 reps, N=137 + retention curve.
-3. Generalization: fit the transform on a train split, evaluate on held-out subjects (H3).
+**Grid B — query BatchNorm (H4), the native lever**, crossed with {raw, whitened} keys at B∈{1,32}. If
+BatchNorm alone at B=1 approaches the whitened/B=32 numbers, it's the cheapest, most principled fix and
+subsumes the encoder work.
+
+Protocol — **screen cheap → confirm expensive**:
+1. Proxy screen (CPU): NN-confusability **+ a quantization-aware metric** = expected **top-k slot overlap**
+   under the actual product-key codebook (much closer to the store than raw cosine; = the ScaNN/PK-usage
+   target). Rank transforms before spending GPU.
+2. Delivery confirmation (GPU): proxy survivors on Grids A/B, 3 reps, N=137 + retention curve.
+3. Generalization (H3): fit soft-ZCA (Ledoit-Wolf + ε floor) on a **train split**, evaluate delivery on
+   **held-out** subjects.
+
+Sequencing per the lit ranking: **(1) query BatchNorm (H4)** — cheapest, native, possibly biggest; then
+**(2) soft-ZCA + random rotation (H2)** on the survivors; banks scale + load-balance monitor throughout.
 
 ## 7. Methodology notes
 
@@ -142,6 +192,12 @@ confirm expensive**:
 
 - **2026-07-03** — Started notes. Consolidated: N=137 ceiling = addressing (#44); disjoint banks fix +106%,
   knee B=32 (#48); GTE-ModernColBERT killed (anisotropy); whitening bake-off (whitened input-embeds win);
-  reframed as product-quantization addressing (OPQ). Launched literature pass on OPQ / isotropy-for-PQ /
-  online whitening / learned hashing / editing-memory key encoding. Next: fill §4 from lit, then run the
-  §6 factorial (whitening-delivery grid) starting with the proxy screen + the whitened-input-embed row.
+  reframed as product-quantization addressing.
+- **2026-07-03 (lit pass)** — Grounded §4. Whitening = OPQ/**RaBitQ** special case → upgrade: **soft-ZCA +
+  random rotation + Ledoit-Wolf + ε floor** (data-independent O(1/√D) collision bound, zero training,
+  streaming-safe). Isotropy IS the quantized-retrieval mechanism. Whitening generalizes to held-out items
+  (with shrinkage). **Missed native lever surfaced: query BatchNorm / product-key usage balancing** (orig
+  PK paper: utilization 25.8%→80.3%) — promoted to **H4, likely biggest+cheapest**. Disjoint banks =
+  **MEMOIR** analog (theory-validated). Anti-rec: no semantic embedders / neural PQ (theory-confirmed).
+  Next: **run Grid B (query BatchNorm) first**, then Grid A (soft-ZCA+rotation); start with the CPU
+  quantization-aware proxy screen (top-k slot overlap).
