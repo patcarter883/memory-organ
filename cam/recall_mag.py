@@ -1027,8 +1027,12 @@ def _persistent_write_val(adapter, V, r, val_tid, pooled):
     of B disjoint banks; subject routed by stable hash — Phase C). Key = pooled subject span (mean, or the
     learned attention pool when CAM_LEARNED_KEY_POOL=1), else last token. `val_tid` lets the overwrite test
     write a SECOND value for the same key."""
-    subj_emb = adapter._e(torch.tensor([r.subject_tids], dtype=torch.long, device=DEV))   # [1,S,mem_dim]
-    key = adapter._pool_subject(subj_emb, keepdim=True) if pooled else subj_emb[:, -1:]    # [1,H,mem] or [1,1,mem]
+    tids = torch.tensor([r.subject_tids], dtype=torch.long, device=DEV)
+    if getattr(adapter, "_gte_keys", None) is not None:                                    # DECOUPLED: GTE key
+        key = adapter._gte_key(tids).unsqueeze(1)                                          # [1,1,mem_dim]
+    else:
+        subj_emb = adapter._e(tids)                                                        # [1,S,mem_dim]
+        key = adapter._pool_subject(subj_emb, keepdim=True) if pooled else subj_emb[:, -1:]  # [1,H,mem] or [1,1,mem]
     val = adapter._e(torch.tensor([[val_tid]], dtype=torch.long, device=DEV))              # [1,1,mem_dim]
     if key.shape[1] > 1:                        # multi-vector keys: repeat the value across the H key slots
         val = val.expand(-1, key.shape[1], -1)
@@ -1060,10 +1064,15 @@ def _persistent_preds(base, adapter, injector, tok, V, cohort):
     # cheap per-edit store reads (B=1; variable subject length) -> collect per-row bank/conf + prompt ids
     banks, confs, id_lists = [], [], []
     learned_pool = os.environ.get("CAM_LEARNED_KEY_POOL") == "1"
+    gte = getattr(adapter, "_gte_keys", None) is not None
     for r in cohort:
-        q = adapter._e(torch.tensor([r.subject_tids], dtype=torch.long, device=DEV))
-        if learned_pool:                                                 # symmetric with the pooled write key
-            q = adapter._pool_subject(q, keepdim=True)                   # [1,1,mem]
+        tids = torch.tensor([r.subject_tids], dtype=torch.long, device=DEV)
+        if gte:                                                          # DECOUPLED: GTE query (matches write)
+            q = adapter._gte_key(tids).unsqueeze(1)                      # [1,1,mem]
+        else:
+            q = adapter._e(tids)
+            if learned_pool:                                            # symmetric with the pooled write key
+                q = adapter._pool_subject(q, keepdim=True)              # [1,1,mem]
         b = _subject_bank(r.subject_tids, len(V))                        # Phase C: read from the subject's bank
         banks.append(adapter.persistent_bank(V[b], q))                    # [1,K,mem]
         confs.append(getattr(adapter, "_last_conf", None))               # [1] or None
