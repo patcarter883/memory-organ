@@ -997,21 +997,48 @@ def verdict_locality_generalization(tag, lg):
     return lg
 
 
+def _n_disjoint_banks():
+    """Track 4 #19 Phase C: how many DISJOINT persistent value banks. The N=137 ceiling is shared-store
+    CROWDING (Phase A/B falsified every key-encoding fix). Routing each subject to one of B disjoint value
+    banks by a STABLE hash of its token-ids turns one crowded N=137 store into ~B parallel N≈137/B stores,
+    each in the low-crowding regime the store already handles well (~0.5 @ N≈9). Shared trained store
+    projections; only the VALUE bank is disjoint -> a PERSISTENT-PATH change, NO retraining. Default 1."""
+    return max(1, int(os.environ.get("CAM_DISJOINT_BANKS", "1")))
+
+
+def _subject_bank(subject_tids, B):
+    """Stable subject-identity hash -> bank index in [0,B). On the discrete token-ids (not the learned
+    embedding) so write and read route identically regardless of encoder state."""
+    if B <= 1:
+        return 0
+    import hashlib
+    h = hashlib.md5(",".join(map(str, subject_tids)).encode()).hexdigest()
+    return int(h, 16) % B
+
+
+def _init_banks(adapter, B):
+    """B disjoint persistent value banks (list); B=1 -> a single bank (byte-identical to the pre-Phase-C path)."""
+    return [adapter.store.init_state(1, DEV, dtype=torch.float32) for _ in range(B)]
+
+
 @torch.no_grad()
 def _persistent_write_val(adapter, V, r, val_tid, pooled):
-    """Incremental error-correcting write of subject(`r`) -> `val_tid` into standing bank V. Key = pooled
-    subject span (mean, or the learned attention pool when CAM_LEARNED_KEY_POOL=1 — #19 incr#2), else the
-    last token. `val_tid` lets the overwrite test write a SECOND value for the same key."""
+    """Incremental error-correcting write of subject(`r`) -> `val_tid` into the standing bank(s) V (a LIST
+    of B disjoint banks; subject routed by stable hash — Phase C). Key = pooled subject span (mean, or the
+    learned attention pool when CAM_LEARNED_KEY_POOL=1), else last token. `val_tid` lets the overwrite test
+    write a SECOND value for the same key."""
     subj_emb = adapter._e(torch.tensor([r.subject_tids], dtype=torch.long, device=DEV))   # [1,S,mem_dim]
     key = adapter._pool_subject(subj_emb, keepdim=True) if pooled else subj_emb[:, -1:]    # [1,H,mem] or [1,1,mem]
     val = adapter._e(torch.tensor([[val_tid]], dtype=torch.long, device=DEV))              # [1,1,mem_dim]
     if key.shape[1] > 1:                        # multi-vector keys: repeat the value across the H key slots
         val = val.expand(-1, key.shape[1], -1)
-    return adapter.persistent_write(V, key, val)
+    b = _subject_bank(r.subject_tids, len(V))
+    V[b] = adapter.persistent_write(V[b], key, val)
+    return V
 
 
 def _persistent_write_one(adapter, V, r, pooled):
-    """One incremental write of edit `r` (value = its own new_tid) into standing bank V."""
+    """One incremental write of edit `r` (value = its own new_tid) into the standing bank(s) V."""
     return _persistent_write_val(adapter, V, r, r.new_tid, pooled)
 
 
@@ -1037,7 +1064,8 @@ def _persistent_preds(base, adapter, injector, tok, V, cohort):
         q = adapter._e(torch.tensor([r.subject_tids], dtype=torch.long, device=DEV))
         if learned_pool:                                                 # symmetric with the pooled write key
             q = adapter._pool_subject(q, keepdim=True)                   # [1,1,mem]
-        banks.append(adapter.persistent_bank(V, q))                       # [1,K,mem]
+        b = _subject_bank(r.subject_tids, len(V))                        # Phase C: read from the subject's bank
+        banks.append(adapter.persistent_bank(V[b], q))                    # [1,K,mem]
         confs.append(getattr(adapter, "_last_conf", None))               # [1] or None
         id_lists.append(bos + tok(r.prompt_text, add_special_tokens=False).input_ids)
     preds = [0] * len(cohort)
@@ -1086,7 +1114,11 @@ def eval_persistent(base, adapter, injector, tok, kept, args):
     pooled = os.environ.get("CAM_POOLED_SUBJ_KEY") == "1"
     N = len(kept)
     sweep = getattr(args, "persistent_sweep", False)
-    V = adapter.store.init_state(1, DEV, dtype=torch.float32)         # ONE persistent bank
+    B = _n_disjoint_banks()                                           # Phase C: B disjoint value banks
+    V = _init_banks(adapter, B)                                       # subject-hash routed (B=1 -> one bank)
+    if B > 1:
+        print(f"[mag][persistent] Phase C: {B} disjoint value banks (subject-hash routed, ~{N/B:.1f} edits/bank)",
+              flush=True)
 
     curve = []
     if sweep:
@@ -1139,7 +1171,7 @@ def eval_persistent_overwrite(base, adapter, injector, tok, kept, args):
     valA = [r.new_tid for r in cohort]
     valB = [kept[(idx[j] + 1) % N].new_tid for j in range(len(cohort))]
     n = max(1, len(cohort))
-    V = adapter.store.init_state(1, DEV, dtype=torch.float32)
+    V = _init_banks(adapter, _n_disjoint_banks())          # Phase C: B disjoint banks (subject-hash routed)
     for r in cohort:                                        # pass A: write the first value
         V = _persistent_write_val(adapter, V, r, r.new_tid, pooled)
     predsA = _persistent_preds(base, adapter, injector, tok, V, cohort)
