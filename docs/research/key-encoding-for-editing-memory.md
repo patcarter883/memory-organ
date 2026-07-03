@@ -107,6 +107,32 @@ both de-anisotropize). (2) **negative×positive confirmed: GTE raw 85.9 (dead) �
 0.041 whitened** — de-anisotropized GTE is the BEST cell. **We killed GTE prematurely (tested only raw);
 OFAT confounding, empirically demonstrated.** Delivery confirmation of these predictions = P2.
 
+## 3.6 P2 DELIVERY GRID — resolved (2026-07-03)
+
+cf-delivery, 3 reps (`tools/p2_grid.sh`):
+| cell | N=137 | N=34 |
+|---|---|---|
+| raw · B=1 | 0.209 | 0.510 |
+| raw · B=32 | 0.608 | 0.735 |
+| white · B=1 | 0.255 | 0.490 |
+| white · B=32 | 0.567 | 0.774 |
+| bn · B=1 | 0.317 | 0.588 |
+| whiteGTE · B=32 | 0.589 | 0.667 |
+
+- **GTE REVIVAL CONFIRMED (negative×positive, end-to-end):** raw GTE 0.000 → **whitened GTE 0.589** @B=32.
+  OFAT killed GTE prematurely; de-anisotropized it's competitive. Proxy predicted it; delivery confirms.
+  Validates the interaction-aware / proxy-screened methodology.
+- **H1 = FALSE (whitening does NOT substitute for banks):** banks move delivery +0.40 (0.21→0.61); every
+  encoder transform ≤ +0.11, and white@B1 (0.255) ≪ raw@B32 (0.608). Keep the disjoint banks.
+- **H4 = modest+:** query BatchNorm is the best *encoder-side* cheap lever (+0.11 @B=1, native, no key
+  change; beats whitening there) — but still ≪ banks.
+- **Proxy fidelity:** correctly ranked BN>raw@B1 and the GTE revival; OVERSTATED whitening@B32 (proxy
+  0.045<0.067 → delivery 0.567≈0.608). ⇒ proxy is a good *screen* (ranks, catches death/revival) but small
+  proxy gaps don't predict small delivery gaps — both in the ±0.10 noise.
+- **FRONTIER MOVED:** at B=32 all encoders converge ~0.57–0.61 (and B=64 was ~0.61) → addressing is
+  SATURATED. The ~0.6–0.7 ceiling is now **per-bank RETRIEVAL FIDELITY** (store/value/tap readout), not
+  key collision. Untouched all campaign — the next research phase.
+
 ## 4. Theory connections *(from the 2026 literature pass)*
 
 One-line map: **whitening = the "make quantization error data-independent" half of modern PQ (OPQ/RaBitQ);
@@ -238,6 +264,28 @@ Resolution:
   + ε floor.
 - **P4 — synthesize:** update §3/§5, pick the production key-encoding recipe, decide banks-vs-transform
   (H1 substitutive → simpler store).
+
+## 6d. Phase R — the retrieval-fidelity frontier (NEW, opened by P2)
+
+The addressing question is **resolved**: disjoint banks (B=32) dominate; better keys (whitening/BN) give
+≤+0.11 and don't substitute; GTE is revivable but not superior. At B=32 every encoder converges to
+**~0.6–0.7**, and B=64 doesn't beat B=32 → the ceiling is **NOT collision**. It's **per-bank retrieval
+fidelity**: a subject nearly alone in its bank still delivers only ~0.7. This is the store/value/tap
+readout side — untouched all campaign. New research question:
+
+*What caps per-fact retrieval fidelity at ~0.7, and can we push it toward 1.0?*
+
+Candidate levers (never investigated — all store/tap, not keys):
+- **Value encoding** — value is `_e([new_tid])`, one mem vector; multi-token / richer value? value capacity?
+- **The tap / injection** — 1 tap layer (L24); more tap layers, stronger gate, conf-gate calibration?
+- **Readout** — `readout_q` K-slot pool; read-head count per bank; the delta-write β / write fidelity.
+- **The frozen-base bottleneck** — maybe ~0.7 is how reliably a single residual nudge flips the argmax at
+  all (a ceiling of the *mechanism*, not the store) — needs an isolation test.
+
+**R0 diagnostic (cheapest, foundational):** measure **single-fact fidelity** — write ONE edit into an
+empty store, query it; average over edits. If ~0.85 → the floor is tap/value fidelity (gap to 1.0 = the
+lever); if ~1.0 → the B=32 ceiling was still residual collision after all. Establishes the true ceiling and
+which side to attack. Then sweep the top store/tap lever at fixed B=32.
 
 ## 7. Methodology notes
 
