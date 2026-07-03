@@ -404,6 +404,23 @@ class PKStoreAdapter(nn.Module):
         attn = torch.softmax(pq @ read.transpose(1, 2) / (self.mem_dim ** 0.5), dim=-1)
         return attn @ read                              # [B,K,mem_dim] pooled (PRE out_proj)
 
+    # ---- Track 4: PERSISTENT / online store (doc-independent) --------------------------------------
+    def persistent_write(self, V, keys, vals):
+        """Write A associations (keys/vals [B,A,mem_dim]) into a PERSISTENT value bank V (error-correcting
+        delta write). Track 4 online binding: call once per edit on the SAME V to accumulate a standing
+        memory — no episodic doc, no reset. Returns the updated V."""
+        return self.store.write(V, keys, vals)
+
+    def persistent_bank(self, V, q):
+        """Read a PERSISTENT bank V with a subject query q [B,Lq,mem_dim] -> pooled [B,K,mem_dim] bank +
+        the store-confidence scalar (self._last_conf). A doc-independent mirror of memory_bank's
+        read+readout — the query is just the subject, the bank is the standing store."""
+        read, _hn, self._last_conf = self.store.read(V, q, return_conf=True)
+        B = q.shape[0]
+        pq = self.readout_q.unsqueeze(0).expand(B, -1, -1)
+        attn = torch.softmax(pq @ read.transpose(1, 2) / (self.mem_dim ** 0.5), dim=-1)
+        return attn @ read
+
     def inject(self, ids, seg_len, qa_start, answer_pos, carry=True):
         """-> K prefix vectors [B,K,base_hidden]. carry=True writes the M bindings then reads with the
         QA cargo query; carry=False reads an EMPTY store (the ablated floor). Same contract as
