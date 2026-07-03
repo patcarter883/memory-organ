@@ -947,6 +947,46 @@ def verdict_locality_generalization(tag, lg):
     return lg
 
 
+@torch.no_grad()
+def eval_persistent(base, adapter, injector, tok, kept, args):
+    """Track 4 (#19) — PERSISTENT / online memory. Write ALL N kept edits into ONE standing store V
+    (incremental error-correcting writes; NO episodic doc, NO reset), then query each edit's NATURAL
+    prompt and score counterfactual delivery + prior recall. Tests the step from a per-doc scratchpad to
+    a standing memory: does a persistent store of N edits deliver each one at once? Reuses the trained
+    store projections + conf-gate tap. Key = pooled subject span (CAM_POOLED_SUBJ_KEY) or last token."""
+    bos = [tok.bos_token_id] if tok.bos_token_id is not None else []
+    injector.eval()
+    pooled = os.environ.get("CAM_POOLED_SUBJ_KEY") == "1"
+    V = adapter.store.init_state(1, DEV, dtype=torch.float32)         # ONE persistent bank
+    # write phase: accumulate all N edits into V incrementally
+    for r in kept:
+        subj_emb = adapter._e(torch.tensor([r.subject_tids], dtype=torch.long, device=DEV))   # [1,S,mem_dim]
+        key = subj_emb.mean(dim=1, keepdim=True) if pooled else subj_emb[:, -1:]               # [1,1,mem_dim]
+        val = adapter._e(torch.tensor([[r.new_tid]], dtype=torch.long, device=DEV))            # [1,1,mem_dim]
+        V = adapter.persistent_write(V, key, val)
+    # query phase: each edit's prompt; the tap reads the STANDING store keyed by that subject
+    base_embed = base.get_input_embeddings()
+    cf_hit = pr_hit = 0
+    for r in kept:
+        q = adapter._e(torch.tensor([r.subject_tids], dtype=torch.long, device=DEV))
+        bank = adapter.persistent_bank(V, q)
+        injector.set_bank(bank, conf=getattr(adapter, "_last_conf", None), relidx=0)
+        ids = torch.tensor([bos + tok(r.prompt_text, add_special_tokens=False).input_ids],
+                           dtype=torch.long, device=DEV)
+        pred = _last_logit(base, inputs_embeds=base_embed(ids)).argmax(-1).item()
+        cf_hit += int(pred == r.new_tid)
+        pr_hit += int(pred == r.true_tid)
+    injector.set_bank(None)
+    n = max(1, len(kept))
+    print(f"\n[mag][persistent] === Track 4: {len(kept)} edits in ONE standing store (online) ===",
+          flush=True)
+    print(f"  cf-delivery {cf_hit / n:.3f} | prior-recall {pr_hit / n:.3f}   "
+          f"(cf HIGH + prior LOW = the persistent store overrides across all {len(kept)} edits at once)",
+          flush=True)
+    print("=" * 64, flush=True)
+    return {"n_edits": len(kept), "cf_delivery": cf_hit / n, "prior_recall": pr_hit / n}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--bind-steps", type=int, default=3000, dest="bind_steps")
@@ -1034,6 +1074,10 @@ def main():
                          "a paraphrase retrieves its own edit (strong->deliver) while a neighbour retrieves "
                          "nothing (weak->inert), decoupling delivery from PROMPT NOVELTY (the null slot's "
                          "proxy) -> closes the locality<->generalization gap. pk-store only.")
+    ap.add_argument("--persistent-eval", action="store_true", dest="persistent_eval",
+                    help="Track 4 (#19): after training, write ALL kept edits into ONE standing store "
+                         "(incremental, no episodic doc) and query each edit's natural prompt — the "
+                         "online/persistent memory test. counterfactual_multi + --dataset counterfact only.")
     ap.add_argument("--query-rel", type=str, default="", dest="query_rel",
                     help="ADVERSARIAL paraphrase probe (issue #10, natural phrasing only): bind and "
                          "train exactly as normal (bindings + training queries use ' lives in'), then "
@@ -1229,6 +1273,13 @@ def main():
             cf = eval_counterfactual(base, adapter, injector, builder, rng, args)
             verdict_counterfactual(tag, cf, 1 / args.M)
             if cf_records is not None:
+                if getattr(args, "persistent_eval", False):
+                    # Track 4 (#19): write ALL edits into ONE standing store, query each — online memory.
+                    # Run BEFORE loc/gen (which fragments a 16GB card at many edits) so it always reports.
+                    import gc as _gc
+                    _gc.collect(); torch.cuda.empty_cache() if torch.cuda.is_available() else None
+                    with StageCost(f"persistent (online) eval L={tag}"):
+                        eval_persistent(base, adapter, injector, tok, cf_records, args)
                 # Track 1 real-editing metrics: LOCALITY (neighbours preserved) + GENERALIZATION (edit
                 # fires on paraphrases). Only for --dataset counterfact (records carry the probe prompts).
                 lg = eval_locality_generalization(base, tok, injector, adapter, builder, cf_records,
