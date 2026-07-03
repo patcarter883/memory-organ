@@ -1046,7 +1046,7 @@ def _persistent_write_one(adapter, V, r, pooled):
     return _persistent_write_val(adapter, V, r, r.new_tid, pooled)
 
 
-def _persistent_preds(base, adapter, injector, tok, V, cohort):
+def _persistent_preds(base, adapter, injector, tok, V, cohort, bank_ids=None):
     """Query each edit in `cohort` against standing bank V (subject-keyed read + tap) and return the list
     of predicted next-token ids at each prompt's last position. Non-mutating.
 
@@ -1065,7 +1065,7 @@ def _persistent_preds(base, adapter, injector, tok, V, cohort):
     banks, confs, id_lists = [], [], []
     learned_pool = os.environ.get("CAM_LEARNED_KEY_POOL") == "1"
     gte = getattr(adapter, "_gte_keys", None) is not None
-    for r in cohort:
+    for i, r in enumerate(cohort):
         tids = torch.tensor([r.subject_tids], dtype=torch.long, device=DEV)
         if gte:                                                          # DECOUPLED: GTE query (matches write)
             q = adapter._gte_key(tids).unsqueeze(1)                      # [1,1,mem]
@@ -1073,7 +1073,7 @@ def _persistent_preds(base, adapter, injector, tok, V, cohort):
             q = adapter._e(tids)
             if learned_pool:                                            # symmetric with the pooled write key
                 q = adapter._pool_subject(q, keepdim=True)              # [1,1,mem]
-        b = _subject_bank(r.subject_tids, len(V))                        # Phase C: read from the subject's bank
+        b = bank_ids[i] if bank_ids is not None else _subject_bank(r.subject_tids, len(V))  # R0 solo: identity
         banks.append(adapter.persistent_bank(V[b], q))                    # [1,K,mem]
         confs.append(getattr(adapter, "_last_conf", None))               # [1] or None
         id_lists.append(bos + tok(r.prompt_text, add_special_tokens=False).input_ids)
@@ -1199,6 +1199,30 @@ def eval_persistent_overwrite(base, adapter, injector, tok, kept, args):
     return {"n": len(cohort), "a_deliver": a_deliver, "updated": updated, "stale": stale, "prior": prior}
 
 
+@torch.no_grad()
+def eval_persistent_solo(base, adapter, injector, tok, kept, args):
+    """Phase R / R0 — SINGLE-FACT FIDELITY. Write each edit ALONE into its own fresh store and query it,
+    so NO collision is possible. Isolates the per-fact retrieval-fidelity ceiling (store/value/tap readout
+    + the frozen-base single-injection mechanism) from all addressing. If solo-delivery is ~1.0 the B=32
+    ceiling was residual collision; if ~0.7 it's the store/tap fidelity floor and Phase R attacks it."""
+    injector.eval()
+    pooled = os.environ.get("CAM_POOLED_SUBJ_KEY") == "1"
+    per_V = []
+    for r in kept:
+        V = [adapter.store.init_state(1, DEV, dtype=torch.float32)]       # its own 1-bank store
+        per_V.append(_persistent_write_one(adapter, V, r, pooled)[0])     # write this edit alone
+    preds = _persistent_preds(base, adapter, injector, tok, per_V, kept, bank_ids=list(range(len(kept))))
+    n = max(1, len(kept))
+    solo = sum(int(preds[i] == kept[i].new_tid) for i in range(len(kept))) / n
+    prior = sum(int(preds[i] == kept[i].true_tid) for i in range(len(kept))) / n
+    print(f"\n[mag][persistent] === Phase R/R0: SINGLE-FACT FIDELITY over {len(kept)} edits (each ALONE) ===",
+          flush=True)
+    print(f"  solo-delivery {solo:.3f} | prior {prior:.3f}   (per-fact store/tap ceiling — no collision "
+          f"possible; gap to 1.0 = the retrieval-fidelity lever)", flush=True)
+    print("=" * 64, flush=True)
+    return {"solo": solo, "prior": prior}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--bind-steps", type=int, default=3000, dest="bind_steps")
@@ -1307,6 +1331,10 @@ def main():
                     help="Track 4 (#19) incr#3: after the retention sweep, run the ONLINE UPDATE test — "
                          "write subject->A then subject->B (different value) into the SAME standing store "
                          "and score whether the delta-write cleanly UPDATES to B (vs stale A). Implies "
+                         "--persistent-sweep.")
+    ap.add_argument("--persistent-solo", action="store_true", dest="persistent_solo",
+                    help="Phase R/R0 (#19): SINGLE-FACT FIDELITY — write each edit ALONE in its own store "
+                         "and query it (no collision). Isolates the per-fact store/tap ceiling. Implies "
                          "--persistent-sweep.")
     ap.add_argument("--query-rel", type=str, default="", dest="query_rel",
                     help="ADVERSARIAL paraphrase probe (issue #10, natural phrasing only): bind and "
@@ -1480,8 +1508,8 @@ def main():
     torch.cuda.empty_cache() if torch.cuda.is_available() else None
 
     # ---- stage 2: MAG delivery ----
-    if getattr(args, "persistent_overwrite", False):
-        args.persistent_sweep = True         # the online-update test runs after the retention sweep
+    if getattr(args, "persistent_overwrite", False) or getattr(args, "persistent_solo", False):
+        args.persistent_sweep = True         # the online-update / solo tests run after the retention sweep
     if getattr(args, "persistent_sweep", False):
         args.persistent_eval = True          # the sweep is a superset of the persistent eval
     configs = [layers] if args.multi else [[L] for L in layers]
@@ -1513,6 +1541,9 @@ def main():
                 if getattr(args, "persistent_overwrite", False):
                     with StageCost(f"persistent online-update L={tag}"):
                         eval_persistent_overwrite(base, adapter, injector, tok, cf_records, args)
+                if getattr(args, "persistent_solo", False):
+                    with StageCost(f"persistent solo-fidelity L={tag}"):
+                        eval_persistent_solo(base, adapter, injector, tok, cf_records, args)
             injector.detach()
             continue
         with StageCost(f"delivery eval L={tag}"):
