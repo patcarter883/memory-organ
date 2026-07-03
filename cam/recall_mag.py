@@ -236,22 +236,35 @@ def train_taps(base, adapter, injector, builder, rng, args, tag, loc_buckets=Non
     Kc = _kc(builder)
     lw = getattr(args, "locality_weight", 0.0)
     opt = torch.optim.AdamW(injector.parameters(), lr=args.lr)
+    _timing = os.environ.get("CAM_STEP_TIMING") == "1"                  # per-phase step profiler (diag)
+    import time as _time
+
+    def _t(sync=True):
+        if _timing and sync and torch.cuda.is_available():
+            torch.cuda.synchronize()
+        return _time.perf_counter()
     for step in range(args.steps):
+        _p = {}
+        _s = _t(sync=False)
         opt.zero_grad()
         ids, ans, apos = builder.build(rng, args.batch, local=False)
         ids, ans = ids.to(DEV), ans.to(DEV)
+        _p["build"] = _t() - _s; _s = _t(sync=False)
         with torch.no_grad():
             bank = memory_bank(adapter, ids, args.seg_len, builder.qa_start, apos, carry=True)
         _set_bank(injector, adapter, bank)                              # memory frozen -> bank detached
+        _p["bank"] = _t() - _s; _s = _t(sync=False)
         # multi-token: teacher-force the answer prefix into the context (end=apos+Kc-1) so the last Kc
         # logit positions predict the full answer sequence.
         ctx_emb = _leakfree_ctx(base, builder, ids, apos, end=apos + Kc - 1)
         logits = _answer_logits(base, ctx_emb, Kc)                       # [B,V] or [B,Kc,V]
         edit_loss = _seq_ce(logits, ans)
+        _p["fwd"] = _t() - _s; _s = _t(sync=False)
         if not torch.isfinite(edit_loss):                                # NaN/Inf guard: skip the step
             print(f"[mag][{tag}] step {step:4d} NON-FINITE edit loss -> skip", flush=True)
             opt.zero_grad(); continue
         edit_loss.backward()                                            # backprop + FREE the edit graph
+        _p["bwd"] = _t() - _s; _s = _t(sync=False)
         # RETRIEVAL-STRENGTH LOCALITY: teach the tap to gate on the STORE READ, not the prompt. Build a
         # negative with the SAME prompt type as the positive (an edited-subject query) but with the edit
         # NOT bound in the doc -> the episodic store read is WEAK. Match tap-on to the frozen base tap-off
@@ -284,11 +297,17 @@ def train_taps(base, adapter, injector, builder, rng, args, tag, loc_buckets=Non
                 (lw * loc_loss).backward()                               # accumulate grad; FREE the loc graph
                 loc_val = float(loc_loss.detach())                       # scalar read post-backward (no grad warning)
             neg_null = float(np.mean(list(injector.null_attn_stats().values())))
+        _p["loc"] = _t() - _s; _s = _t(sync=False)
         gn = torch.nn.utils.clip_grad_norm_(list(injector.parameters()), 1.0)
         if not torch.isfinite(gn):                                       # NaN grad guard
             print(f"[mag][{tag}] step {step:4d} NON-FINITE grad -> skip", flush=True)
             opt.zero_grad(); continue
         opt.step()
+        if _timing:
+            _p["opt"] = _t() - _s
+            tot = sum(_p.values())
+            print(f"[mag][{tag}][timing] step {step:3d} total {tot:.2f}s | "
+                  + " ".join(f"{k}={v:.2f}" for k, v in _p.items()), flush=True)
         if step % 200 == 0 or step == args.steps - 1:
             em, pt = _seq_metrics(logits, ans)
             extra = (f" loc_kl {loc_val:.3f} neg_null {neg_null:.3f}" if lw > 0 else "")
@@ -652,9 +671,40 @@ def setup_counterfact_multi(base, tok, args):
     rng = np.random.default_rng(args.seed)
     cap = min(len(obj), getattr(args, "cf_probe_cap", 8000))
     pool = [obj[i] for i in rng.permutation(len(obj))[:cap]]
-    kept, prior_acc_full = probe_and_filter_counterfact(base, tok, pool, batch=args.cf_probe_batch)
-    print(f"[mag][cf-multi] PROBE/FILTER base prior-acc = {prior_acc_full:.3f} | {len(kept)} known facts "
-          f"(of {cap} probed)", flush=True)
+    # PROBE CACHE: forwarding `cap` (~21k) records through the frozen base to find base-known facts is the
+    # single biggest recurring GPU cost (minutes at low occupancy) and is DETERMINISTIC in
+    # (base, seed, cap, dataset) -> memoize `kept`. Disable with CAM_PROBE_CACHE=0; dir via
+    # CAM_PROBE_CACHE_DIR (the data mount is often read-only).
+    kept = prior_acc_full = None
+    model_id = getattr(base.config, "_name_or_path", "") or getattr(args, "base1", "") or MODEL
+    cache_on = os.environ.get("CAM_PROBE_CACHE", "1") != "0"
+    cache_dir = os.environ.get("CAM_PROBE_CACHE_DIR") or os.path.join(args.data_dir, "probe_cache")
+    import hashlib as _hl, pickle as _pk
+    key = _hl.sha1(f"{model_id}|{args.seed}|{cap}|{len(obj)}".encode()).hexdigest()[:16]
+    cpath = os.path.join(cache_dir, f"cfmulti_{key}.pkl")
+    if cache_on and os.path.exists(cpath):
+        try:
+            with open(cpath, "rb") as _f:
+                _blob = _pk.load(_f)
+            kept, prior_acc_full = _blob["kept"], _blob["prior_acc"]
+            print(f"[mag][cf-multi] PROBE CACHE HIT {cpath} | {len(kept)} known facts "
+                  f"(skipped the {cap}-record probe)", flush=True)
+        except Exception as _e:  # noqa
+            print(f"[mag][cf-multi] probe cache read failed ({_e}); re-probing", flush=True)
+            kept = None
+    if kept is None:
+        kept, prior_acc_full = probe_and_filter_counterfact(base, tok, pool, batch=args.cf_probe_batch)
+        print(f"[mag][cf-multi] PROBE/FILTER base prior-acc = {prior_acc_full:.3f} | {len(kept)} known facts "
+              f"(of {cap} probed)", flush=True)
+        if cache_on:
+            try:
+                os.makedirs(cache_dir, exist_ok=True)
+                with open(cpath, "wb") as _f:
+                    _pk.dump({"kept": kept, "prior_acc": prior_acc_full, "model": model_id,
+                              "seed": args.seed, "cap": cap}, _f)
+                print(f"[mag][cf-multi] probe cached -> {cpath}", flush=True)
+            except Exception as _e:  # noqa
+                print(f"[mag][cf-multi] probe cache write failed ({_e})", flush=True)
     from collections import defaultdict
 
     def _split(prompt):
@@ -948,43 +998,111 @@ def verdict_locality_generalization(tag, lg):
 
 
 @torch.no_grad()
+def _persistent_write_one(adapter, V, r, pooled):
+    """One incremental error-correcting write of edit `r` into standing bank V."""
+    subj_emb = adapter._e(torch.tensor([r.subject_tids], dtype=torch.long, device=DEV))   # [1,S,mem_dim]
+    key = subj_emb.mean(dim=1, keepdim=True) if pooled else subj_emb[:, -1:]               # [1,1,mem_dim]
+    val = adapter._e(torch.tensor([[r.new_tid]], dtype=torch.long, device=DEV))            # [1,1,mem_dim]
+    return adapter.persistent_write(V, key, val)
+
+
+def _persistent_score(base, adapter, injector, tok, V, cohort):
+    """Query each edit in `cohort` against standing bank V (subject-keyed read + tap); return
+    (cf_delivery, prior_recall) over the cohort. Non-mutating — safe to call at any checkpoint.
+
+    The 4B base forward is the cost; a batch-1 forward per edit is occupancy-starved (100% util / ~34W).
+    So batch it: the per-edit STORE reads stay a cheap B=1 loop (variable subject length, small mem_dim
+    ops), then the EXPENSIVE base forwards run in groups — the tap is already per-row batched (bank
+    [B,K,mem], conf [B]). RIGHT-pad is causal-safe: the logit at each row's true last token depends only
+    on tokens <= that position, so trailing pad (and pad-position tap injections) can't perturb it.
+    CAM_PERSISTENT_EVAL_BATCH=1 reproduces the old exact batch-1 path (parity)."""
+    bos = [tok.bos_token_id] if tok.bos_token_id is not None else []
+    base_embed = base.get_input_embeddings()
+    bs = max(1, int(os.environ.get("CAM_PERSISTENT_EVAL_BATCH", "1")))   # default 1: safe on a full 16GB card
+                                                                          # (batching raises peak mem — opt in only with headroom, e.g. 2-card)
+    pad_id = tok.pad_token_id if tok.pad_token_id is not None else 0
+    # cheap per-edit store reads (B=1; variable subject length) -> collect per-row bank/conf + prompt ids
+    banks, confs, id_lists = [], [], []
+    for r in cohort:
+        q = adapter._e(torch.tensor([r.subject_tids], dtype=torch.long, device=DEV))
+        banks.append(adapter.persistent_bank(V, q))                       # [1,K,mem]
+        confs.append(getattr(adapter, "_last_conf", None))               # [1] or None
+        id_lists.append(bos + tok(r.prompt_text, add_special_tokens=False).input_ids)
+    cf_hit = pr_hit = 0
+    for i in range(0, len(cohort), bs):
+        rows = list(range(i, min(i + bs, len(cohort))))
+        B = len(rows)
+        lens = [len(id_lists[j]) for j in rows]
+        Tmax = max(lens)
+        ids = torch.full((B, Tmax), pad_id, dtype=torch.long, device=DEV)   # RIGHT-pad (causal-safe)
+        for b, j in enumerate(rows):
+            ids[b, :lens[b]] = torch.tensor(id_lists[j], dtype=torch.long, device=DEV)
+        bank = torch.cat([banks[j] for j in rows], dim=0)                 # [B,K,mem]
+        conf = None if any(confs[j] is None for j in rows) else torch.cat([confs[j] for j in rows], dim=0)
+        injector.set_bank(bank, conf=conf, relidx=0)
+        logits = base(inputs_embeds=base_embed(ids)).logits               # [B,Tmax,vocab]
+        ld = logits.device                                                # MODEL-PARALLEL: lm_head may be on card 1
+        last = torch.tensor([lens[b] - 1 for b in range(B)], device=ld)
+        pred = logits[torch.arange(B, device=ld), last].argmax(-1)         # gather each row's true last token
+        for b, j in enumerate(rows):
+            p = int(pred[b].item())
+            cf_hit += int(p == cohort[j].new_tid)
+            pr_hit += int(p == cohort[j].true_tid)
+    injector.set_bank(None)
+    n = max(1, len(cohort))
+    return cf_hit / n, pr_hit / n
+
+
 def eval_persistent(base, adapter, injector, tok, kept, args):
     """Track 4 (#19) — PERSISTENT / online memory. Write ALL N kept edits into ONE standing store V
     (incremental error-correcting writes; NO episodic doc, NO reset), then query each edit's NATURAL
     prompt and score counterfactual delivery + prior recall. Tests the step from a per-doc scratchpad to
     a standing memory: does a persistent store of N edits deliver each one at once? Reuses the trained
-    store projections + conf-gate tap. Key = pooled subject span (CAM_POOLED_SUBJ_KEY) or last token."""
-    bos = [tok.bos_token_id] if tok.bos_token_id is not None else []
+    store projections + conf-gate tap. Key = pooled subject span (CAM_POOLED_SUBJ_KEY) or last token.
+
+    With --persistent-sweep, ALSO run a RETENTION/INTERFERENCE curve: at each checkpoint (fraction of N)
+    during the incremental write phase, re-query a FIXED early cohort (first C edits) — same edits, a
+    growing store — so a decaying early-cohort curve isolates interference (does edit #1 survive writing
+    edit #N?), decoupled from the cumulative all-so-far delivery."""
     injector.eval()
     pooled = os.environ.get("CAM_POOLED_SUBJ_KEY") == "1"
+    N = len(kept)
+    sweep = getattr(args, "persistent_sweep", False)
     V = adapter.store.init_state(1, DEV, dtype=torch.float32)         # ONE persistent bank
-    # write phase: accumulate all N edits into V incrementally
-    for r in kept:
-        subj_emb = adapter._e(torch.tensor([r.subject_tids], dtype=torch.long, device=DEV))   # [1,S,mem_dim]
-        key = subj_emb.mean(dim=1, keepdim=True) if pooled else subj_emb[:, -1:]               # [1,1,mem_dim]
-        val = adapter._e(torch.tensor([[r.new_tid]], dtype=torch.long, device=DEV))            # [1,1,mem_dim]
-        V = adapter.persistent_write(V, key, val)
-    # query phase: each edit's prompt; the tap reads the STANDING store keyed by that subject
-    base_embed = base.get_input_embeddings()
-    cf_hit = pr_hit = 0
-    for r in kept:
-        q = adapter._e(torch.tensor([r.subject_tids], dtype=torch.long, device=DEV))
-        bank = adapter.persistent_bank(V, q)
-        injector.set_bank(bank, conf=getattr(adapter, "_last_conf", None), relidx=0)
-        ids = torch.tensor([bos + tok(r.prompt_text, add_special_tokens=False).input_ids],
-                           dtype=torch.long, device=DEV)
-        pred = _last_logit(base, inputs_embeds=base_embed(ids)).argmax(-1).item()
-        cf_hit += int(pred == r.new_tid)
-        pr_hit += int(pred == r.true_tid)
-    injector.set_bank(None)
-    n = max(1, len(kept))
-    print(f"\n[mag][persistent] === Track 4: {len(kept)} edits in ONE standing store (online) ===",
-          flush=True)
-    print(f"  cf-delivery {cf_hit / n:.3f} | prior-recall {pr_hit / n:.3f}   "
-          f"(cf HIGH + prior LOW = the persistent store overrides across all {len(kept)} edits at once)",
-          flush=True)
+
+    curve = []
+    if sweep:
+        C = min(int(getattr(args, "persistent_cohort", 10) or 10), N)   # fixed early cohort tracked over N
+        early = kept[:C]
+        # checkpoints in # of edits written: unique, monotone, always ending at N
+        fracs = [0.1, 0.25, 0.5, 0.75, 1.0]
+        ckpts = sorted({max(C, int(round(f * N))) for f in fracs} | {N})
+        ci = 0
+        for i, r in enumerate(kept, start=1):
+            V = _persistent_write_one(adapter, V, r, pooled)
+            if ci < len(ckpts) and i == ckpts[ci]:
+                cf_e, pr_e = _persistent_score(base, adapter, injector, tok, V, early)
+                cf_a, pr_a = _persistent_score(base, adapter, injector, tok, V, kept[:i])
+                curve.append({"written": i, "early_cf": cf_e, "early_pr": pr_e,
+                              "all_cf": cf_a, "all_pr": pr_a})
+                print(f"[mag][persistent][sweep] written={i:4d}  early(1..{C}) cf={cf_e:.3f} pr={pr_e:.3f}"
+                      f"   all(1..{i}) cf={cf_a:.3f} pr={pr_a:.3f}", flush=True)
+                ci += 1
+        cf_hit_rate, pr_hit_rate = curve[-1]["all_cf"], curve[-1]["all_pr"]
+    else:
+        for r in kept:
+            V = _persistent_write_one(adapter, V, r, pooled)
+        cf_hit_rate, pr_hit_rate = _persistent_score(base, adapter, injector, tok, V, kept)
+
+    print(f"\n[mag][persistent] === Track 4: {N} edits in ONE standing store (online) ===", flush=True)
+    print(f"  cf-delivery {cf_hit_rate:.3f} | prior-recall {pr_hit_rate:.3f}   "
+          f"(cf HIGH + prior LOW = the persistent store overrides across all {N} edits at once)", flush=True)
+    if sweep and curve:
+        e0, e1 = curve[0]["early_cf"], curve[-1]["early_cf"]
+        print(f"  retention: early cohort(1..{C}) cf {e0:.3f} @ {curve[0]['written']} written "
+              f"-> {e1:.3f} @ {N} written  (interference drop = {e0 - e1:+.3f})", flush=True)
     print("=" * 64, flush=True)
-    return {"n_edits": len(kept), "cf_delivery": cf_hit / n, "prior_recall": pr_hit / n}
+    return {"n_edits": N, "cf_delivery": cf_hit_rate, "prior_recall": pr_hit_rate, "curve": curve}
 
 
 def main():
@@ -1078,6 +1196,19 @@ def main():
                     help="Track 4 (#19): after training, write ALL kept edits into ONE standing store "
                          "(incremental, no episodic doc) and query each edit's natural prompt — the "
                          "online/persistent memory test. counterfactual_multi + --dataset counterfact only.")
+    ap.add_argument("--persistent-sweep", action="store_true", dest="persistent_sweep",
+                    help="Track 4 (#19): RETENTION/INTERFERENCE curve — checkpoint during the incremental "
+                         "write phase and re-query a FIXED early cohort (--persistent-cohort edits) as the "
+                         "store grows. A decaying early-cohort curve = interference (does edit #1 survive "
+                         "writing edit #N?), separated from cumulative all-so-far delivery. Implies "
+                         "--persistent-eval.")
+    ap.add_argument("--persistent-cohort", type=int, default=10, dest="persistent_cohort",
+                    help="Track 4 sweep: size of the fixed early cohort (first C edits) tracked across "
+                         "checkpoints for the retention/interference curve.")
+    ap.add_argument("--probe-only", action="store_true", dest="probe_only",
+                    help="counterfactual_multi: run + CACHE the base-known probe/filter, then exit before "
+                         "stage-1/2. Cheap way to pre-warm the probe cache on ONE card (the probe is the "
+                         "big recurring GPU cost) so a later 2-card sweep is a cache hit.")
     ap.add_argument("--query-rel", type=str, default="", dest="query_rel",
                     help="ADVERSARIAL paraphrase probe (issue #10, natural phrasing only): bind and "
                          "train exactly as normal (bindings + training queries use ' lives in'), then "
@@ -1170,6 +1301,12 @@ def main():
         if args.dataset == "counterfact" and multi_relation:
             # Track 1 MULTI-RELATION (#16): edit N distinct relations in ONE memory (faithful prefix).
             builder, cf_records, prior_acc_full = setup_counterfact_multi(base, tok, args)
+            if getattr(args, "probe_only", False):
+                # cache-build run: the probe (the costly part) ran + cached inside setup; exit before the
+                # single-card-fragile stage-2 so the cache is ready for a subsequent (2-card) sweep.
+                print(f"[mag][cf-multi] --probe-only: {len(cf_records)} edits ready + cached; exiting.",
+                      flush=True)
+                return
         elif args.dataset == "counterfact":
             # Track 1: REAL CounterFact benchmark (probe with each record's own prompt, bind target_new).
             builder, cf_records, prior_acc_full = setup_counterfact(base, tok, args)
@@ -1237,8 +1374,15 @@ def main():
     adapter = build_adapter(args, embed_weight, H, builder=builder)
     with StageCost(f"stage-1 bind (M={args.M}, {args.bind_steps} steps, batch {args.batch})"):
         d_carry = bind_adapter(adapter, builder, rng, args)
+    # free stage-1's AdamW state + autograd fragments before stage-2 — on a single 16GB card the leftover
+    # fragmentation (bind runs many steps) is what pushed stage-2's first backward over the wall + wedged.
+    import gc as _gc0
+    _gc0.collect()
+    torch.cuda.empty_cache() if torch.cuda.is_available() else None
 
     # ---- stage 2: MAG delivery ----
+    if getattr(args, "persistent_sweep", False):
+        args.persistent_eval = True          # the sweep is a superset of the persistent eval
     configs = [layers] if args.multi else [[L] for L in layers]
     # per-relation conf-gate EMA: one slot per edited relation (multi), else a single global EMA.
     n_rel = getattr(builder, "R", 1) if multi_relation else 1
@@ -1254,6 +1398,19 @@ def main():
         import gc as _gc
         _gc.collect()
         torch.cuda.empty_cache() if torch.cuda.is_available() else None
+        if getattr(args, "persistent_sweep", False):
+            # Track 4 (#19) retention/interference sweep is the ONLY eval we want here. SKIP the delivery /
+            # counterfactual / locality-generalization evals: each forwards the whole M*bind_len doc (and
+            # loc/gen the neighbour set) at many edits, which fragments a 16GB card — the OOM/wedge source.
+            # The retention question (does edit #1 survive writing edit #N?) uses none of them.
+            if cf_records is None:
+                print(f"[mag][{tag}] --persistent-sweep needs --dataset counterfact records; skipping.",
+                      flush=True)
+            else:
+                with StageCost(f"persistent (online) retention sweep L={tag}"):
+                    eval_persistent(base, adapter, injector, tok, cf_records, args)
+            injector.detach()
+            continue
         with StageCost(f"delivery eval L={tag}"):
             gen = eval_generative_mag(base, adapter, injector, builder, rng, args)
         m_acc, nm_acc = verdict(tag, d_carry, gen, 1 / args.M)
