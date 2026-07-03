@@ -155,6 +155,22 @@ class PKStoreAdapter(nn.Module):
         # at init so the param is in the state dict. Always constructed (H=1 -> byte-identical to incr#2).
         self.n_key_heads = max(1, int(os.environ.get("CAM_KEY_HEADS", "1")))
         self.subj_pool_q = nn.Parameter(torch.randn(self.n_key_heads, mem_dim) * 0.02)
+        # DECOUPLED MEMORY-BASE PROBE (#19): key/query the store from a SEPARATE encoder (GTE-ModernColBERT)
+        # instead of the served model's input embeddings. CAM_GTE_KEYS=1 loads a {subject_tids -> [gte_dim]}
+        # table (CAM_GTE_KEYS_FILE) and a learned gte_proj into mem_dim; the KEY/QUERY addressing then comes
+        # from GTE, VALUES stay in base space. Tests whether a purpose-built retrieval encoder addresses more
+        # separably than the input embeddings. (Single-vector/pooled mode — GTE's weak mode; MaxSim needs the
+        # late-interaction store redesign.)
+        self._gte_keys = None
+        if os.environ.get("CAM_GTE_KEYS") == "1":
+            import pickle as _pk
+            _f = os.environ.get("CAM_GTE_KEYS_FILE", "")
+            with open(_f, "rb") as _fh:
+                raw = _pk.load(_fh)
+            self._gte_keys = {k: torch.tensor(v, dtype=torch.float32) for k, v in raw.items()}
+            gte_dim = next(iter(self._gte_keys.values())).shape[0]
+            self.gte_proj = nn.Linear(gte_dim, mem_dim, bias=False)
+            self._gte_dim = gte_dim
         # pool the per-token store read into K learned slots (mirrors BoltAdapter.readout_q), then
         # out_proj back to base-embedding space for the tied-unembed direct readout.
         self.readout_q = nn.Parameter(torch.randn(k, mem_dim) * 0.02)
@@ -240,6 +256,18 @@ class PKStoreAdapter(nn.Module):
         w = torch.softmax(read.norm(dim=-1) / temp, dim=1)          # [B,H] concentrate on the best head
         return (w.unsqueeze(-1) * read).sum(dim=1, keepdim=True)    # [B,1,mem]
 
+    def _gte_key(self, ids_span):
+        """[B,L] subject token-ids -> [B,mem_dim] key/query from the precomputed GTE table + learned proj +
+        norm. Per-row tuple lookup; a subject not in the table (padding/OOV) falls back to a zero vector."""
+        dev = self.gte_proj.weight.device
+        rows = []
+        for b in range(ids_span.shape[0]):
+            key = tuple(int(x) for x in ids_span[b].tolist())
+            v = self._gte_keys.get(key)
+            rows.append(v if v is not None else torch.zeros(self._gte_dim))
+        g = torch.stack(rows).to(dev)                          # [B, gte_dim]
+        return self.norm(self.gte_proj(g))                     # [B, mem_dim]
+
     def _pos_key(self, name_key, t):
         """Fold answer position t into the name key -> the per-position store key/query [..., mem_dim].
         name_key: [..., mem_dim] (the binding's name-token mem embed). Applied IDENTICALLY at write
@@ -308,7 +336,11 @@ class PKStoreAdapter(nn.Module):
         # token). For multi-token subjects that don't separate at high M, POOL the full subject span
         # (mean) into the key — more separable, so bind carry recovers. Opt-in via CAM_POOLED_SUBJ_KEY=1.
         keys_multi = None                               # [B,M,H,mem] when multi-vector keys (H>1), else None
-        if os.environ.get("CAM_POOLED_SUBJ_KEY") == "1" and hasattr(b, "binding_key_spans"):
+        if self._gte_keys is not None and hasattr(b, "binding_key_spans") and ids is not None:
+            # DECOUPLED: key each binding from GTE (subject token-ids -> GTE table -> proj), not base embeds.
+            spans = b.binding_key_spans(hstart)
+            keys = torch.stack([self._gte_key(ids[:, s:s + L]) for (s, L) in spans], dim=1)  # [B,M,mem]
+        elif os.environ.get("CAM_POOLED_SUBJ_KEY") == "1" and hasattr(b, "binding_key_spans"):
             spans = b.binding_key_spans(hstart)
             # mean, or a learned attention pool (CAM_LEARNED_KEY_POOL) — the stronger multi-token key encoder.
             pooled = [self._pool_subject(mem_emb[:, s:s + L]) for (s, L) in spans]   # each [B,mem] or [B,H,mem]
@@ -406,7 +438,8 @@ class PKStoreAdapter(nn.Module):
         self._last_relidx = getattr(self.builder, "q_relidx", None)   # queried relation (per-relation EMA)
         want_sup = self.training and carry and self.addr_sup_weight > 0
         if carry:
-            V = self._write_episode(emb, ids=ids if want_sup else None)
+            # GTE keying needs ids for the subject-tid lookup, so always pass ids when the GTE table is on.
+            V = self._write_episode(emb, ids=ids if (want_sup or self._gte_keys is not None) else None)
         elif self.perpos_key == "disjoint" and getattr(self.builder, "multitoken", False) \
                 and self.mt_value == "perpos":
             # ablated floor for disjoint: an EMPTY bank per position store (read block indexes V[t])
@@ -420,7 +453,10 @@ class PKStoreAdapter(nn.Module):
         # addresses by the subject, not the prompt. counterfactual_multi only (exposes q_subj_off/q_key_off).
         if os.environ.get("CAM_SUBJ_ONLY_QUERY") == "1" and getattr(b, "phrasing", None) == "counterfactual_multi":
             qs = qa_start + b.q_subj_off
-            q = emb[:, qs:qa_start + b.q_key_off + 1]    # [B, subj_len, mem_dim] subject span only
+            if self._gte_keys is not None:               # DECOUPLED: query from GTE (subject token-ids), one vector
+                q = self._gte_key(ids[:, qs:qa_start + b.q_key_off + 1]).unsqueeze(1)   # [B,1,mem_dim]
+            else:
+                q = emb[:, qs:qa_start + b.q_key_off + 1]    # [B, subj_len, mem_dim] subject span only
             # symmetric with the write key: when the learned pool is on, address with the SAME pooled
             # subject vector (one query position) instead of per-token, so read matches write exactly.
             if os.environ.get("CAM_LEARNED_KEY_POOL") == "1":
