@@ -519,6 +519,22 @@ class PKStoreAdapter(nn.Module):
             off = gram - torch.eye(M, device=gram.device, dtype=gram.dtype).unsqueeze(0)  # zero self-sim
             rep = (off ** 2).sum() / (gram.shape[0] * M * (M - 1))  # mean squared off-diagonal cosine
             self._last_aux_loss = self._last_aux_loss + rep_w * rep
+            # GLOBAL repulsion (Phase A.2): the per-doc term only separates the M=8 in-doc subjects. To
+            # attack the N~137 ceiling, ALSO repel this doc's keys against a running FIFO buffer of keys
+            # written in RECENT docs (MoCo-style memory bank; detached, no grad through the buffer) — so
+            # the separation objective sees the whole standing population, not just one doc. Opt-in
+            # CAM_KEY_REPULSION_GLOBAL=1; buffer size CAM_KEY_REPULSION_BUFSIZE (default 256).
+            if os.environ.get("CAM_KEY_REPULSION_GLOBAL") == "1":
+                cur = wk_n.reshape(-1, wk_n.shape[-1])            # [B*M, mem_dim] this doc's normalized keys
+                buf = getattr(self, "_key_buf", None)
+                if buf is not None and buf.shape[0] > 0:
+                    sims = cur @ buf.to(cur.device, cur.dtype).t()   # [B*M, Nbuf] cosine vs buffered keys
+                    self._last_aux_loss = self._last_aux_loss + rep_w * (sims ** 2).mean()
+                bufsize = int(os.environ.get("CAM_KEY_REPULSION_BUFSIZE", "256"))
+                newk = cur.detach()
+                self._key_buf = newk if buf is None else torch.cat([buf, newk], dim=0)
+                if self._key_buf.shape[0] > bufsize:
+                    self._key_buf = self._key_buf[-bufsize:]      # FIFO cap
 
     def _compute_addr_sup_perpos(self, rqs, ctxs_pp, ids, qa_start, Kc):
         """PER-POSITION addressing supervision (the untested lever). For each answer position t:
