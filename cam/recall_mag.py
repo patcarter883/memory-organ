@@ -999,9 +999,10 @@ def verdict_locality_generalization(tag, lg):
 
 @torch.no_grad()
 def _persistent_write_one(adapter, V, r, pooled):
-    """One incremental error-correcting write of edit `r` into standing bank V."""
+    """One incremental error-correcting write of edit `r` into standing bank V. Key = pooled subject span
+    (mean, or the learned attention pool when CAM_LEARNED_KEY_POOL=1 — #19 incr#2), else the last token."""
     subj_emb = adapter._e(torch.tensor([r.subject_tids], dtype=torch.long, device=DEV))   # [1,S,mem_dim]
-    key = subj_emb.mean(dim=1, keepdim=True) if pooled else subj_emb[:, -1:]               # [1,1,mem_dim]
+    key = adapter._pool_subject(subj_emb, keepdim=True) if pooled else subj_emb[:, -1:]    # [1,1,mem_dim]
     val = adapter._e(torch.tensor([[r.new_tid]], dtype=torch.long, device=DEV))            # [1,1,mem_dim]
     return adapter.persistent_write(V, key, val)
 
@@ -1023,8 +1024,11 @@ def _persistent_score(base, adapter, injector, tok, V, cohort):
     pad_id = tok.pad_token_id if tok.pad_token_id is not None else 0
     # cheap per-edit store reads (B=1; variable subject length) -> collect per-row bank/conf + prompt ids
     banks, confs, id_lists = [], [], []
+    learned_pool = os.environ.get("CAM_LEARNED_KEY_POOL") == "1"
     for r in cohort:
         q = adapter._e(torch.tensor([r.subject_tids], dtype=torch.long, device=DEV))
+        if learned_pool:                                                 # symmetric with the pooled write key
+            q = adapter._pool_subject(q, keepdim=True)                   # [1,1,mem]
         banks.append(adapter.persistent_bank(V, q))                       # [1,K,mem]
         confs.append(getattr(adapter, "_last_conf", None))               # [1] or None
         id_lists.append(bos + tok(r.prompt_text, add_special_tokens=False).input_ids)
