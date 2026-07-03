@@ -141,6 +141,13 @@ class PKStoreAdapter(nn.Module):
                 ProductKeyStore(mem_dim, n_sub=n_sub, topk=topk, sub_topk=sub_topk,
                                 n_heads=nh, anchor_keys=None, write_beta=write_beta)
                 for _ in range(mt_positions)])
+        # STRONGER SUBJECT-KEY ENCODER (Track 4 #19 incr#2): the pooled subject key (CAM_POOLED_SUBJ_KEY)
+        # mean-pools the subject-span token embeds, which weights every token equally — so multi-token NAMES
+        # that share common tokens (first names, particles) don't separate. A learned ATTENTION pool weights
+        # the discriminative tokens instead. subj_pool_q attends over the span; used symmetrically at WRITE
+        # (key) and READ (query) so addressing stays consistent. Opt-in via CAM_LEARNED_KEY_POOL=1 (else the
+        # mean, byte-preserved). Always constructed so it's in the state dict + trained during bind.
+        self.subj_pool_q = nn.Parameter(torch.randn(mem_dim) * 0.02)
         # pool the per-token store read into K learned slots (mirrors BoltAdapter.readout_q), then
         # out_proj back to base-embedding space for the tied-unembed direct readout.
         self.readout_q = nn.Parameter(torch.randn(k, mem_dim) * 0.02)
@@ -194,6 +201,18 @@ class PKStoreAdapter(nn.Module):
     def _e(self, ids):
         """frozen embed -> in_proj -> LayerNorm: base ids -> [B,L,mem_dim] normalized mem embeds."""
         return self.norm(self.in_proj(self.embed(ids).float()))
+
+    def _pool_subject(self, span, keepdim=False):
+        """Pool a subject-span embed [B,L,mem_dim] -> one key/query vector [B,mem_dim] (or [B,1,mem_dim]
+        if keepdim). CAM_LEARNED_KEY_POOL=1: learned ATTENTION pool (subj_pool_q weights the discriminative
+        tokens) — used symmetrically at write-key and read-query for consistent addressing (#19 incr#2).
+        Else: the uniform mean (byte-preserved). Track 4 stronger multi-token-name key encoder."""
+        if os.environ.get("CAM_LEARNED_KEY_POOL") == "1":
+            w = torch.softmax((span @ self.subj_pool_q) / (self.mem_dim ** 0.5), dim=1)   # [B,L]
+            pooled = (w.unsqueeze(-1) * span).sum(dim=1)                                   # [B,mem_dim]
+        else:
+            pooled = span.mean(dim=1)                                                      # [B,mem_dim]
+        return pooled.unsqueeze(1) if keepdim else pooled
 
     def _pos_key(self, name_key, t):
         """Fold answer position t into the name key -> the per-position store key/query [..., mem_dim].
@@ -264,7 +283,8 @@ class PKStoreAdapter(nn.Module):
         # (mean) into the key — more separable, so bind carry recovers. Opt-in via CAM_POOLED_SUBJ_KEY=1.
         if os.environ.get("CAM_POOLED_SUBJ_KEY") == "1" and hasattr(b, "binding_key_spans"):
             spans = b.binding_key_spans(hstart)
-            keys = torch.stack([mem_emb[:, s:s + L].mean(dim=1) for (s, L) in spans], dim=1)  # [B,M,mem_dim]
+            # mean, or a learned attention pool (CAM_LEARNED_KEY_POOL) — the stronger multi-token key encoder.
+            keys = torch.stack([self._pool_subject(mem_emb[:, s:s + L]) for (s, L) in spans], dim=1)  # [B,M,mem_dim]
         else:
             keys = mem_emb[:, keys_pos]                 # [B,M,mem_dim] (name in multi, cargo in single)
         if mt and self.mt_value == "perpos" and self.perpos_key == "disjoint":
@@ -362,6 +382,10 @@ class PKStoreAdapter(nn.Module):
         if os.environ.get("CAM_SUBJ_ONLY_QUERY") == "1" and getattr(b, "phrasing", None) == "counterfactual_multi":
             qs = qa_start + b.q_subj_off
             q = emb[:, qs:qa_start + b.q_key_off + 1]    # [B, subj_len, mem_dim] subject span only
+            # symmetric with the write key: when the learned pool is on, address with the SAME pooled
+            # subject vector (one query position) instead of per-token, so read matches write exactly.
+            if os.environ.get("CAM_LEARNED_KEY_POOL") == "1":
+                q = self._pool_subject(q, keepdim=True)   # [B,1,mem_dim]
         else:
             q = emb[:, qa_start:answer_pos]             # query tokens (leak-free): 'cargo' / 'name :'
         if getattr(b, "multitoken", False) and self.mt_value == "perpos":
