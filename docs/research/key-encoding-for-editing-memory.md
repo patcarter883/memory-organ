@@ -174,6 +174,49 @@ Protocol — **screen cheap → confirm expensive**:
 Sequencing per the lit ranking: **(1) query BatchNorm (H4)** — cheapest, native, possibly biggest; then
 **(2) soft-ZCA + random rotation (H2)** on the survivors; banks scale + load-balance monitor throughout.
 
+## 6b. Interaction effects & the combinatorial strategy
+
+OFAT (one-factor-at-a-time) — which we've used throughout — **provably misses interactions**, and we have
+direct evidence we've been bitten: **multi-vector keys were killed in a *shared* store (Phase B, 0.14)
+before disjoint banks existed** — their failure mode was crowding, which banks fix, so that verdict is
+**confounded** and untested-in-context. GTE went cos-0.968-dead → 0.441 under whitening (encoder×transform
+interaction). The dangerous class is **two individually-negative levers that combine positive** — invisible
+to main effects *and* to mechanism reasoning (that's what makes it "strange"), catchable only by sampling
+the joint space.
+
+Full factorial in *delivery* is unaffordable (~6 factors × multi-level × 3 reps × ~3 min on 2 shared cards).
+Resolution:
+- **Run the full factorial in the CPU PROXY, not delivery.** The quantization-aware proxy (top-k slot
+  overlap under the product-key codebook) is seconds/cell → screen hundreds of combinations cheaply,
+  promote only promising **and surprising** cells (incl. negative×negative) to GPU delivery.
+- **GATE: validate proxy↔delivery correlation first** on the cells we already have (raw × B∈{1,8,16,32}
+  = 0.255→0.655 monotone; GTE = 0.000). If the proxy reproduces that ordering, the screen is trustworthy;
+  else fix the proxy before trusting any screen. (Garbage-in guard.)
+- **Fractional-factorial / screening DOE** (Plackett-Burman / definitive screening) for main + 2-way
+  interactions in few *delivery* runs.
+- **Mechanism-guided revivals** of OFAT-confounded kills (predictable synergies) + **broad proxy screen**
+  as the safety net for the unpredictable negative×negative class.
+
+**Revival list (OFAT-confounded kills to re-test in context):**
+- multi-vector keys **× disjoint banks** (crowding co-factor now exists).
+- GTE-MaxSim **× whitening × banks** (anisotropy + crowding co-factors).
+- repulsion loss **× query BatchNorm / whitening** (all touch slot occupancy).
+
+## 6c. Campaign plan (phased, queued)
+
+- **P0 — GATE (CPU, now):** build the quantization-aware proxy (product-key top-k slot-overlap within
+  banks; model query-BatchNorm as pre-top-k normalization) and validate it reproduces the known
+  raw-B-sweep + GTE-death ordering. Blocks everything downstream.
+- **P1 — combinatorial proxy screen (CPU):** factor grid over {encoder/transform: raw, soft-ZCA,
+  soft-ZCA+rotation, GTE} × {key-structure: single, multi-vector} × {query-BatchNorm: off/on} ×
+  {B: 1,8,32}. Rank by proxy collision; surface main effects + interactions + negative×negative surprises.
+- **P2 — delivery confirmation (GPU, 3 reps):** the proxy top cells + the revival list + suspected
+  interactions. Ordered by proxy promise; native lever (query BatchNorm) first per lit ranking.
+- **P3 — generalization (H3):** fit transform on a train split, delivery on held-out subjects; Ledoit-Wolf
+  + ε floor.
+- **P4 — synthesize:** update §3/§5, pick the production key-encoding recipe, decide banks-vs-transform
+  (H1 substitutive → simpler store).
+
 ## 7. Methodology notes
 
 - **Metric noise:** persistent-sweep delivery at cohort=10 swings ±0.10 run-to-run (GPU tap-fit
