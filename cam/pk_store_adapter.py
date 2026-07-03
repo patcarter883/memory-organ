@@ -146,8 +146,15 @@ class PKStoreAdapter(nn.Module):
         # that share common tokens (first names, particles) don't separate. A learned ATTENTION pool weights
         # the discriminative tokens instead. subj_pool_q attends over the span; used symmetrically at WRITE
         # (key) and READ (query) so addressing stays consistent. Opt-in via CAM_LEARNED_KEY_POOL=1 (else the
-        # mean, byte-preserved). Always constructed so it's in the state dict + trained during bind.
-        self.subj_pool_q = nn.Parameter(torch.randn(mem_dim) * 0.02)
+        # mean, byte-preserved).
+        # MULTI-VECTOR KEYS (#19 capacity probe -> ceiling is ADDRESSING): CAM_KEY_HEADS=H>1 gives each
+        # subject H DISTINCT learned key vectors (H attention heads over the span) written to H store slots
+        # pointing at the SAME value, so a subject occupies a richer, more separable address (any head can
+        # retrieve it; the joint address separates similar names the single pool collapses). subj_pool_q is
+        # [H, mem_dim]; head 0 is the addr-supervised primary, heads 1..H-1 train via the edit loss. H read
+        # at init so the param is in the state dict. Always constructed (H=1 -> byte-identical to incr#2).
+        self.n_key_heads = max(1, int(os.environ.get("CAM_KEY_HEADS", "1")))
+        self.subj_pool_q = nn.Parameter(torch.randn(self.n_key_heads, mem_dim) * 0.02)
         # pool the per-token store read into K learned slots (mirrors BoltAdapter.readout_q), then
         # out_proj back to base-embedding space for the tied-unembed direct readout.
         self.readout_q = nn.Parameter(torch.randn(k, mem_dim) * 0.02)
@@ -203,15 +210,21 @@ class PKStoreAdapter(nn.Module):
         return self.norm(self.in_proj(self.embed(ids).float()))
 
     def _pool_subject(self, span, keepdim=False):
-        """Pool a subject-span embed [B,L,mem_dim] -> one key/query vector [B,mem_dim] (or [B,1,mem_dim]
-        if keepdim). CAM_LEARNED_KEY_POOL=1: learned ATTENTION pool (subj_pool_q weights the discriminative
-        tokens) — used symmetrically at write-key and read-query for consistent addressing (#19 incr#2).
-        Else: the uniform mean (byte-preserved). Track 4 stronger multi-token-name key encoder."""
+        """Pool a subject-span embed [B,L,mem_dim] -> subject key/query vector(s). Returns [B,mem_dim]
+        (or [B,1,mem_dim] if keepdim) for the single-key path, OR [B,H,mem_dim] when CAM_KEY_HEADS=H>1
+        (multi-vector keys — H distinct learned attention heads). Used symmetrically at write-key and
+        read-query for consistent addressing (#19 incr#2/multi-vector). CAM_LEARNED_KEY_POOL off -> the
+        uniform mean, single vector (byte-preserved)."""
         if os.environ.get("CAM_LEARNED_KEY_POOL") == "1":
-            w = torch.softmax((span @ self.subj_pool_q) / (self.mem_dim ** 0.5), dim=1)   # [B,L]
-            pooled = (w.unsqueeze(-1) * span).sum(dim=1)                                   # [B,mem_dim]
+            # subj_pool_q [H,mem] -> per-head attention weights [B,H,L] -> H pooled vectors [B,H,mem]
+            scores = torch.einsum("blm,hm->bhl", span, self.subj_pool_q) / (self.mem_dim ** 0.5)  # [B,H,L]
+            w = torch.softmax(scores, dim=-1)                                             # [B,H,L]
+            pooled = torch.einsum("bhl,blm->bhm", w, span)                                # [B,H,mem]
+            if self.n_key_heads > 1:
+                return pooled                                                             # [B,H,mem] multi-vector
+            pooled = pooled[:, 0]                                                          # [B,mem] single head
         else:
-            pooled = span.mean(dim=1)                                                      # [B,mem_dim]
+            pooled = span.mean(dim=1)                                                      # [B,mem]
         return pooled.unsqueeze(1) if keepdim else pooled
 
     def _pos_key(self, name_key, t):
@@ -281,10 +294,17 @@ class PKStoreAdapter(nn.Module):
         # RICHER SUBJECT KEY (N-scaling key-separation fix): the default key is one token (subject LAST
         # token). For multi-token subjects that don't separate at high M, POOL the full subject span
         # (mean) into the key — more separable, so bind carry recovers. Opt-in via CAM_POOLED_SUBJ_KEY=1.
+        keys_multi = None                               # [B,M,H,mem] when multi-vector keys (H>1), else None
         if os.environ.get("CAM_POOLED_SUBJ_KEY") == "1" and hasattr(b, "binding_key_spans"):
             spans = b.binding_key_spans(hstart)
             # mean, or a learned attention pool (CAM_LEARNED_KEY_POOL) — the stronger multi-token key encoder.
-            keys = torch.stack([self._pool_subject(mem_emb[:, s:s + L]) for (s, L) in spans], dim=1)  # [B,M,mem_dim]
+            pooled = [self._pool_subject(mem_emb[:, s:s + L]) for (s, L) in spans]   # each [B,mem] or [B,H,mem]
+            multi = self.n_key_heads > 1 and os.environ.get("CAM_LEARNED_KEY_POOL") == "1"
+            if multi:
+                keys_multi = torch.stack(pooled, dim=1)  # [B,M,H,mem] — the H per-subject key vectors
+                keys = keys_multi[:, :, 0]               # [B,M,mem] PRIMARY head (addr-supervised)
+            else:
+                keys = torch.stack(pooled, dim=1)        # [B,M,mem_dim]
         else:
             keys = mem_emb[:, keys_pos]                 # [B,M,mem_dim] (name in multi, cargo in single)
         if mt and self.mt_value == "perpos" and self.perpos_key == "disjoint":
@@ -352,6 +372,12 @@ class PKStoreAdapter(nn.Module):
                 # against position t's write-address, not just the binding-level address. keys_w/vals_w
                 # are already the M*K per-position (key,value) pairs in binding-major order.
                 self._wk_pp, self._wv_pp = self.store.write_addr_val(keys_w, vals_w)  # [B,M*K,mem_dim]
+        if keys_multi is not None:
+            # MULTI-VECTOR KEYS: write the H per-subject key vectors to H slots, all pointing at the SAME
+            # value. keys [B,M,H,mem] -> [B,M*H,mem] (binding-major, head-minor); values repeated per head.
+            Bk, M, H, d = keys_multi.shape
+            keys_w = keys_multi.reshape(Bk, M * H, d)
+            vals_w = vals_w.unsqueeze(2).expand(Bk, M, H, d).reshape(Bk, M * H, d)
         return self.store.write(V, keys_w, vals_w)
 
     def memory_bank(self, ids, seg_len, qa_start, answer_pos, carry=True):
@@ -481,6 +507,18 @@ class PKStoreAdapter(nn.Module):
         sv = torch.einsum("bd,bmd->bm", F.normalize(ctx_fac, dim=-1),
                           F.normalize(self._wv, dim=-1)) / 0.1     # value scores
         self._last_aux_loss = F.cross_entropy(sa, tgt) + F.cross_entropy(sv, tgt)
+        # KEY-SEPARATION REPULSION (#19: ceiling is ADDRESSING). Push the M distinct subjects' WRITE
+        # ADDRESSES (what the product-key top-k actually scores) toward mutual orthogonality, so similar/
+        # multi-token names don't alias to the same slots as N grows. Off-diagonal Gram penalty on the
+        # normalized write-addresses; backprops into the key encoder + to_wkey. Opt-in CAM_KEY_REPULSION>0.
+        rep_w = float(os.environ.get("CAM_KEY_REPULSION", "0"))
+        if rep_w > 0 and self._wk.shape[1] > 1:
+            wk_n = F.normalize(self._wk, dim=-1)                   # [B,M,mem_dim]
+            gram = torch.einsum("bmd,bnd->bmn", wk_n, wk_n)        # [B,M,M] pairwise cosine
+            M = gram.shape[1]
+            off = gram - torch.eye(M, device=gram.device, dtype=gram.dtype).unsqueeze(0)  # zero self-sim
+            rep = (off ** 2).sum() / (gram.shape[0] * M * (M - 1))  # mean squared off-diagonal cosine
+            self._last_aux_loss = self._last_aux_loss + rep_w * rep
 
     def _compute_addr_sup_perpos(self, rqs, ctxs_pp, ids, qa_start, Kc):
         """PER-POSITION addressing supervision (the untested lever). For each answer position t:

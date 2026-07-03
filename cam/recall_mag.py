@@ -1003,8 +1003,10 @@ def _persistent_write_val(adapter, V, r, val_tid, pooled):
     subject span (mean, or the learned attention pool when CAM_LEARNED_KEY_POOL=1 — #19 incr#2), else the
     last token. `val_tid` lets the overwrite test write a SECOND value for the same key."""
     subj_emb = adapter._e(torch.tensor([r.subject_tids], dtype=torch.long, device=DEV))   # [1,S,mem_dim]
-    key = adapter._pool_subject(subj_emb, keepdim=True) if pooled else subj_emb[:, -1:]    # [1,1,mem_dim]
+    key = adapter._pool_subject(subj_emb, keepdim=True) if pooled else subj_emb[:, -1:]    # [1,H,mem] or [1,1,mem]
     val = adapter._e(torch.tensor([[val_tid]], dtype=torch.long, device=DEV))              # [1,1,mem_dim]
+    if key.shape[1] > 1:                        # multi-vector keys: repeat the value across the H key slots
+        val = val.expand(-1, key.shape[1], -1)
     return adapter.persistent_write(V, key, val)
 
 
