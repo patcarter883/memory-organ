@@ -998,18 +998,24 @@ def verdict_locality_generalization(tag, lg):
 
 
 @torch.no_grad()
-def _persistent_write_one(adapter, V, r, pooled):
-    """One incremental error-correcting write of edit `r` into standing bank V. Key = pooled subject span
-    (mean, or the learned attention pool when CAM_LEARNED_KEY_POOL=1 — #19 incr#2), else the last token."""
+def _persistent_write_val(adapter, V, r, val_tid, pooled):
+    """Incremental error-correcting write of subject(`r`) -> `val_tid` into standing bank V. Key = pooled
+    subject span (mean, or the learned attention pool when CAM_LEARNED_KEY_POOL=1 — #19 incr#2), else the
+    last token. `val_tid` lets the overwrite test write a SECOND value for the same key."""
     subj_emb = adapter._e(torch.tensor([r.subject_tids], dtype=torch.long, device=DEV))   # [1,S,mem_dim]
     key = adapter._pool_subject(subj_emb, keepdim=True) if pooled else subj_emb[:, -1:]    # [1,1,mem_dim]
-    val = adapter._e(torch.tensor([[r.new_tid]], dtype=torch.long, device=DEV))            # [1,1,mem_dim]
+    val = adapter._e(torch.tensor([[val_tid]], dtype=torch.long, device=DEV))              # [1,1,mem_dim]
     return adapter.persistent_write(V, key, val)
 
 
-def _persistent_score(base, adapter, injector, tok, V, cohort):
-    """Query each edit in `cohort` against standing bank V (subject-keyed read + tap); return
-    (cf_delivery, prior_recall) over the cohort. Non-mutating — safe to call at any checkpoint.
+def _persistent_write_one(adapter, V, r, pooled):
+    """One incremental write of edit `r` (value = its own new_tid) into standing bank V."""
+    return _persistent_write_val(adapter, V, r, r.new_tid, pooled)
+
+
+def _persistent_preds(base, adapter, injector, tok, V, cohort):
+    """Query each edit in `cohort` against standing bank V (subject-keyed read + tap) and return the list
+    of predicted next-token ids at each prompt's last position. Non-mutating.
 
     The 4B base forward is the cost; a batch-1 forward per edit is occupancy-starved (100% util / ~34W).
     So batch it: the per-edit STORE reads stay a cheap B=1 loop (variable subject length, small mem_dim
@@ -1032,7 +1038,7 @@ def _persistent_score(base, adapter, injector, tok, V, cohort):
         banks.append(adapter.persistent_bank(V, q))                       # [1,K,mem]
         confs.append(getattr(adapter, "_last_conf", None))               # [1] or None
         id_lists.append(bos + tok(r.prompt_text, add_special_tokens=False).input_ids)
-    cf_hit = pr_hit = 0
+    preds = [0] * len(cohort)
     for i in range(0, len(cohort), bs):
         rows = list(range(i, min(i + bs, len(cohort))))
         B = len(rows)
@@ -1049,11 +1055,17 @@ def _persistent_score(base, adapter, injector, tok, V, cohort):
         last = torch.tensor([lens[b] - 1 for b in range(B)], device=ld)
         pred = logits[torch.arange(B, device=ld), last].argmax(-1)         # gather each row's true last token
         for b, j in enumerate(rows):
-            p = int(pred[b].item())
-            cf_hit += int(p == cohort[j].new_tid)
-            pr_hit += int(p == cohort[j].true_tid)
+            preds[j] = int(pred[b].item())
     injector.set_bank(None)
+    return preds
+
+
+def _persistent_score(base, adapter, injector, tok, V, cohort):
+    """cf_delivery, prior_recall over `cohort` — fraction predicting the edit's new_tid / true_tid."""
+    preds = _persistent_preds(base, adapter, injector, tok, V, cohort)
     n = max(1, len(cohort))
+    cf_hit = sum(int(preds[i] == cohort[i].new_tid) for i in range(len(cohort)))
+    pr_hit = sum(int(preds[i] == cohort[i].true_tid) for i in range(len(cohort)))
     return cf_hit / n, pr_hit / n
 
 
@@ -1107,6 +1119,41 @@ def eval_persistent(base, adapter, injector, tok, kept, args):
               f"-> {e1:.3f} @ {N} written  (interference drop = {e0 - e1:+.3f})", flush=True)
     print("=" * 64, flush=True)
     return {"n_edits": N, "cf_delivery": cf_hit_rate, "prior_recall": pr_hit_rate, "curve": curve}
+
+
+def eval_persistent_overwrite(base, adapter, injector, tok, kept, args):
+    """Track 4 (#19) incr#3 — ONLINE UPDATE / overwrite. The pk-store write is an error-correcting DELTA;
+    does writing a SECOND value for a key cleanly REPLACE the first, or blend/stale? Two passes into ONE
+    standing store: (A) subject_i -> new_tid_i, then (B) subject_i -> a DIFFERENT value B_i (the NEXT
+    edit's new_tid, cyclic; skip pairs where B==A). Query each subject's prompt after each pass and score
+    which value wins: UPDATED (pred==B, the goal), STALE (pred==A, old value survived), or prior/other."""
+    injector.eval()
+    pooled = os.environ.get("CAM_POOLED_SUBJ_KEY") == "1"
+    N = len(kept)
+    # deterministic second value: the next edit's new_tid (cyclic). Keep only pairs with B != A so
+    # "updated" and "stale" are distinguishable; also B must differ from the base prior true_tid to read.
+    idx = [i for i in range(N) if kept[(i + 1) % N].new_tid != kept[i].new_tid]
+    cohort = [kept[i] for i in idx]
+    valA = [r.new_tid for r in cohort]
+    valB = [kept[(idx[j] + 1) % N].new_tid for j in range(len(cohort))]
+    n = max(1, len(cohort))
+    V = adapter.store.init_state(1, DEV, dtype=torch.float32)
+    for r in cohort:                                        # pass A: write the first value
+        V = _persistent_write_val(adapter, V, r, r.new_tid, pooled)
+    predsA = _persistent_preds(base, adapter, injector, tok, V, cohort)
+    a_deliver = sum(int(predsA[j] == valA[j]) for j in range(len(cohort))) / n
+    for j, r in enumerate(cohort):                          # pass B: overwrite with a different value
+        V = _persistent_write_val(adapter, V, r, valB[j], pooled)
+    predsB = _persistent_preds(base, adapter, injector, tok, V, cohort)
+    updated = sum(int(predsB[j] == valB[j]) for j in range(len(cohort))) / n   # new value won (goal)
+    stale = sum(int(predsB[j] == valA[j]) for j in range(len(cohort))) / n     # old value survived
+    prior = sum(int(predsB[j] == cohort[j].true_tid) for j in range(len(cohort))) / n
+    print(f"\n[mag][persistent] === Track 4 incr#3: ONLINE UPDATE over {len(cohort)} subjects ===", flush=True)
+    print(f"  after write-A: A-delivery {a_deliver:.3f}", flush=True)
+    print(f"  after write-B (same keys, new value): UPDATED(B) {updated:.3f} | STALE(A) {stale:.3f} | "
+          f"prior {prior:.3f}   (clean update = UPDATED high, STALE low)", flush=True)
+    print("=" * 64, flush=True)
+    return {"n": len(cohort), "a_deliver": a_deliver, "updated": updated, "stale": stale, "prior": prior}
 
 
 def main():
@@ -1213,6 +1260,11 @@ def main():
                     help="counterfactual_multi: run + CACHE the base-known probe/filter, then exit before "
                          "stage-1/2. Cheap way to pre-warm the probe cache on ONE card (the probe is the "
                          "big recurring GPU cost) so a later 2-card sweep is a cache hit.")
+    ap.add_argument("--persistent-overwrite", action="store_true", dest="persistent_overwrite",
+                    help="Track 4 (#19) incr#3: after the retention sweep, run the ONLINE UPDATE test — "
+                         "write subject->A then subject->B (different value) into the SAME standing store "
+                         "and score whether the delta-write cleanly UPDATES to B (vs stale A). Implies "
+                         "--persistent-sweep.")
     ap.add_argument("--query-rel", type=str, default="", dest="query_rel",
                     help="ADVERSARIAL paraphrase probe (issue #10, natural phrasing only): bind and "
                          "train exactly as normal (bindings + training queries use ' lives in'), then "
@@ -1385,6 +1437,8 @@ def main():
     torch.cuda.empty_cache() if torch.cuda.is_available() else None
 
     # ---- stage 2: MAG delivery ----
+    if getattr(args, "persistent_overwrite", False):
+        args.persistent_sweep = True         # the online-update test runs after the retention sweep
     if getattr(args, "persistent_sweep", False):
         args.persistent_eval = True          # the sweep is a superset of the persistent eval
     configs = [layers] if args.multi else [[L] for L in layers]
@@ -1413,6 +1467,9 @@ def main():
             else:
                 with StageCost(f"persistent (online) retention sweep L={tag}"):
                     eval_persistent(base, adapter, injector, tok, cf_records, args)
+                if getattr(args, "persistent_overwrite", False):
+                    with StageCost(f"persistent online-update L={tag}"):
+                        eval_persistent_overwrite(base, adapter, injector, tok, cf_records, args)
             injector.detach()
             continue
         with StageCost(f"delivery eval L={tag}"):
