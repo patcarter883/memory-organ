@@ -1100,7 +1100,17 @@ def _persistent_preds(base, adapter, injector, tok, V, cohort, bank_ids=None):
         if alpha > 0:                                                     # value's contribution straight to the
             bh = adapter.out_proj(bank).mean(1)                          # OUTPUT logits (bypass the residual
             lm = base.get_output_embeddings().weight                     # site). Does logit-space break ~0.7?
-            last_logits = last_logits + alpha * (bh.to(lm.device, lm.dtype) @ lm.t()).to(ld)
+            inj = alpha * (bh.to(lm.device, lm.dtype) @ lm.t()).to(ld)   # [B,vocab]
+            c0 = os.environ.get("CAM_LOGIT_GATE_C0")                     # CONF-GATE (#67 fix): scale the
+            if c0 is not None and conf is not None:                      # injection by retrieval strength so it
+                cc = conf.to(ld)                                         # fires on the edited subject (high conf)
+                if os.environ.get("CAM_LOGIT_GATE_HARD") == "1":         # but stays inert on out-of-store
+                    g = (cc > float(c0)).to(inj.dtype)                   # neighbours (low conf) -> keeps locality.
+                else:                                                    # HARD step exploits the ~122-vs-0
+                    k = float(os.environ.get("CAM_LOGIT_GATE_K", "1"))   # in/out-of-store conf separation
+                    g = torch.sigmoid(k * (cc - float(c0)))
+                inj = inj * g.view(-1, 1)
+            last_logits = last_logits + inj
         pred = last_logits.argmax(-1)                                     # gather each row's true last token
         for b, j in enumerate(rows):
             preds[j] = int(pred[b].item())
@@ -1248,6 +1258,197 @@ def eval_persistent_solo(base, adapter, injector, tok, kept, args):
     return {"solo": solo, "prior": prior}
 
 
+class _NbrRec:
+    """Lightweight pseudo-record so a neighbour prompt can ride the exact `_persistent_preds` path
+    (store read keyed by subject_tids -> tap + logit-injection).
+
+    Two keying modes for the locality question:
+      * ADVERSARIAL (subject_tids = the EDITED subject): forces the store to return the edit's STRONG
+        value and inject it onto a same-true-object neighbour — the UPPER BOUND on damage ('if the
+        edit's value reaches a neighbour, how bad?'). Bypasses addressing.
+      * DEPLOYMENT (subject_tids = the NEIGHBOUR's OWN subject, parsed from the shared relation
+        template): the neighbour is out-of-store, so its own subject drives retrieval exactly as in
+        production — measures whether the store's ADDRESSING keeps injection off unrelated prompts.
+    Both score keep = pred==true_tid (neighbour held) and leak = pred==new_tid (flipped to the EDIT's
+    counterfactual object)."""
+    __slots__ = ("subject_tids", "prompt_text", "new_tid", "true_tid", "relation_id")
+
+    def __init__(self, subject_tids, prompt, new_tid, true_tid, relation_id):
+        self.subject_tids = subject_tids
+        self.prompt_text = prompt
+        self.new_tid = new_tid
+        self.true_tid = true_tid
+        self.relation_id = relation_id
+
+
+def _nbr_subject_tids(tok, r, prompt):
+    """Parse the NEIGHBOUR's own subject tids out of a neighbourhood prompt by stripping the edit's
+    relation template (r.prompt = 'The mother tongue of {} is'; neighbour = same template, other
+    subject). Returns the space-prefixed subject token ids, or None if the template doesn't match."""
+    tmpl = getattr(r, "prompt", "")
+    if "{}" not in tmpl:
+        return None
+    pre, suf = tmpl.split("{}", 1)
+    p = prompt
+    if pre and not p.startswith(pre):
+        return None
+    p = p[len(pre):]
+    if suf:
+        j = p.rfind(suf)
+        if j < 0:
+            return None
+        p = p[:j]
+    subj = p.strip()
+    if not subj:
+        return None
+    return tok(" " + subj, add_special_tokens=False).input_ids
+
+
+def _cohort_confs(adapter, V, cohort, pooled, bank_ids=None):
+    """Per-item store retrieval-confidence (factual-head magnitude) for a cohort, using the SAME subject
+    query as _persistent_preds. Used to (a) show whether in-store (edited) subjects retrieve more
+    strongly than out-of-store neighbours and (b) self-calibrate the conf-gate threshold."""
+    learned_pool = os.environ.get("CAM_LEARNED_KEY_POOL") == "1"
+    gte = getattr(adapter, "_gte_keys", None) is not None
+    out = []
+    for i, r in enumerate(cohort):
+        tids = torch.tensor([r.subject_tids], dtype=torch.long, device=DEV)
+        if gte:
+            q = adapter._gte_key(tids).unsqueeze(1)
+        else:
+            q = adapter._e(tids)
+            if learned_pool:
+                q = adapter._pool_subject(q, keepdim=True)
+        b = bank_ids[i] if bank_ids is not None else _subject_bank(r.subject_tids, len(V))
+        adapter.persistent_bank(V[b], q)
+        c = getattr(adapter, "_last_conf", None)
+        out.append(float(c.item()) if c is not None else float("nan"))
+    return out
+
+
+def eval_persistent_locality(base, adapter, injector, tok, kept, args):
+    """Phase R / logit-injection LOCALITY — the decisive follow-up to CAM_LOGIT_INJECT (#67).
+
+    Logit injection breaks the residual wall (solo 0.65 -> 0.87) by ADDING alpha*out_proj(bank)@lm_head
+    straight to the output logits. That is blunt: the real question is whether forcing the object logit
+    also damages NEIGHBOURING facts (a paradigm shift only if delivery rises WITHOUT locality
+    collapsing). So sweep alpha and measure delivery and locality TOGETHER:
+
+      * DELIVERY  — over the edited prompts: fraction predicting new_tid (the edit fires).
+      * NBR-KEEP  — over the edits' neighbourhood_prompts (other subjects, SAME true object; gold =
+                    true_tid): fraction still predicting the neighbour's TRUE answer (locality held).
+      * NBR-LEAK  — same neighbours: fraction wrongly flipped to the EDIT's new_tid (the leak we fear).
+
+    The neighbour is queried against the standing store keyed by the EDITED subject (see _NbrRec) —
+    the ADVERSARIAL upper bound (the edit's strong value IS retrieved and injected). If NBR-LEAK stays
+    low even here, logit injection is specific; if it rises with alpha, the fidelity wall has merely
+    been traded for a locality wall and there may (or may not) be a usable operating point."""
+    injector.eval()
+    pooled = os.environ.get("CAM_POOLED_SUBJ_KEY") == "1"
+    N = len(kept)
+    V = _init_banks(adapter, _n_disjoint_banks())
+    for r in kept:
+        V = _persistent_write_one(adapter, V, r, pooled)
+
+    cap = int(os.environ.get("CAM_LOCALITY_NBR_CAP", "3"))           # neighbours per edit (budget)
+    # DEPLOYMENT cohort: neighbour keyed on its OWN parsed subject (out-of-store; addressing in play).
+    # ADVERSARIAL cohort: same neighbour prompt keyed on the EDIT's subject (edit's value forced in).
+    dep, adv, n_unparsed = [], [], 0
+    for r in kept:
+        for p in r.neighborhood_prompts[:cap]:
+            if not p:
+                continue
+            adv.append(_NbrRec(r.subject_tids, p, r.new_tid, r.true_tid, r.relation_id))
+            st = _nbr_subject_tids(tok, r, p)
+            if st:
+                dep.append(_NbrRec(st, p, r.new_tid, r.true_tid, r.relation_id))
+            else:
+                n_unparsed += 1
+    if not adv:
+        print("[mag][persistent] locality: no neighbourhood_prompts on records; skipping.", flush=True)
+        return {}
+    alphas = [float(x) for x in os.environ.get("CAM_LOGIT_INJECT_SWEEP", "0,2,8,20").split(",")]
+    saved_a = os.environ.get("CAM_LOGIT_INJECT")
+    saved_c0 = os.environ.get("CAM_LOGIT_GATE_C0")
+
+    # --- conf separation + self-calibrated gate threshold -----------------------------------------
+    import statistics as _st
+    ec = [c for c in _cohort_confs(adapter, V, kept, pooled) if c == c]            # edited (in-store) subj
+    dc = [c for c in _cohort_confs(adapter, V, dep, pooled) if c == c] if dep else []  # neighbour (out-of-store)
+    em = _st.median(ec) if ec else float("nan")
+    dm = _st.median(dc) if dc else float("nan")
+    c0 = (em + dm) / 2.0 if (ec and dc) else None                                  # gate midpoint
+    spread = abs(em - dm) if (ec and dc) else 0.0
+    gate_k = 4.0 / spread if spread > 1e-6 else 1.0                                # ~saturate across the gap
+    print(f"\n[mag][persistent] conf(factual-head magnitude): edited median={em:.3f}  "
+          f"neighbour median={dm:.3f}  separation={em - dm:+.3f}  -> gate C0={c0 if c0 is None else round(c0,3)} "
+          f"K={round(gate_k,3)}", flush=True)
+
+    def _score(cohort, a):
+        if not cohort:
+            return None, None
+        os.environ["CAM_LOGIT_INJECT"] = str(a)
+        pr = _persistent_preds(base, adapter, injector, tok, V, cohort)
+        n = max(1, len(cohort))
+        keep = sum(int(pr[i] == cohort[i].true_tid) for i in range(len(cohort))) / n
+        leak = sum(int(pr[i] == cohort[i].new_tid) for i in range(len(cohort))) / n
+        return keep, leak
+
+    saved_hard = os.environ.get("CAM_LOGIT_GATE_HARD")
+
+    def _sweep(gated, hard=False):
+        if gated and c0 is not None:
+            os.environ["CAM_LOGIT_GATE_C0"] = str(c0); os.environ["CAM_LOGIT_GATE_K"] = str(gate_k)
+            os.environ["CAM_LOGIT_GATE_HARD"] = "1" if hard else "0"
+        else:
+            os.environ.pop("CAM_LOGIT_GATE_C0", None); os.environ.pop("CAM_LOGIT_GATE_HARD", None)
+        rows = []
+        for a in alphas:
+            os.environ["CAM_LOGIT_INJECT"] = str(a)
+            ep = _persistent_preds(base, adapter, injector, tok, V, kept)   # edit prompts (own bank) = delivery
+            delivery = sum(int(ep[i] == kept[i].new_tid) for i in range(N)) / max(1, N)
+            dk, dl = _score(dep, a); ak, al = _score(adv, a)
+            rows.append({"alpha": a, "delivery": delivery,
+                         "dep_keep": dk, "dep_leak": dl, "adv_keep": ak, "adv_leak": al})
+        return rows
+
+    def _print(title, rows):
+        print(f"\n  --- {title} ---", flush=True)
+        print(f"  {'alpha':>6}  {'delivery':>9} | {'DEP-keep':>9} {'DEP-leak':>9} | {'ADV-keep':>9} {'ADV-leak':>9}",
+              flush=True)
+        for row in rows:
+            dk = f"{row['dep_keep']:.3f}" if row['dep_keep'] is not None else "  -  "
+            dl = f"{row['dep_leak']:.3f}" if row['dep_leak'] is not None else "  -  "
+            print(f"  {row['alpha']:>6.1f}  {row['delivery']:>9.3f} | {dk:>9} {dl:>9} | "
+                  f"{row['adv_keep']:>9.3f} {row['adv_leak']:>9.3f}", flush=True)
+
+    print(f"\n[mag][persistent] === Logit-injection LOCALITY: {N} edits | dep={len(dep)} "
+          f"adv={len(adv)} neighbours ({n_unparsed} unparsed) ===", flush=True)
+    ungated = _sweep(gated=False)
+    _print("UNCONDITIONAL injection", ungated)
+    gated = _sweep(gated=True) if c0 is not None else None
+    if gated is not None:
+        _print(f"CONF-GATED (soft, C0={round(c0,3)}, K={round(gate_k,3)})", gated)
+    hardg = _sweep(gated=True, hard=True) if c0 is not None else None
+    if hardg is not None:
+        _print(f"CONF-GATED (HARD step at C0={round(c0,3)})", hardg)
+
+    for var, val in (("CAM_LOGIT_INJECT", saved_a), ("CAM_LOGIT_GATE_C0", saved_c0),
+                     ("CAM_LOGIT_GATE_HARD", saved_hard)):
+        if val is None:
+            os.environ.pop(var, None)
+        else:
+            os.environ[var] = val
+    print(f"\n  DEP = neighbour's OWN subject drives retrieval (deployment — decides usability). "
+          f"ADV = forced onto the EDIT's bank (upper bound).", flush=True)
+    print(f"  want: delivery UP, DEP-keep flat, DEP-leak ~0. Gate helps iff conf separates edited vs "
+          f"neighbour (see separation above).", flush=True)
+    print("=" * 64, flush=True)
+    return {"n_edits": N, "n_dep": len(dep), "n_adv": len(adv),
+            "conf_edited": em, "conf_nbr": dm, "gate_c0": c0,
+            "ungated": ungated, "gated": gated, "hard": hardg}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--bind-steps", type=int, default=3000, dest="bind_steps")
@@ -1360,6 +1561,12 @@ def main():
     ap.add_argument("--persistent-solo", action="store_true", dest="persistent_solo",
                     help="Phase R/R0 (#19): SINGLE-FACT FIDELITY — write each edit ALONE in its own store "
                          "and query it (no collision). Isolates the per-fact store/tap ceiling. Implies "
+                         "--persistent-sweep.")
+    ap.add_argument("--persistent-locality", action="store_true", dest="persistent_locality",
+                    help="Phase R (#19/#67): LOGIT-INJECTION LOCALITY — after writing all edits, sweep "
+                         "CAM_LOGIT_INJECT alpha and score edit DELIVERY together with neighbour KEEP/LEAK "
+                         "(does forcing the object logit damage same-true-object neighbours?). The decisive "
+                         "delivery<->locality trade for the logit-injection paradigm. Implies "
                          "--persistent-sweep.")
     ap.add_argument("--query-rel", type=str, default="", dest="query_rel",
                     help="ADVERSARIAL paraphrase probe (issue #10, natural phrasing only): bind and "
@@ -1533,8 +1740,9 @@ def main():
     torch.cuda.empty_cache() if torch.cuda.is_available() else None
 
     # ---- stage 2: MAG delivery ----
-    if getattr(args, "persistent_overwrite", False) or getattr(args, "persistent_solo", False):
-        args.persistent_sweep = True         # the online-update / solo tests run after the retention sweep
+    if (getattr(args, "persistent_overwrite", False) or getattr(args, "persistent_solo", False)
+            or getattr(args, "persistent_locality", False)):
+        args.persistent_sweep = True         # the online-update / solo / locality tests run after the sweep
     if getattr(args, "persistent_sweep", False):
         args.persistent_eval = True          # the sweep is a superset of the persistent eval
     configs = [layers] if args.multi else [[L] for L in layers]
@@ -1569,6 +1777,9 @@ def main():
                 if getattr(args, "persistent_solo", False):
                     with StageCost(f"persistent solo-fidelity L={tag}"):
                         eval_persistent_solo(base, adapter, injector, tok, cf_records, args)
+                if getattr(args, "persistent_locality", False):
+                    with StageCost(f"persistent logit-injection locality L={tag}"):
+                        eval_persistent_locality(base, adapter, injector, tok, cf_records, args)
             injector.detach()
             continue
         with StageCost(f"delivery eval L={tag}"):
