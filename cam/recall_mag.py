@@ -727,20 +727,23 @@ def setup_counterfact_multi(base, tok, args):
     # addressing — safe to relax for measurement; N1 validates for bind.
     max_suf = int(os.environ.get("CAM_MAX_SUFFIX_TOK", "6"))
     allow_empty_pre = os.environ.get("CAM_ALLOW_EMPTY_PREFIX") == "1"
-    n_skip_suf = n_skip_pre = 0
+    max_subj = int(os.environ.get("CAM_MAX_SUBJ_LEN", "999"))   # N1: cap subject len so the bind block fits
+    n_skip_suf = n_skip_pre = n_skip_subj = 0
     by_rid = defaultdict(lambda: defaultdict(list))
     for r in kept:
         if "{}" not in r.prompt:
             continue
+        if len(r.subject_tids) > max_subj:
+            n_skip_subj += 1; continue
         pre, suf = _split(r.prompt)
         if not pre and not allow_empty_pre:
             n_skip_pre += 1; continue
         if len(tok(suf, add_special_tokens=False).input_ids) > max_suf:
             n_skip_suf += 1; continue
         by_rid[r.relation_id][(r.prompt, len(r.subject_tids))].append(r)
-    print(f"[mag][cf-multi] relation-filter (MAX_SUFFIX_TOK={max_suf}, allow_empty_prefix={allow_empty_pre}): "
-          f"{len(by_rid)} relations pass; skipped {n_skip_suf} long-suffix + {n_skip_pre} empty-prefix facts",
-          flush=True)
+    print(f"[mag][cf-multi] relation-filter (MAX_SUFFIX_TOK={max_suf}, allow_empty_prefix={allow_empty_pre}, "
+          f"MAX_SUBJ_LEN={max_subj}): {len(by_rid)} relations pass; skipped {n_skip_suf} long-suffix + "
+          f"{n_skip_pre} empty-prefix + {n_skip_subj} long-subject facts", flush=True)
     R = max(2, args.multi_relations)
     per_rel_min = max(2, (args.M + R - 1) // R + 1)      # distinct subjects for this relation's doc-slot share
     # Phase N (N0, CAM_ALL_SUBJ_LENGTHS=1): the legacy grouping keeps only each relation's ONE largest
