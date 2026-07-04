@@ -730,13 +730,33 @@ def setup_counterfact_multi(base, tok, args):
         by_rid[r.relation_id][(r.prompt, len(r.subject_tids))].append(r)
     R = max(2, args.multi_relations)
     per_rel_min = max(2, (args.M + R - 1) // R + 1)      # distinct subjects for this relation's doc-slot share
+    # Phase N (N0, CAM_ALL_SUBJ_LENGTHS=1): the legacy grouping keeps only each relation's ONE largest
+    # (prompt, subject-length) bucket — a rectangular-bind-batching shortcut that collapses ~2936 base-known
+    # facts to ~147 (§3.19). Relaxed: per relation keep ALL subject-lengths of its DOMINANT prompt (the
+    # store keys length-agnostically on the subject last-token/pooled span). slen=-1 flags mixed lengths;
+    # bind must then length-bucket (N1). Default off = byte-identical legacy behaviour.
+    all_lengths = os.environ.get("CAM_ALL_SUBJ_LENGTHS") == "1"
+    # ceiling diagnostic: base-known facts kept per relation across ALL lengths (dominant prompt).
+    tot_all = 0
     best = []
     for rid, variants in by_rid.items():
-        (prompt, slen), recs = max(variants.items(), key=lambda kv: len(kv[1]))
+        if all_lengths:
+            by_prompt = defaultdict(list)
+            for (prompt, _slen), recs in variants.items():
+                by_prompt[prompt].extend(recs)
+            prompt, recs = max(by_prompt.items(), key=lambda kv: len(kv[1]))
+            slen = -1                                    # mixed subject lengths (bind must length-bucket)
+        else:
+            (prompt, slen), recs = max(variants.items(), key=lambda kv: len(kv[1]))
+        tot_all += len(recs)
         if len(recs) >= per_rel_min:
             best.append((len(recs), rid, prompt, slen, recs))
     best.sort(reverse=True, key=lambda c: c[0])
     chosen = best[:R]
+    print(f"[mag][cf-multi] grouping={'ALL-LENGTHS' if all_lengths else 'one-length'} | "
+          f"{len(best)} relations pass per_rel_min>={per_rel_min} (of {len(by_rid)}); "
+          f"top-{R} kept; dominant-prompt fact pool across kept relations = {sum(c[0] for c in chosen)}",
+          flush=True)
     assert len(chosen) >= 2, (f"need >= 2 relations with >= {per_rel_min} base-known facts at one subject "
                               f"length (got {[(c[1], c[0]) for c in best[:6]]}); lower --multi-relations/--M")
     print(f"[mag][cf-multi] EDITING {len(chosen)} relations (rid, subj_len, #facts): "
@@ -747,7 +767,9 @@ def setup_counterfact_multi(base, tok, args):
         relkey = rid                                     # one relation per relation_id
         pre, suf = _split(prompt)
         rel_templates[relkey] = (pre, suf)
-        rel_subj_len[relkey] = slen
+        # mixed-length relations (N0): use the max subject length so construction/padding is valid; the
+        # real per-length sub-batching is N1 (probe-only exits before bind, so any positive value is safe).
+        rel_subj_len[relkey] = slen if slen > 0 else max(len(r.subject_tids) for r in recs)
         for r in recs:
             # Phase M: use the object's FIRST token as the single-token stand-in (KEY is subject_last_tid;
             # cf value = new object's first token). Full K-token perpos write is M1; this keeps M0 (measure
