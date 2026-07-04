@@ -508,8 +508,15 @@ class PKStoreAdapter(nn.Module):
     def persistent_write(self, V, keys, vals):
         """Write A associations (keys/vals [B,A,mem_dim]) into a PERSISTENT value bank V (error-correcting
         delta write). Track 4 online binding: call once per edit on the SAME V to accumulate a standing
-        memory — no episodic doc, no reset. Returns the updated V."""
-        return self.store.write(V, keys, vals)
+        memory — no episodic doc, no reset. Returns the updated V.
+
+        Phase K1 (CAM_WRITE_AT_READ=1, persistent-path only, no retrain): address the write with the READ
+        query head_query(key)=read_q[0](key)+head_bias[0] instead of to_wkey(key), so the value lands at
+        the exact slot the read selects → closes the write↔read addressing gap for boundary subjects."""
+        addr = None
+        if os.environ.get("CAM_WRITE_AT_READ") == "1":
+            addr = self.store.head_query(keys, 0)             # read-space write address (K1)
+        return self.store.write(V, keys, vals, addr=addr)
 
     def persistent_bank(self, V, q):
         """Read a PERSISTENT bank V with a subject query q [B,Lq,mem_dim] -> pooled [B,K,mem_dim] bank +

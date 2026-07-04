@@ -623,6 +623,54 @@ Logit-level injection (add the calibrated direction at the final layer) is the g
 if residual-space stays capped. R0 should read ~0.7 (confirming the WISE/MEMIT ceiling); then **P-R1 = the
 GCAV calibrated gate.**
 
+## 6e. Phase K — key SELF-ADDRESSING (NEW, the last open lever; opened by §3.15 decomposition)
+
+**The problem, precisely.** After the logit-injection arc (§3.14–3.15) the only residual gap is ~15/137
+edits that self-retrieve weakly *even alone in their own bank* (B=137, no crowding; not value-norm, not
+length, not relation). Root cause, from the code: the **write and read address slots through DIFFERENT
+learned projections** —
+- WRITE (`store.write` ← `persistent_write`): `slot = _address(to_wkey(key))` (`pk_store.py:168-170`).
+- READ (`store.read` ← `persistent_bank`): `slot = _address(read_q[0](q) + head_bias[0])` (`pk_store.py:209`).
+
+`to_wkey` and `read_q[0]` are coupled only *softly*, by the addr-sup InfoNCE during bind (which pulls
+`read_q[0](q)` toward `to_wkey(key)`, `pk_store_adapter.py:536`). For a subject whose pooled key lands near
+a product-key sub-codebook **top-k boundary**, the two projections fall into *different* product cells → the
+read query never selects the slot the value was written to → `conf≈0`. The addr-sup aligns them in
+aggregate but cannot guarantee per-subject cell agreement at boundaries. So the fix is to **close the
+write↔read addressing gap**, ordered impact×cost:
+
+**Persistent-path-only (no retrain — the disjoint-banks-style cheap class; test immediately on the frozen
+ckpt via the `logit_locality.sh` + `CAM_CONF_DIAG` harness):**
+- **K1 — WRITE-WHERE-YOU-READ (primary).** Address the persistent write with the *read* query
+  `head_query(key)=read_q[0](key)+head_bias[0]` instead of `to_wkey(key)`, so the value lands exactly at the
+  slot the read will select → self-match **exact by construction** (modulo the shared query-BN). Value is
+  still `to_wval(value)` (tap-compatible; only the slot location moves). New `store.write_at(V, addr_q,
+  values)` + `CAM_WRITE_AT_READ=1` routing in `persistent_write`. Expected: below-gate count 15 → the
+  ~4-6 genuinely-unreadable floor; gated delivery up; **locality NEUTRAL-or-better** (the value is now at
+  the edit's *exact* read-address, so only that query retrieves it → tighter specificity). Predicted the
+  single highest-value experiment.
+- **K2 — write redundancy.** Write the value to BOTH `to_wkey` and `read_q[0]` slots (belt-and-suspenders)
+  — a softer K1 that keeps the trained write-address too. Fallback if K1's pure relocation hurts anything.
+- **K3 — widen selection.** `sub_topk` 4→8 (or read `topk`↑) so a boundary subject's slot is covered by
+  both write and read candidate sets. Cheap but SOFTENS addressing → watch the DEP-leak/keep cost (admits
+  neighbours); likely dominated by K1.
+
+**Requires retrain (structural; the §3.4 / §4 theory family — only if K1 leaves a residual):**
+- **K4 — TIE the projections.** Share weights `to_wkey ≡ read_q[0]` (+ fold `head_bias[0]`), retrain
+  addr-sup. Makes `_address` see identical vectors at write and read for ALL subjects by construction — the
+  permanent version of K1. Risk: lower capacity; validate delivery doesn't regress.
+- **K5 — RaBitQ-style rotation before addressing** (§4): normalize + fixed random Hadamard rotation on the
+  address vector → data-independent, unbiased product-cell assignment (O(1/√D) error), **zero training** to
+  fit → fewer boundary subjects. Strictly better than the ZCA whitening we have; compose with K1.
+- **K6 — hard self-consistency addr-sup term.** Add a per-subject loss forcing
+  `_address(read_q[0](k)) == _address(to_wkey(k))` (straight-through on the top-k) so boundary cases are
+  trained to agree, not just pulled softly.
+
+**Measurement (same harness, all runs):** `CAM_CONF_DIAG=1` below-gate count + deliverable-weak split;
+hard-gated delivery / DEP-keep / DEP-leak at the §3.15 operating point (B=137, C0=em/12). Success = below-gate
+→ the unreadable floor, gated delivery ↑ toward the ~0.88 solo-fidelity ceiling, locality flat. n≥3 reps
+(±0.15 tap-fit noise); the within-run below-gate count is the low-noise primary signal. **Start with K1.**
+
 ## 7. Methodology notes
 
 - **Metric noise:** persistent-sweep delivery at cohort=10 swings ±0.10 run-to-run (GPU tap-fit
