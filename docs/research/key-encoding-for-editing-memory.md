@@ -371,6 +371,26 @@ favourable frontier — and one subtlety:
   baseline, and at matched delivery gated has *far* better locality. The gate **dominates the ungated
   frontier** everywhere.
 
+**Per-edit conf diagnostic — the gap decomposes into ADDRESSING, and the neighbour tail is bimodal.**
+`CAM_CONF_DIAG=1` logs each edit's retrieval conf vs subject length / relation / whether it delivers under
+unconditional max-α (readable?) and residual-only (base?):
+- **The delivery gap is ~17/137 addressing false-negatives.** 25 edits fall below C0≈30; **19 of them still
+  DELIVER under unconditional injection** — i.e. their value is perfectly *readable*, they just *retrieve
+  weakly*. Histogram: conf 1–10 = 8 edits, **all 8 deliver**; conf<1 = 15 edits, 9 deliver. So the
+  hard-gate gap is dominated by real edits whose own subject key retrieves their value at low magnitude —
+  an **addressing / write-strength** problem, NOT readout. Mean conf is ~uniform across the 6 relations
+  (90–110), so it's not relation-specific → points to bank-crowding / key-collision (the §3.2/§3.4 levers:
+  more banks, better keys). ~6 of the 25 fail even unconditionally = genuine readout/value misses.
+- **The neighbour conf distribution is BIMODAL** — median ~0.001 but **p95 ≈ 118 ≈ the edited median**.
+  A ~5% tail of neighbours *fully collide* with an edit in the same disjoint bank and retrieve at in-store
+  strength; **no conf threshold can exclude them** (they're indistinguishable from real edits by retrieval
+  magnitude). These are the irreducible keep-loss cases and set the locality floor. (Consequence: the p95
+  is useless for calibration — C0 is set from the edited side, em/12, to include the weak-but-real edits.)
+- **Next lever (addressing):** raise in-store retrieval conf for the ~17 weak-but-deliverable edits — more
+  banks (B>32) / better keys to de-crowd their bank — so a *safe* high C0 captures full delivery AND the
+  bimodal neighbour tail shrinks (fewer same-bank collisions). Fidelity is now fully recoupled to the
+  addressing frontier; there is no separate frozen-base fidelity cap left to attack.
+
 **Verdict:** §3.14's paradigm crack is real AND deployable. The ~0.7 residual wall is escaped by
 logit-space injection; the locality cost that made it look like a mere trade is **eliminated by a hard
 conf-gate**, which the store's near-binary in/out retrieval confidence makes almost free. Shipped:

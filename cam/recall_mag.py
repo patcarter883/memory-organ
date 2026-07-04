@@ -1372,11 +1372,13 @@ def eval_persistent_locality(base, adapter, injector, tok, kept, args):
     saved_c0 = os.environ.get("CAM_LOGIT_GATE_C0")
 
     # --- conf separation + self-calibrated gate threshold -----------------------------------------
-    # The gate must exclude the NEIGHBOUR conf TAIL (not just the median): a few neighbours token-overlap
-    # an edit in the same bank and retrieve with nonzero conf. Set C0 just above that tail (2x the neighbour
-    # p95) so the MOST edits clear the gate at near-baseline locality — the midpoint (em+dm)/2 is far too
-    # conservative given the ~118-vs-0 separation (threshold sweep §3.15: C0~10 beats midpoint 59 by +0.04
-    # delivery at ~0 locality cost). CAM_LOGIT_GATE_C0 overrides for the production knob.
+    # Calibrate C0 to include weakly-retrieved-but-REAL edits (the delivery gap: §3.15 diagnostic shows
+    # ~17/137 edits retrieve at conf 1-30 yet deliver unconditionally) while excluding the neighbour BULK
+    # (median ~0). The neighbour conf p95 is NOT usable here — it ≈ the edited median (a ~5% tail of
+    # neighbours FULLY collide with an edit in the same bank; irreducible, no threshold excludes them). So
+    # optimise the edited side: C0 = em/12 (~sweet spot 10 from the threshold sweep — C0=10 recovers +0.04
+    # delivery over the midpoint 59 at ~0 locality cost), floored above the neighbour bulk. CAM_LOGIT_GATE_C0
+    # overrides for the production knob.
     import statistics as _st
     def _pct(xs, q):
         if not xs:
@@ -1388,15 +1390,12 @@ def eval_persistent_locality(base, adapter, injector, tok, kept, args):
     em = _st.median(ec) if ec else float("nan")
     dm = _st.median(dc) if dc else float("nan")
     dp95 = _pct(dc, 0.95) if dc else float("nan")
-    if ec and dc:
-        c0 = min(max(2.0 * dp95, 0.5), em / 4.0)     # above neighbour tail, well below edited median
-    else:
-        c0 = None
+    c0 = max(em / 12.0, 10.0 * (dm if dm == dm else 0.0), 0.5) if ec else None     # ~em/12, above nbr bulk
     spread = abs(em - dm) if (ec and dc) else 0.0
     gate_k = 4.0 / spread if spread > 1e-6 else 1.0                                # ~saturate across the gap
     print(f"\n[mag][persistent] conf(factual-head magnitude): edited median={em:.3f}  "
           f"neighbour median={dm:.3f} p95={dp95:.3f}  separation={em - dm:+.3f}  -> gate "
-          f"C0={c0 if c0 is None else round(c0, 3)} (2x nbr-p95, clamped) K={round(gate_k, 3)}", flush=True)
+          f"C0={c0 if c0 is None else round(c0, 3)} (~em/12, above nbr bulk) K={round(gate_k, 3)}", flush=True)
 
     def _score(cohort, a):
         if not cohort:
@@ -1473,6 +1472,37 @@ def eval_persistent_locality(base, adapter, injector, tok, kept, args):
                   f"{row['dep_leak']:>9.3f}", flush=True)
         print(f"  (lower C0 -> more edits clear the gate; neighbours (conf~{round(dm,3)}) stay excluded "
               f"until C0 approaches their level)", flush=True)
+
+    # PER-EDIT conf DIAGNOSTIC (#19 next lever): the hard-gate delivery gap = EDITED subjects that retrieve
+    # with conf < C0 (false negatives). What makes an edit low-conf? Log per-edit conf vs subject length /
+    # relation / whether the value is readable at all (unconditional max-alpha delivery). If low-conf edits
+    # DO deliver unconditionally, the fix is raising in-store retrieval strength (writes/addressing), not
+    # the readout. Correlate offline from [confdiag] lines.
+    if os.environ.get("CAM_CONF_DIAG") == "1" and ec:
+        os.environ.pop("CAM_LOGIT_GATE_C0", None); os.environ.pop("CAM_LOGIT_GATE_HARD", None)
+        os.environ["CAM_LOGIT_INJECT"] = str(alphas[-1])                   # unconditional, max alpha
+        epu = _persistent_preds(base, adapter, injector, tok, V, kept)     # is the value readable at all?
+        os.environ["CAM_LOGIT_INJECT"] = "0"
+        ep0 = _persistent_preds(base, adapter, injector, tok, V, kept)     # residual-only baseline
+        from collections import defaultdict
+        by_rel = defaultdict(lambda: [0, 0.0])                             # rid -> [n, sum_conf]
+        lo_deliverable = 0                                                 # conf<C0 but readable unconditionally
+        lo_n = 0
+        for i, r in enumerate(kept):
+            conf = ec[i]
+            hu = int(epu[i] == r.new_tid); h0 = int(ep0[i] == r.new_tid)
+            by_rel[r.relation_id][0] += 1; by_rel[r.relation_id][1] += conf
+            below = c0 is not None and conf < c0
+            if below:
+                lo_n += 1; lo_deliverable += hu
+            print(f"[confdiag] rid={r.relation_id} slen={len(r.subject_tids)} conf={conf:.2f} "
+                  f"below_c0={int(below)} hit_uncond={hu} hit_base={h0}", flush=True)
+        print(f"\n  --- per-edit conf diagnostic (C0={c0 if c0 is None else round(c0,3)}) ---", flush=True)
+        print(f"  edits below C0: {lo_n}/{N}; of those, {lo_deliverable} DELIVER under unconditional "
+              f"max-alpha (=> readable, just weakly RETRIEVED -> addressing/write lever, not readout)",
+              flush=True)
+        for rid, (n, s) in sorted(by_rel.items()):
+            print(f"    {rid}: n={n:3d}  mean-conf={s / max(1, n):8.2f}", flush=True)
 
     for var, val in (("CAM_LOGIT_INJECT", saved_a), ("CAM_LOGIT_GATE_C0", saved_c0),
                      ("CAM_LOGIT_GATE_HARD", saved_hard)):
