@@ -278,6 +278,21 @@ which third fails" into a routable editability score. PRODUCT LEVER (no paradigm
 cross-model (more-knowledge bases edit worse). This is the quantitative capstone; the campaign has
 characterized the wall, its universality, and its mechanism.
 
+## 3.14 PARADIGM CRACK — logit-level injection breaks the residual wall (2026-07-04)
+
+`CAM_LOGIT_INJECT=α` adds the retrieved value's contribution (out_proj(bank)→lm_head) straight to the
+OUTPUT logits, bypassing the residual site. Solo-fidelity: α=0 **0.65** → α=2 **0.876** → α=8 0.861 →
+α=20 0.883 (prior-reversion 0.22→0.00).
+- **The ~0.7 wall was the injection SITE (residual), not frozen-ness** — same value, logit-space, escapes
+  it (+0.22). Diagnosis confirmed.
+- **New ceiling ~0.87, NOT prior-reversion (prior≈0) and NOT strength (flat α=2→20):** the residual ~13%
+  output neither original nor new → the **value→logit READOUT fidelity** (out_proj→lm_head not perfectly
+  peaked on the target) — a different, addressable limit.
+- **CRITICAL open follow-up = LOCALITY.** Logit injection is blunt: it forces the edited object's logit
+  wherever the tap fires, so it likely damages NEIGHBOR facts (queries about the edited subject that
+  should NOT change). Delivery ↔ locality trade-off across α is the experiment that decides whether this
+  is a usable escape or just trades the fidelity wall for a locality wall. Untested (needs loc/gen path).
+
 ## 4. Theory connections *(from the 2026 literature pass)*
 
 One-line map: **whitening = the "make quantization error data-independent" half of modern PQ (OPQ/RaBitQ);
