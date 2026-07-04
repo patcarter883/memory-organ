@@ -512,7 +512,15 @@ class PKStoreAdapter(nn.Module):
 
         Phase K1 (CAM_WRITE_AT_READ=1, persistent-path only, no retrain): address the write with the READ
         query head_query(key)=read_q[0](key)+head_bias[0] instead of to_wkey(key), so the value lands at
-        the exact slot the read selects → closes the write↔read addressing gap for boundary subjects."""
+        the exact slot the read selects → closes the write↔read addressing gap for boundary subjects.
+
+        Phase K2 (CAM_WRITE_REDUNDANT=1): write the value to BOTH the to_wkey slots AND the read-query
+        slots (two delta writes into the SAME V) — a softer K1 that keeps the trained write-address too, so
+        a boundary subject is covered whichever cell the read lands in. Fallback if K1's pure relocation
+        regresses anything."""
+        if os.environ.get("CAM_WRITE_REDUNDANT") == "1":      # K2: to_wkey slots AND read-query slots
+            V = self.store.write(V, keys, vals)               # (a) the trained write-address
+            return self.store.write(V, keys, vals, addr=self.store.head_query(keys, 0))  # (b) the read-address
         addr = None
         if os.environ.get("CAM_WRITE_AT_READ") == "1":
             addr = self.store.head_query(keys, 0)             # read-space write address (K1)
