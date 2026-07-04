@@ -8,6 +8,37 @@ single runs mislead — see Methodology).
 
 ---
 
+## 0. CAMPAIGN SYNTHESIS & CONCLUSIONS (2026-07-04)
+
+The full arc — persistent knowledge-editing memory, N=137 edits, delivery from ~0.24 → the ceiling —
+resolves into two solved problems and one characterized wall:
+
+**(A) ADDRESSING — SOLVED.** The N=137 delivery ceiling was **key collision under quantized
+product-key addressing**, not store capacity (4× store: no change) and not the value side. Fix:
+**disjoint value banks** (route each subject to one of B banks by a stable token-id hash → ~B parallel
+low-crowding stores). **0.24 → 0.66 at B=32** (knee ~4 subjects/bank). Encoder-side transforms (soft-ZCA
+whitening, query BatchNorm) reduce collision but are **marginal in delivery (≤+0.11) and do NOT substitute
+for banks**. A semantic retriever (GTE-ModernColBERT) is the wrong tool (semantic clustering is an
+anti-feature) — but **whitening *revived* it from 0.000 → 0.589**, confirming interaction effects are real
+and that OFAT verdicts were confounded. Shipped: `CAM_DISJOINT_BANKS` (default 32).
+
+**(B) METHODOLOGY — VALIDATED.** A **quantization-aware CPU proxy** (per-key product-key slot-overlap
+load), gated on reproducing the known raw-B-sweep + GTE-death, let us screen the combinatorial factor
+space cheaply and catch the OFAT-confounded GTE kill. Interaction-aware, proxy-screened design worked.
+
+**(C) RETRIEVAL FIDELITY — CHARACTERIZED (the wall).** With addressing solved, a **single collision-free
+fact still delivers only ~0.7** (R0). This is the documented **single-site residual-injection ceiling**
+(WISE 0.70–0.77, MEMIT 0.66) — a property of injecting one trained gated nudge into a **frozen** LM's
+residual stream, NOT the store. Robust to: gate calibration (P-R1 collapsed), multi-layer injection (P-R2
+≈ baseline), layer depth, and encoder. Breaking it requires **leaving the frozen-residual paradigm**
+(logit-level injection, or un-freezing / a different mechanism) — an architecture decision, not a knob.
+
+**BOTTOM LINE (product):** this class of editing memory delivers **~0.66 at N=137**, with **~0.7 the
+per-fact ceiling** of the frozen-base gated-residual-injection architecture. Higher fidelity is a
+fundamental architecture bet, not tuning. Strategic question deferred to the caller: is ~2/3 edited-fact
+recall good enough for the use case, and is the frozen-base premise (edit-without-retraining) worth its
+~0.7 cap?
+
 ## 1. The question
 
 *What is the right key representation for a **quantized associative editing-memory**, and how do the
