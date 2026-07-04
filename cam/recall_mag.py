@@ -1095,7 +1095,13 @@ def _persistent_preds(base, adapter, injector, tok, V, cohort, bank_ids=None):
         logits = base(inputs_embeds=base_embed(ids)).logits               # [B,Tmax,vocab]
         ld = logits.device                                                # MODEL-PARALLEL: lm_head may be on card 1
         last = torch.tensor([lens[b] - 1 for b in range(B)], device=ld)
-        pred = logits[torch.arange(B, device=ld), last].argmax(-1)         # gather each row's true last token
+        last_logits = logits[torch.arange(B, device=ld), last]            # [B,vocab]
+        alpha = float(os.environ.get("CAM_LOGIT_INJECT", "0"))           # PARADIGM test: add the retrieved
+        if alpha > 0:                                                     # value's contribution straight to the
+            bh = adapter.out_proj(bank).mean(1)                          # OUTPUT logits (bypass the residual
+            lm = base.get_output_embeddings().weight                     # site). Does logit-space break ~0.7?
+            last_logits = last_logits + alpha * (bh.to(lm.device, lm.dtype) @ lm.t()).to(ld)
+        pred = last_logits.argmax(-1)                                     # gather each row's true last token
         for b, j in enumerate(rows):
             preds[j] = int(pred[b].item())
     injector.set_bank(None)
