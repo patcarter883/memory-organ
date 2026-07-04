@@ -258,9 +258,14 @@ Within Qwen3.5-4B (architecture-controlled), per-fact PRE-EDIT base P(original) 
   P103's 0.81 at equal prior) are harder than confidence explains -> a SECOND factor (prompt format /
   object vocabulary), not prior-confidence.
 
-**FINAL MECHANISM:** the ~0.7 frozen-base single-site wall is a MIXTURE governed by (1) base-prior
-confidence (dominant systematic, r=-0.60 by relation) + (2) a residual relation-specific factor + (3)
-stochastic per-attempt noise. Confirmed within-model (architecture-controlled) and directionally
+**RESIDUAL FACTOR IDENTIFIED = OBJECT-VOCABULARY SIZE.** corr(relation edit-success, #distinct objects)
+= **-0.89**: large answer spaces (P159 headquarters -> 88 cities, edit 0.20) are far harder than small
+closed sets (P140 religion -> 7 options, edit 1.00) — the injected value must win against more candidates.
+
+**FINAL MECHANISM (fully decomposed):** the ~0.7 frozen-base single-site wall's variance = (1) base-prior
+confidence (r=-0.60/relation, confident priors resist override) + (2) object-vocabulary size (r=-0.89/
+relation, large answer spaces dilute the injection) + (3) stochastic per-attempt noise. P159 hard on both,
+P140 easy on both. Confirmed within-model (architecture-controlled) and directionally
 cross-model (more-knowledge bases edit worse). This is the quantitative capstone; the campaign has
 characterized the wall, its universality, and its mechanism.
 
