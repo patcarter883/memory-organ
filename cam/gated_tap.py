@@ -53,6 +53,10 @@ class GatedMemoryTap(nn.Module):
         # the value DIRECTION at a learned fraction alpha=sigmoid(gate_alpha) of the local residual norm
         # ||h||, per token (Norm-Preserving Steering). gate_alpha init -6 -> alpha~0 -> ~no-op at init.
         self.gate_alpha = nn.Parameter(torch.tensor(-6.0))
+        # TWO-SIDED injection suppression gate (R1-prior, #19): learned residual-damping fraction
+        # sigmoid(supp), applied (conf-scaled) where memory fires. supp init -4 -> ~0.018 (starts as pure
+        # addition). Opt-in CAM_TWOSIDED=1.
+        self.supp = nn.Parameter(torch.tensor(-4.0))
         # NULL / sink slot: a learnable extra key with a ZERO value. softmax attention must sum to 1,
         # so without an escape the tap injects SOMETHING for every query (even an out-of-store neighbour)
         # -> collateral damage (the Track 1 locality leak). Attending to the null key (value 0) delivers
@@ -145,6 +149,14 @@ class GatedMemoryTap(nn.Module):
             self.last_conf = cf.mean().detach()
             self.last_cgate = c.mean().detach()
             upd = c.view(B, 1, 1) * upd                        # deliver in proportion to retrieval strength
+        if os.environ.get("CAM_TWOSIDED") == "1":             # R1-prior: PROMOTE new + DAMP the prior.
+            # R-mech: solo failures = strong-base-prior facts (the edit only pushes toward the new object,
+            # never suppresses the original, so a confident prior wins). Two-sided: attenuate the residual
+            # (the base's own next-token tendency) where memory fires, making room for the injected object.
+            # Conf-scaled so non-memory positions are untouched; supp init -4 -> ~0 (starts as pure add).
+            s = torch.sigmoid(self.supp)
+            cs = c.view(B, 1, 1) if (self.conf_gate and self._conf is not None) else 1.0
+            upd = upd - s * cs * h32
         return h + upd.to(h.dtype)
 
 

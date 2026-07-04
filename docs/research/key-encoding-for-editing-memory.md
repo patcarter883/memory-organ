@@ -205,6 +205,22 @@ boost the object token's logit) — bigger architecture change, with a locality 
 point: attempt P-R3, or conclude Phase R with the characterization (the ceiling is now well-established and
 matches the literature).
 
+## 3.10 R-mech — the wall CRACKED OPEN: it's a mixture, failures = strong base prior (2026-07-04)
+
+Per-fact solo outcomes, 137 facts × 3 reps (mean hit 0.69):
+- always-hit 60 (44%) · **always-FAIL 16 (12%, vs 3% i.i.d.-noise expectation = 4×)** · variable 61 (45%).
+- ⇒ NOT uniform noise: a real **un-editable subset** + a stochastic borderline + a reliable core.
+- Strongly **relation-dependent**: P159 0.47 → P140 0.93.
+- **Decisive correlate:** always-FAIL base-prior-recall **0.40** (model still emits the ORIGINAL after the
+  edit) vs always-HIT **0.00**. **The un-editable facts are the ones the frozen base is most confident
+  about** — the edit fights a strong prior (matches AlphaEdit).
+
+**LEVER REVEALED (R1-prior):** the tap only pushes TOWARD the new object; it never SUPPRESSES the original,
+so confident-prior facts revert. Two-sided / prior-aware injection (promote new AND damp the base's own
+next-token direction) should recover the strong-prior failures — a targeted lever the failed
+global-strength/depth levers couldn't be, because it attacks the *specific* 12–30% that fails, not the
+average. Metric: solo-fidelity, esp. on the always-FAIL / high-prior subset; watch locality.
+
 ## 4. Theory connections *(from the 2026 literature pass)*
 
 One-line map: **whitening = the "make quantization error data-independent" half of modern PQ (OPQ/RaBitQ);
