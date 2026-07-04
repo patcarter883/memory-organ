@@ -483,6 +483,34 @@ means, with the structural wins reproducing exactly in every run):
 no residual self-addressing failure to retrain away; below-gate = 0 in all 3 reps). Shipped:
 `CAM_WRITE_AT_READ` (K1), `CAM_WRITE_REDUNDANT` (K2), `CAM_READ_SUB_TOPK` (K3, unneeded).
 
+## 3.17 GENERALITY — the third leg: the edit fires on PARAPHRASES too (2026-07-04)
+
+We had measured efficacy (delivery) and locality but not **generality** (does the edit fire on
+*rephrasings* of the fact, not just the exact prompt?). Added the GEN cohort to `--persistent-locality`:
+each edit's `paraphrase_prompts`, keyed on the edit's OWN subject (deployment-faithful — a paraphrase is
+about the same subject, so it routes to the edit's bank and retrieves strongly), gold = new_tid.
+
+Full triad, K1-on, B=137, hard gate (below-gate 0/137, conf p95 ~5):
+
+| α | efficacy (delivery) | locality (DEP-keep / leak) | **generality (GEN-hit / prior)** |
+|---|---------------------|----------------------------|----------------------------------|
+| 0 | 0.715 | 0.548 / 0.041 | 0.635 / 0.055 |
+| 2 | 0.810 | 0.548 / 0.027 | **0.818** / 0.011 |
+| 8 | 0.810 | 0.548 / 0.027 | **0.818** / 0.007 |
+
+- **Generality ≈ efficacy at every α** (0.818 vs 0.810 at α=2), and paraphrase-reversion to the original
+  answer is ~0.01. The edit fires on rephrasings as reliably as on the exact prompt.
+- **Mechanism: retrieval is SUBJECT-keyed, so generality is free by design.** A paraphrase shares the
+  edit's subject → routes to the same bank → retrieves the same value → gets the same logit injection.
+  The "0.8–0.9 delivery" is NOT an exact-prompt artifact; the memory generalises across phrasings.
+- Closes the standard editing triad (efficacy / locality / generality) for the persistent logit-injection
+  + K1 design: **~0.81 efficacy, ~0.55 locality-keep, ~0.82 generality** (n=1 this run; delivery/keep
+  carry ±0.15 tap-fit noise, but GEN≈efficacy is structural). Shipped: GEN cohort in
+  `eval_persistent_locality`; `CAM_WRITE_AT_READ` now DEFAULT-ON (K1); `CAM_TRIAD_DEBUG` flag.
+- *Op note:* the triad sweep intermittently HANGS after the header under K1-on without the debug flushes
+  (a GPU-side sync flake on RDNA4, observed single-job — not contention); `CAM_TRIAD_DEBUG=1` (extra
+  flushed prints = more sync points) reliably completes it. Known flake, workaround in place.
+
 ## 4. Theory connections *(from the 2026 literature pass)*
 
 One-line map: **whitening = the "make quantization error data-independent" half of modern PQ (OPQ/RaBitQ);

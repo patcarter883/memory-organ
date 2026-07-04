@@ -510,9 +510,11 @@ class PKStoreAdapter(nn.Module):
         delta write). Track 4 online binding: call once per edit on the SAME V to accumulate a standing
         memory — no episodic doc, no reset. Returns the updated V.
 
-        Phase K1 (CAM_WRITE_AT_READ=1, persistent-path only, no retrain): address the write with the READ
-        query head_query(key)=read_q[0](key)+head_bias[0] instead of to_wkey(key), so the value lands at
-        the exact slot the read selects → closes the write↔read addressing gap for boundary subjects.
+        Phase K1 (write-where-you-read, now the DEFAULT — CAM_WRITE_AT_READ=0 to disable): address the
+        write with the READ query head_query(key)=read_q[0](key)+head_bias[0] instead of to_wkey(key), so
+        the value lands at the exact slot the read selects → closes the write↔read addressing gap for
+        boundary subjects. Validated (§3.16, n=3): below-gate 15-25→0, delivery 0.72→~0.90 at held
+        locality, persistent-path only. Made the default 2026-07-04 given the strict, structural win.
 
         Phase K2 (CAM_WRITE_REDUNDANT=1): write the value to BOTH the to_wkey slots AND the read-query
         slots (two delta writes into the SAME V) — a softer K1 that keeps the trained write-address too, so
@@ -522,7 +524,7 @@ class PKStoreAdapter(nn.Module):
             V = self.store.write(V, keys, vals)               # (a) the trained write-address
             return self.store.write(V, keys, vals, addr=self.store.head_query(keys, 0))  # (b) the read-address
         addr = None
-        if os.environ.get("CAM_WRITE_AT_READ") == "1":
+        if os.environ.get("CAM_WRITE_AT_READ", "1") != "0":   # K1 DEFAULT-ON (opt out with =0)
             addr = self.store.head_query(keys, 0)             # read-space write address (K1)
         return self.store.write(V, keys, vals, addr=addr)
 
