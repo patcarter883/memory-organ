@@ -903,11 +903,22 @@ largest `(prompt, subject-length)` bucket. The store keys on the subject's last-
     hard-α2 0.601; interleave ON 0.497 — NO recovery (neutral-to-slightly-worse).** So the efficacy drop is
     NOT primarily bind relation-diversity. (`CAM_REL_INTERLEAVE` kept, default off — improves relation
     coverage but not efficacy.)
-  - **Leading remaining suspect = a CONFOUND I introduced:** the N=441 run used `--seg-len 64 --qa-seg 4`
-    (vs N=147's 48/3) to fit the bind block. The doc geometry / tap-at-L24 position changed, so part of the
-    0.81→0.60 gap may be the CONFIG change, not scale. **Next test: run at small N with 64/4 vs 48/3 to
-    isolate config-vs-scale** before concluding efficacy genuinely degrades with N. Also: fuller α (0,2,8,20)
-    at N=441 (the run used only {0,2}), and B/bank-count at scale.
+  - **CONFIG-vs-SCALE ISOLATED — the drop is GENUINE SCALE, config EXONERATED.** Ran the legacy N=137
+    triad at BOTH seg/qa settings (K1, same everything else):
+
+    | config | N=137 | N=441 |
+    |--------|-------|-------|
+    | seg48/qa3 (orig) | cf-deliv 0.774 / hard-α8 0.839 | — |
+    | seg64/qa4 (N1) | cf-deliv **0.737** | cf-deliv **0.537** / hard-α2 0.601 |
+
+    seg64/qa4 at N=137 (0.737) ≈ seg48/qa3 (0.774) — the config change is ~neutral (within noise). But the
+    SAME config (64/4) gives 0.737 @ N=137 vs 0.537 @ N=441 → **efficacy genuinely degrades with N**
+    (~0.77 → ~0.54, a −0.20 scale effect), not a config artifact. Since **below-gate = 0 at both N**
+    (addressing is perfect), the degradation is in the **READOUT/injection**: the shared frozen-base
+    logit-injection delivers a smaller *fraction* of a larger store even when every edit self-addresses.
+    **This is the true scale limit of the current design** — the readout/tap capacity, not addressing.
+    Next levers (readout-side): larger/relation-conditioned readout, per-fact value sharpening, or a
+    higher-capacity injection head; and confirm the curve at N∈{137,250,441} + fuller α.
 - **Risks:** (a) more subjects/relation → more per-bank crowding at fixed B; scale `CAM_DISJOINT_BANKS` with
   N (K1 makes crowding cheap). (b) mixed-length bind batches complicate the DocBuilder — length-bucketing
   is the mitigation. (c) the RDNA4 cohort-forward flake (§3.18) recurs at larger N → watchdog first.
