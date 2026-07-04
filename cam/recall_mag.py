@@ -1215,6 +1215,17 @@ def eval_persistent_solo(base, adapter, injector, tok, kept, args):
         V = [adapter.store.init_state(1, DEV, dtype=torch.float32)]       # its own 1-bank store
         per_V.append(_persistent_write_one(adapter, V, r, pooled)[0])     # write this edit alone
     preds = _persistent_preds(base, adapter, injector, tok, per_V, kept, bank_ids=list(range(len(kept))))
+    if os.environ.get("CAM_PRIORCONF_LOG") == "1":           # R-univ within-model: does edit success fall
+        injector.set_bank(None)                               # as the base's PRE-EDIT confidence in the
+        base_embed = base.get_input_embeddings()              # ORIGINAL answer rises? (architecture-controlled)
+        bos = [tok.bos_token_id] if tok.bos_token_id is not None else []
+        for i, r in enumerate(kept):
+            ids = torch.tensor([bos + tok(r.prompt_text, add_special_tokens=False).input_ids],
+                               dtype=torch.long, device=DEV)
+            lg = _last_logit(base, inputs_embeds=base_embed(ids))[0]      # [V] no-tap base logits
+            pconf = float(torch.softmax(lg, -1)[r.true_tid])             # base P(original) pre-edit
+            print(f"[priorconf] pconf={pconf:.4f} hit={int(preds[i]==r.new_tid)} rid={r.relation_id}", flush=True)
+        injector.set_bank(None)
     n = max(1, len(kept))
     solo = sum(int(preds[i] == kept[i].new_tid) for i in range(len(kept))) / n
     prior = sum(int(preds[i] == kept[i].true_tid) for i in range(len(kept))) / n
