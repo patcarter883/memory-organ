@@ -1332,6 +1332,87 @@ def eval_persistent_solo(base, adapter, injector, tok, kept, args):
     return {"solo": solo, "prior": prior}
 
 
+@torch.no_grad()
+def eval_persistent_generate(base, adapter, injector, tok, kept, args):
+    """GENERATION-COHERENCE check (the reality test): does the edited memory produce FLUENT text carrying
+    the edit, or only flip the next-token argmax? All prior metrics are single-token. Here we write all
+    edits into the standing store, then for a sample of edits GENERATE CAM_GEN_LEN tokens (greedy) from the
+    edit's natural prompt (a) with memory OFF (base) and (b) with memory ON (trained tap + hard-conf-gated
+    logit injection at the operating alpha). Prints both continuations + the edit so a human can eyeball
+    fluency and whether the NEW object is produced instead of the base's TRUE object.
+
+    NOTE: the logit injection is applied at EVERY generation step (constant, keyed on the fixed subject) —
+    the naive deployment. If that over-injects (repetition past the object), that itself is a coherence
+    finding about the blunt mechanism."""
+    injector.eval()
+    pooled = os.environ.get("CAM_POOLED_SUBJ_KEY") == "1"
+    V = _init_banks(adapter, _n_disjoint_banks())
+    for r in kept:
+        V = _persistent_write_one(adapter, V, r, pooled)
+    base_embed = base.get_input_embeddings()
+    lm = base.get_output_embeddings().weight
+    bos = [tok.bos_token_id] if tok.bos_token_id is not None else []
+    learned_pool = os.environ.get("CAM_LEARNED_KEY_POOL") == "1"
+    gte = getattr(adapter, "_gte_keys", None) is not None
+    alpha = float(os.environ.get("CAM_LOGIT_INJECT", "0"))
+    c0env, hard = os.environ.get("CAM_LOGIT_GATE_C0"), os.environ.get("CAM_LOGIT_GATE_HARD") == "1"
+    gen_len = int(os.environ.get("CAM_GEN_LEN", "16"))
+    sample = kept[:int(os.environ.get("CAM_GEN_SAMPLE", "16"))]
+
+    def _bank_conf(r):
+        tids = torch.tensor([r.subject_tids], dtype=torch.long, device=DEV)
+        if gte:
+            q = adapter._gte_key(tids).unsqueeze(1)
+        else:
+            q = adapter._e(tids)
+            if learned_pool:
+                q = adapter._pool_subject(q, keepdim=True)
+        bank = adapter.persistent_bank(V[_subject_bank(r.subject_tids, len(V))], q)
+        return bank, getattr(adapter, "_last_conf", None)
+
+    def _gen(prompt_ids, bank, conf):
+        injector.set_bank(bank, conf=conf, relidx=0) if bank is not None else injector.set_bank(None)
+        inj = None
+        if bank is not None and alpha > 0:
+            inj = alpha * (adapter.out_proj(bank).mean(1).to(lm.device, lm.dtype) @ lm.t())   # [1,vocab]
+            if c0env is not None and conf is not None:
+                cc = conf.to(inj.device)
+                if hard:
+                    g = (cc > float(c0env)).to(inj.dtype)
+                else:
+                    g = torch.sigmoid(float(os.environ.get("CAM_LOGIT_GATE_K", "1")) * (cc - float(c0env)))
+                inj = inj * g.view(-1, 1)
+        cur = torch.tensor([prompt_ids], dtype=torch.long, device=DEV)
+        out = []
+        for _t in range(gen_len):
+            logits = base(inputs_embeds=base_embed(cur)).logits[:, -1]        # [1,vocab] (no KV cache; small)
+            if inj is not None:
+                logits = logits + inj.to(logits.device)
+            nxt = logits.argmax(-1)
+            out.append(int(nxt.item()))
+            cur = torch.cat([cur, nxt.view(1, 1)], dim=1)
+        injector.set_bank(None)
+        return tok.decode(out).replace("\n", " ").strip()
+
+    print(f"\n[mag][persistent] === GENERATION COHERENCE ({len(sample)} edits, {gen_len} tok, α={alpha}) ===",
+          flush=True)
+    new_on = true_off = 0
+    for r in sample:
+        pid = bos + tok(r.prompt_text, add_special_tokens=False).input_ids
+        bank, conf = _bank_conf(r)
+        g_off, g_on = _gen(pid, None, None), _gen(pid, bank, conf)
+        new_in = r.new_str.strip().lower() in g_on.lower()
+        new_on += int(new_in); true_off += int(r.true_str.strip().lower() in g_off.lower())
+        print(f"  [{r.relation_id}] {r.prompt_text!r}  edit {r.true_str!r}->{r.new_str!r}", flush=True)
+        print(f"     OFF: {g_off!r}", flush=True)
+        print(f"     ON : {g_on!r}   [new present: {new_in}]", flush=True)
+    n = max(1, len(sample))
+    print(f"  --> NEW object in mem-ON gen: {new_on}/{len(sample)} ({new_on/n:.2f}); "
+          f"base recalls TRUE in mem-OFF: {true_off}/{len(sample)} ({true_off/n:.2f})", flush=True)
+    print("=" * 64, flush=True)
+    return {"n": len(sample), "new_in_gen": new_on / n, "true_in_base": true_off / n}
+
+
 class _NbrRec:
     """Lightweight pseudo-record so a neighbour prompt can ride the exact `_persistent_preds` path
     (store read keyed by subject_tids -> tap + logit-injection).
@@ -1776,6 +1857,12 @@ def main():
                          "(does forcing the object logit damage same-true-object neighbours?). The decisive "
                          "delivery<->locality trade for the logit-injection paradigm. Implies "
                          "--persistent-sweep.")
+    ap.add_argument("--persistent-generate", action="store_true", dest="persistent_generate",
+                    help="GENERATION-COHERENCE (reality check): after writing all edits, GENERATE "
+                         "CAM_GEN_LEN tokens (greedy) from a sample of edit prompts with memory OFF vs ON "
+                         "(tap + hard-conf-gated logit injection) so a human can eyeball fluency + whether "
+                         "the edit takes in free generation, not just next-token argmax. Implies "
+                         "--persistent-sweep.")
     ap.add_argument("--query-rel", type=str, default="", dest="query_rel",
                     help="ADVERSARIAL paraphrase probe (issue #10, natural phrasing only): bind and "
                          "train exactly as normal (bindings + training queries use ' lives in'), then "
@@ -1949,7 +2036,7 @@ def main():
 
     # ---- stage 2: MAG delivery ----
     if (getattr(args, "persistent_overwrite", False) or getattr(args, "persistent_solo", False)
-            or getattr(args, "persistent_locality", False)):
+            or getattr(args, "persistent_locality", False) or getattr(args, "persistent_generate", False)):
         args.persistent_sweep = True         # the online-update / solo / locality tests run after the sweep
     if getattr(args, "persistent_sweep", False):
         args.persistent_eval = True          # the sweep is a superset of the persistent eval
@@ -1988,6 +2075,9 @@ def main():
                 if getattr(args, "persistent_locality", False):
                     with StageCost(f"persistent logit-injection locality L={tag}"):
                         eval_persistent_locality(base, adapter, injector, tok, cf_records, args)
+                if getattr(args, "persistent_generate", False):
+                    with StageCost(f"persistent generation-coherence L={tag}"):
+                        eval_persistent_generate(base, adapter, injector, tok, cf_records, args)
             injector.detach()
             continue
         with StageCost(f"delivery eval L={tag}"):
