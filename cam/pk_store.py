@@ -122,19 +122,25 @@ class ProductKeyStore(nn.Module):
         return torch.zeros(batch, self.N, self.d_hub, device=device, dtype=dtype)
 
     # ---- product-key addressing ------------------------------------------
-    def _address(self, q):
+    def _address(self, q, sub_topk=None):
         """q:[B,Q,d_hub] -> (slot_idx[B,Q,topk] long, slot_w[B,Q,topk] softmax weights).
 
         Product-key top-k: score each half against its codebook, take sub_topk per half, expand to the
-        sub_topk^2 candidate product slots, score = s1+s2, keep global topk, softmax over them."""
+        sub_topk^2 candidate product slots, score = s1+s2, keep global topk, softmax over them.
+
+        sub_topk (Phase K3, read-side widening): override the per-half candidate count. WIDENING it at
+        READ only grows the sub_topk^2 candidate POOL (so a boundary subject's write-slot is more likely
+        to be a candidate) WITHOUT changing the final `topk` slots mixed → helps self-addressing without
+        adding readout contamination. self.sub_topk (default) keeps write parity."""
         B, Q, _ = q.shape
+        st = self.sub_topk if sub_topk is None else min(int(sub_topk), self.n_sub)
         if self._q_bn is not None:                            # query BatchNorm before addressing (H4)
             q = self._q_bn(q.reshape(B * Q, -1)).reshape(B, Q, -1)
         q1, q2 = q[..., :self.d_half], q[..., self.d_half:]
         s1 = q1 @ self.codebook1.t()                          # [B,Q,n_sub]
         s2 = q2 @ self.codebook2.t()
-        v1, i1 = s1.topk(self.sub_topk, dim=-1)               # [B,Q,sub_topk]
-        v2, i2 = s2.topk(self.sub_topk, dim=-1)
+        v1, i1 = s1.topk(st, dim=-1)                          # [B,Q,st]
+        v2, i2 = s2.topk(st, dim=-1)
         # candidate product scores [B,Q,sub_topk,sub_topk] and flat slot ids i1*n_sub + i2
         cand = v1.unsqueeze(-1) + v2.unsqueeze(-2)            # [B,Q,st,st]
         slot = (i1.unsqueeze(-1) * self.n_sub + i2.unsqueeze(-2)).reshape(B, Q, -1)  # [B,Q,st*st]
@@ -210,9 +216,11 @@ class ProductKeyStore(nn.Module):
         out = query.new_zeros(B, Q, self.d_hub)
         head_norms, ctxs = [], []
         conf = None
+        _rst = os.environ.get("CAM_READ_SUB_TOPK")           # K3: widen the read candidate pool only
+        rst = int(_rst) if _rst else None
         for h in range(self.n_heads):
             qh = self.read_q[h](query) + self.head_bias[h]
-            slot_idx, slot_w = self._address(qh)             # [B,Q,topk]
+            slot_idx, slot_w = self._address(qh, sub_topk=rst)   # [B,Q,topk] (K3 widens the candidate pool)
             # gather selected slot values (bank dtype) and lift to fp32 for the weighted value mix —
             # the read context feeds the fp32 RMSNorm/read_o, so the bf16-stored bank reads losslessly.
             vals = torch.gather(V, 1, slot_idx.reshape(B, Q * self.topk, 1).expand(-1, -1, self.d_hub)

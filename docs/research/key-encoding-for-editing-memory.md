@@ -649,11 +649,13 @@ ckpt via the `logit_locality.sh` + `CAM_CONF_DIAG` harness):**
   ~4-6 genuinely-unreadable floor; gated delivery up; **locality NEUTRAL-or-better** (the value is now at
   the edit's *exact* read-address, so only that query retrieves it → tighter specificity). Predicted the
   single highest-value experiment.
-- **K2 — write redundancy.** Write the value to BOTH `to_wkey` and `read_q[0]` slots (belt-and-suspenders)
-  — a softer K1 that keeps the trained write-address too. Fallback if K1's pure relocation hurts anything.
-- **K3 — widen selection.** `sub_topk` 4→8 (or read `topk`↑) so a boundary subject's slot is covered by
-  both write and read candidate sets. Cheap but SOFTENS addressing → watch the DEP-leak/keep cost (admits
-  neighbours); likely dominated by K1.
+- **K2 — write redundancy** *(scaffolded: `CAM_WRITE_REDUNDANT=1`)*. Write the value to BOTH `to_wkey` and
+  `read_q[0]` slots (two delta writes into the same V) — a softer K1 that keeps the trained write-address
+  too. Fallback if K1's pure relocation hurts anything.
+- **K3 — widen read selection** *(scaffolded: `CAM_READ_SUB_TOPK=N`)*. Grow the read-side `sub_topk`
+  candidate pool (`_address(qh, sub_topk=N)`) so a boundary subject's write-slot is more likely to be a
+  candidate — WITHOUT changing the final `topk` slots mixed (no added readout contamination). Cheap; watch
+  the DEP-leak/keep cost anyway; likely dominated by K1.
 
 **Requires retrain (structural; the §3.4 / §4 theory family — only if K1 leaves a residual):**
 - **K4 — TIE the projections.** Share weights `to_wkey ≡ read_q[0]` (+ fold `head_bias[0]`), retrain
