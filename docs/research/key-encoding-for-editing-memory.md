@@ -483,7 +483,33 @@ means, with the structural wins reproducing exactly in every run):
 no residual self-addressing failure to retrain away; below-gate = 0 in all 3 reps). Shipped:
 `CAM_WRITE_AT_READ` (K1), `CAM_WRITE_REDUNDANT` (K2), `CAM_READ_SUB_TOPK` (K3, unneeded).
 
-## 3.18 SCALE-N de-risk — blocked by the single-token cap; multi-token objects are the real gate (2026-07-04)
+## 3.19 M0 CORRECTION — multi-token is NOT the gate; the cap is a subject-length BATCHING artifact (2026-07-04)
+
+§3.18 concluded multi-token objects were the scale gate. **M0 (a cheap `--probe-only` sweep of
+`CAM_MAX_OBJ_TOK` 1→4) REFUTED that** — and found the real, much easier lever:
+
+| K | candidate facts | base-known facts |
+|---|-----------------|------------------|
+| 1 | 21,321 | **2,936** |
+| 2–4 | 21,919 | 2,905 |
+
+- **Single-token objects were NEVER the binding constraint:** 21,321 of 21,919 CounterFact facts (97%)
+  already have single-token objects; multi-token *supply* is only **598** (2.7%), and base-known even drops
+  slightly with them (2905 < 2936 — the base predicts multi-token objects' first token a bit worse). So
+  multi-token objects add ≈0 scale.
+- **The real cap: ~2,936 base-known editable facts collapse to 147 via the per-relation
+  single-subject-length grouping** (`setup_counterfact_multi`). Each relation keeps only its ONE largest
+  `(prompt, subject-length)` bucket and only relations with ≥`per_rel_min` facts survive → 9 relations ×
+  one length each = 147 (e.g. P103 keeps len-4/37-facts, *discards* its len-2/3/5 facts). That grouping is a
+  **rectangular-bind-batching artifact**, not a store limit — the store keys on the subject's last-token /
+  pooled span, which is length-agnostic.
+- **⇒ the scale lever is binding across ALL subject-lengths and ALL relations** (length-bucketed
+  sub-batches, exactly as the eval probe already does). Headroom: **N 147 → up to ~2,936 (~20×)** on
+  Qwen3.5-4B, with NO multi-token work. This is almost certainly a smaller change than multi-token objects.
+- **Methodology win:** a ~15-min probe caught a wrong hypothesis before we built it. §3.18's "multi-token is
+  the gate" is **superseded**; Phase M (multi-token) is demoted to a ≤+2.7% nice-to-have. See §6f (revised).
+
+## 3.18 SCALE-N de-risk — [SUPERSEDED by §3.19] single-token cap hypothesis (2026-07-04)
 
 Before productionizing, we asked: does the triad hold as N grows (137 → 1000)? The sweep (`--multi-relations`
 6/15/30/60, the N knob) delivered a **more decisive finding than a triad-vs-N curve**:
@@ -820,13 +846,36 @@ hard-gated delivery / DEP-keep / DEP-leak at the §3.15 operating point (B=137, 
 → the unreadable floor, gated delivery ↑ toward the ~0.88 solo-fidelity ceiling, locality flat. n≥3 reps
 (±0.15 tap-fit noise); the within-run below-gate count is the low-noise primary signal. **Start with K1.**
 
-## 6f. Phase M — MULTI-TOKEN OBJECTS (the productionization gate; scoped 2026-07-04)
+## 6g. Phase N — SCALE via variable-length subject binding (the REAL gate; M0-corrected 2026-07-04)
 
-§3.18 showed the single-token-VALUE restriction **caps N at ~147** on CounterFact and is unshippable
-regardless (real objects like " San Francisco" are multi-token). Multi-token objects are therefore the
-**prerequisite** for both scale and realism. Good news: the store already has a **multi-token value
-subsystem** from an earlier thrust — the work is mostly INTEGRATION into the editing + persistent +
-logit-injection path, not a from-scratch build.
+**This supersedes Phase M as the scale priority.** M0 (§3.19) showed the N=147 cap is NOT multi-token
+objects (those add ≤+2.7%) but the **per-relation single-subject-length grouping** in
+`setup_counterfact_multi`: ~2,936 base-known facts collapse to 147 because each relation keeps only its ONE
+largest `(prompt, subject-length)` bucket. The store keys on the subject's last-token / pooled span
+(length-agnostic), so the fixed length is purely a **rectangular-bind-batching** shortcut.
+
+- **The fix:** bind across ALL subject-lengths per relation (and drop the `per_rel_min`-at-one-length
+  gate), using **length-bucketed sub-batches** in the DocBuilder bind — the exact pattern the eval probe
+  already uses (`buckets = defaultdict(list)` by tokenized length). Keys stay last-token/pooled;
+  nothing else changes.
+- **Headroom:** N 147 → up to ~2,936 (~20×) on Qwen3.5-4B, **no multi-token work**. This is the real
+  scale unlock and almost certainly a smaller change than Phase M.
+- **Phasing:** **N0** — relax the grouping in `setup_counterfact_multi` to keep all length buckets; measure
+  the new N (probe-only). **N1** — DocBuilder length-bucketed bind so training handles the mixed-length set;
+  re-run the triad + the scale-N curve §3.18 couldn't run (now with real N). **N2** — generation-coherence
+  check at scale.
+- **Risks:** (a) more subjects/relation → more per-bank crowding at fixed B; scale `CAM_DISJOINT_BANKS` with
+  N (K1 makes crowding cheap). (b) mixed-length bind batches complicate the DocBuilder — length-bucketing
+  is the mitigation. (c) the RDNA4 cohort-forward flake (§3.18) recurs at larger N → watchdog first.
+  (d) still fix `--multi-relations R > available` crash (clamp R).
+
+## 6f. Phase M — MULTI-TOKEN OBJECTS ([DEMOTED by §3.19] ≤+2.7% supply; realism nice-to-have, not scale)
+
+**Demoted:** M0 (§3.19) showed multi-token objects add only 598 candidate facts (2.7%) and *reduce*
+base-known slightly — they are NOT the scale gate (Phase N is). Keep this as a **realism/quality** item
+(real answers are sometimes multi-token) for AFTER scale is unlocked, not a prerequisite. The store already
+has a **multi-token value subsystem** from an earlier thrust — the work is mostly INTEGRATION into the
+editing + persistent + logit-injection path, not a from-scratch build.
 
 **Already built & reusable (do NOT rebuild):**
 - **Multi-token subjects** — `EditRecord.subject_tids` is a full token list; pooled/K1 keying already
