@@ -416,6 +416,29 @@ unchanged — persistent-path only), per-B hard gate C0=em/12, α=20:
   0.58, leak 0.01. The persistent editing memory now delivers ~0.72 of edits AND preserves neighbours,
   well past the old ~0.66 addressing plateau and the ~0.7 residual fidelity wall — both escaped, together.
 
+**Weak-edit decomposition — value-norm artifact vs genuine self-addressing failure.** At B=137 (each edit
+alone in its bank, NO crowding) ~25/137 edits still fall below the gate, and ~23 deliver unconditionally
+(readable, weakly RETRIEVED). The retrieval conf = ‖ctx‖ = slot-weight × ‖stored value‖, and the value is
+the object token's embedding — so conf mixes *addressing quality* with *token-embedding norm*.
+`CAM_VALUE_UNIT_NORM=1` writes a unit value to isolate the two:
+- Neither driver is **subject length** (mean conf flat 4–5 across slen 2–5) nor **relation** (weak edits
+  scattered 9–27% per relation).
+- Unit-norm drops the below-gate count **25→15** — so **~10 weak edits were a pure value-norm artifact**
+  (low-embedding-norm object tokens; their retrieval direction was right, only the magnitude was small →
+  now in the tight high-conf cluster).
+- **~15 edits stay low-conf even with unit values** (conf < 0.5 while the bulk sits at 5.5–6.9, tight) —
+  a **genuine key SELF-ADDRESSING failure**: the learned pooled query does not peak on its own written
+  key. Intrinsic (no crowding at B=137, no value-norm, no length/relation signal); 11/15 still deliver.
+- **CAM_VALUE_UNIT_NORM is a DIAGNOSTIC, not a production setting.** It (a) breaks the residual tap, which
+  was trained on natural value magnitudes (α=0 delivery 0.02), and (b) destroys the conf-gate's separation
+  — with unit values the neighbour conf p95 (5.79) *overlaps* the edit median (5.56), so hard-gated
+  locality drops (keep 0.58→0.49, leak 0.01→0.03). The value MAGNITUDE is load-bearing for the gate. Ship
+  off-by-default.
+- **The final residual lever is KEY ENCODING for self-addressing** — make each subject's query peak on its
+  own written key (the §3.4 whitening / key-repulsion / OPQ family), now with a precise target: the ~15
+  non-self-peaking subjects. This is the last open thread; everything else in the fidelity/addressing
+  frontier is closed.
+
 **Verdict:** §3.14's paradigm crack is real AND deployable. The ~0.7 residual wall is escaped by
 logit-space injection; the locality cost that made it look like a mere trade is **eliminated by a hard
 conf-gate**, which the store's near-binary in/out retrieval confidence makes almost free. Shipped:
