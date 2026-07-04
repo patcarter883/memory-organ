@@ -1037,6 +1037,9 @@ def _persistent_write_val(adapter, V, r, val_tid, pooled):
     lam = float(os.environ.get("CAM_VALUE_SUPPRESS", "0"))    # R1-prior-v2: promote new, SUPPRESS original
     if lam > 0 and getattr(r, "true_tid", -1) >= 0:           # value = new - lam*original (damps the base's
         val = val - lam * adapter._e(torch.tensor([[r.true_tid]], dtype=torch.long, device=DEV))  # confident prior)
+    if os.environ.get("CAM_VALUE_UNIT_NORM") == "1":         # store a UNIT value so retrieval conf reflects
+        val = torch.nn.functional.normalize(val, dim=-1)    # ADDRESSING quality, not the object token's
+                                                            # embedding norm (weak-edit diagnostic §3.15)
     if key.shape[1] > 1:                        # multi-vector keys: repeat the value across the H key slots
         val = val.expand(-1, key.shape[1], -1)
     b = _subject_bank(r.subject_tids, len(V))
