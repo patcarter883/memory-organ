@@ -265,7 +265,16 @@ closed sets (P140 religion -> 7 options, edit 1.00) — the injected value must 
 **FINAL MECHANISM (fully decomposed):** the ~0.7 frozen-base single-site wall's variance = (1) base-prior
 confidence (r=-0.60/relation, confident priors resist override) + (2) object-vocabulary size (r=-0.89/
 relation, large answer spaces dilute the injection) + (3) stochastic per-attempt noise. P159 hard on both,
-P140 easy on both. Confirmed within-model (architecture-controlled) and directionally
+P140 easy on both.
+
+## 3.13 EDITABILITY IS PREDICTABLE (practical capstone, 2026-07-04)
+
+Joint fit hit ~ base-P(original) + log(object-vocab) on 137 facts: **R2=0.20** (modest — most residual is
+the irreducible single-site stochastic reliability), but the RANKING is strongly usable: **top-predicted
+quartile edits 0.94 vs bottom quartile 0.27** (3.5x separation). Object-vocab is the stronger fact-level
+driver (beta -0.19), prior-confidence secondary (-0.06). ⇒ We can't BREAK the wall but we can PREDICT it:
+two PRE-MEASURABLE quantities flag which facts edit reliably vs not — turning "~66% reliable, unknown
+which third fails" into a routable editability score. PRODUCT LEVER (no paradigm change needed). Confirmed within-model (architecture-controlled) and directionally
 cross-model (more-knowledge bases edit worse). This is the quantitative capstone; the campaign has
 characterized the wall, its universality, and its mechanism.
 
