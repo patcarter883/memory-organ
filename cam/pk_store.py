@@ -156,16 +156,21 @@ class ProductKeyStore(nn.Module):
         return self.read_q[h](query) + self.head_bias[h]
 
     # ---- write (error-correcting delta into selected slots) --------------
-    def write(self, V, keys, values):
+    def write(self, V, keys, values, addr=None):
         """Write a batch of associations into the episodic value bank V (functional, returns new V).
         keys/values:[B,A,d_hub] (A associations). For each association, address with to_wkey(key),
         then delta-update the selected slots toward to_wval(value): v_s += beta*w*(val - v_s).
         Done with a scatter-add of the net delta (sequential per-association folding is unrolled into
         one masked update — fine at smoke A; the store is a fast-weight state, parity vs sequential is a
-        full-run concern). fp32."""
+        full-run concern). fp32.
+
+        addr (Phase K1, write-where-you-read): if given [B,A,d_hub], use it as the address query (fed
+        straight to _address, which applies the shared query-BN) INSTEAD of to_wkey(key). Pass the READ
+        query head_query(key) so the value lands at the exact slot the read selects → self-addressing is
+        exact by construction, closing the write↔read projection gap for boundary subjects."""
         B, A, _ = keys.shape
         bank_dtype = V.dtype                                  # bf16 (3c) or fp32 (smoke)
-        wk = self.to_wkey(keys)                               # [B,A,d_hub]
+        wk = self.to_wkey(keys) if addr is None else addr     # K1: read-space write address
         wv = self.to_wval(values)                             # [B,A,d_hub]
         slot_idx, slot_w = self._address(wk)                  # [B,A,topk]
         # gather current slot values, compute delta IN FP32, scatter-add the delta back in the bank
