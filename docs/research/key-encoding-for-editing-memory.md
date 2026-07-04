@@ -896,6 +896,18 @@ largest `(prompt, subject-length)` bucket. The store keys on the subject's last-
     `--seg-len`/`--qa-seg`). And `build_cf_query`'s `slot_relid.index(q_rid)` **crashes when R buckets > M**
     (used by the tap-fit locality-loss + Track-1 eval) — worked around with `--locality-weight 0`; the
     persistent triad path doesn't use it. Real fix = dynamic per-build slot relation assignment (**N1b**).
+  - **Efficacy-drop diagnosis — `CAM_REL_INTERLEAVE` (bind-diversity) REFUTED.** Hypothesis: length-split's
+    sorted `rel_order` bound only the first M relkeys (2 rids' length buckets), so the tap saw too few
+    RELATIONS. Fix: embed a size-rank round in the relkey (`R00#rid#L..`) so sorted `rel_order` interleaves
+    → the M bound slots span M DISTINCT rids. **A/B (same seed, N=441): interleave OFF cf-delivery 0.537 /
+    hard-α2 0.601; interleave ON 0.497 — NO recovery (neutral-to-slightly-worse).** So the efficacy drop is
+    NOT primarily bind relation-diversity. (`CAM_REL_INTERLEAVE` kept, default off — improves relation
+    coverage but not efficacy.)
+  - **Leading remaining suspect = a CONFOUND I introduced:** the N=441 run used `--seg-len 64 --qa-seg 4`
+    (vs N=147's 48/3) to fit the bind block. The doc geometry / tap-at-L24 position changed, so part of the
+    0.81→0.60 gap may be the CONFIG change, not scale. **Next test: run at small N with 64/4 vs 48/3 to
+    isolate config-vs-scale** before concluding efficacy genuinely degrades with N. Also: fuller α (0,2,8,20)
+    at N=441 (the run used only {0,2}), and B/bank-count at scale.
 - **Risks:** (a) more subjects/relation → more per-bank crowding at fixed B; scale `CAM_DISJOINT_BANKS` with
   N (K1 makes crowding cheap). (b) mixed-length bind batches complicate the DocBuilder — length-bucketing
   is the mitigation. (c) the RDNA4 cohort-forward flake (§3.18) recurs at larger N → watchdog first.

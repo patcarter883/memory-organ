@@ -767,10 +767,17 @@ def setup_counterfact_multi(base, tok, args):
             dom = max(by_prompt.items(), key=lambda kv: sum(len(v) for v in kv[1].values()))[0]
             slen_buckets = by_prompt[dom]
             if length_split:                             # N1: one fixed-length relkey PER length bucket
-                for slen, recs in slen_buckets.items():
+                # N1b (CAM_REL_INTERLEAVE=1): rank each rid's length buckets by size (round 0 = largest) and
+                # embed the round in the relkey (R00#rid#L..). rel_order=sorted(relkeys) then INTERLEAVES rids
+                # — the first M slots (slot_relid=rel_order[:M]) span M DISTINCT rids' round-0 buckets instead
+                # of one rid's length buckets. Fixes the N1 efficacy drop (bind saw only ~2 rids at N=441).
+                interleave = os.environ.get("CAM_REL_INTERLEAVE") == "1"
+                ranked = sorted(slen_buckets.items(), key=lambda kv: -len(kv[1]))
+                for rnd, (slen, recs) in enumerate(ranked):
                     tot_all += len(recs)
                     if len(recs) >= per_rel_min:
-                        best.append((len(recs), f"{rid}#L{slen}", rid, dom, slen, recs))
+                        rk = f"R{rnd:02d}#{rid}#L{slen}" if interleave else f"{rid}#L{slen}"
+                        best.append((len(recs), rk, rid, dom, slen, recs))
             else:                                        # N0 (measure only): merge lengths (slen=-1)
                 recs = [r for rs in slen_buckets.values() for r in rs]
                 tot_all += len(recs)
