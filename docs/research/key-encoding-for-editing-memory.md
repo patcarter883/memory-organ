@@ -793,6 +793,62 @@ hard-gated delivery / DEP-keep / DEP-leak at the §3.15 operating point (B=137, 
 → the unreadable floor, gated delivery ↑ toward the ~0.88 solo-fidelity ceiling, locality flat. n≥3 reps
 (±0.15 tap-fit noise); the within-run below-gate count is the low-noise primary signal. **Start with K1.**
 
+## 6f. Phase M — MULTI-TOKEN OBJECTS (the productionization gate; scoped 2026-07-04)
+
+§3.18 showed the single-token-VALUE restriction **caps N at ~147** on CounterFact and is unshippable
+regardless (real objects like " San Francisco" are multi-token). Multi-token objects are therefore the
+**prerequisite** for both scale and realism. Good news: the store already has a **multi-token value
+subsystem** from an earlier thrust — the work is mostly INTEGRATION into the editing + persistent +
+logit-injection path, not a from-scratch build.
+
+**Already built & reusable (do NOT rebuild):**
+- **Multi-token subjects** — `EditRecord.subject_tids` is a full token list; pooled/K1 keying already
+  multi-token. (Only VALUES are single-token.)
+- **Store side** (`pk_store_adapter.py`): `mt_value='perpos'` stores the K object tokens as K
+  **position-tagged associations** (key = subject + learned `pos_tag[t]`, value = object-token t);
+  `perpos_key` ∈ {additive, gated, codebook, disjoint} resolves per-position addressing;
+  `mt_positions`, `pos_tag`, per-position disjoint sub-codebooks all exist.
+- **Readout** (`direct_logits`): `readout='linear'` (slot t → answer token t → [B,Kc,V]) and
+  `readout='decoder'` (AR teacher-forced transformer head, [B,Kc,V]).
+- **Metrics/loss** (`recall_mag.py:56–95`): `_seq_ce`, `_seq_metrics` (exact-match = all-K-correct +
+  per-token acc), `_kc`, `_answer_logits` (Kc-position logits, OOM-safe). `--cargo-tokens K` flag.
+
+**Single-token assumptions to LIFT (the integration gaps), by site:**
+1. **Records/loader** (`realedit.py`): add `new_ids` / `true_ids` (full token lists) to `EditRecord`
+   (currently only single `new_tid`/`true_tid`, = −1 when multi-token → these facts are *dropped* by the
+   `single_token_only` filter, `recall_mag.py:605`). Stop dropping them; carry the K-token objects.
+2. **Persistent write** (`_persistent_write_val`, `recall_mag.py:1036`): today writes one
+   `_e([[val_tid]])`. → write the K object tokens via the **perpos** path (K position-tagged associations
+   per subject) — the same primitive the cargo/dict path already uses at bind, exposed for
+   `persistent_write`.
+3. **Persistent read + score** (`_persistent_preds`/`_persistent_score`, `recall_mag.py:1052–1129`):
+   today single `argmax(-1)` at the last position vs `new_tid`. → read the K perpos values, produce K
+   answer-token predictions (teacher-forced against `new_ids` for scoring, or AR for generation), score
+   with `_seq_metrics` (exact-match over K).
+4. **Logit injection** (the §3.14 crack, `recall_mag.py:1099–1117`) — **the one genuinely new piece.**
+   Today adds `α·out_proj(bank)@lm_head` at the **single** last position. → make it **multi-position**:
+   at each of the K answer positions t, inject position-t's retrieved value contribution. Teacher-forced
+   this is K parallel injections; free-running it interleaves with generation. The **conf-gate** (§3.15)
+   generalises per-position (each position has its own retrieval conf).
+5. **Metric wiring**: delivery/locality/generality become **exact-match over the K-token object** (strictly
+   harder than single-token argmax — expect the headline numbers to drop; report per-token acc too).
+
+**Phasing (each a testable increment; bind is cheap ~2 min):**
+- **M0** — carry multi-token objects through the loader/records; measure the new N (should jump well past
+  147 once the single-token filter is lifted — the actual deployment-scale unlock).
+- **M1** — perpos persistent write + teacher-forced multi-position readout scoring (efficacy first, on the
+  bigger N). Reuse `readout='decoder'` or `'linear'`.
+- **M2** — multi-position logit injection + per-position conf-gate (port the §3.14/§3.16 wins to K>1).
+- **M3** — re-run the triad (efficacy/locality/generality) at real N (now unblocked) + the scale-N curve
+  the §3.18 sweep couldn't run; add a generation-coherence check (the other original de-risk).
+
+**Risks / unknowns:** (a) per-position addressing is the historically hard part (the thrust notes
+`exp#2/#3` "per-position address never resolved" until `perpos_key='codebook'/'disjoint'`) — K1
+write-where-you-read should help here too and is worth combining; (b) exact-match over K tokens is a
+stricter bar — the ~0.8 single-token efficacy will not transfer 1:1; (c) the RDNA4 cohort-forward flake
+(§3.18) will recur at larger N — needs a watchdog/retry in the harness first. **Also fix the found bug:**
+`--multi-relations R > available` crashes (`slot_relid.index` ValueError) — clamp R.
+
 ## 7. Methodology notes
 
 - **Metric noise:** persistent-sweep delivery at cohort=10 swings ±0.10 run-to-run (GPU tap-fit
