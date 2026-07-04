@@ -226,6 +226,26 @@ always-FAIL subset = 0.125 (≈ noise). Damping ALL of h (not the original objec
 keeps it ~0 (no-op). **v2 (CAM_VALUE_SUPPRESS=λ): compose the stored value = new − λ·original** (we have
 r.true_tid) so the injection promotes new AND damps the ORIGINAL logit specifically — eval-only, no
 retrain. Directly attacks the strong-prior failures. A/B λ∈{0,0.5,1.0} on solo + always-FAIL recovery.
+**R1-v2 NEGATIVE:** λ=0.5 = 0.611 (no change, recovery 0.125 ≈ noise); λ=1.0 = 0.246 (over-suppresses,
+hurts). Even targeted logit-suppression of the actual original doesn't recover strong-prior fails — the
+frozen tap doesn't cleanly translate a composed value into a two-sided logit effect. **7 negatives total ⇒
+the ~0.7 wall is intrinsic to single-site frozen-base editing.**
+
+## 3.11 UNIVERSALITY — the wall is general, and its level tracks base knowledge (2026-07-04)
+
+Solo-fidelity across bases (`--base1`, harness is base-agnostic):
+| base | solo-fidelity | base prior-acc (knowledge) | edits |
+|---|---|---|---|
+| Qwen3.5-4B | ~0.69 | 0.138 | 137 |
+| Llama-3.2-3B (diff family, no GDN) | 0.574 | 0.222 | 173 |
+
+- **The ~0.5–0.7 wall is GENERAL** (holds across architecture families) → a property of the frozen-base
+  single-site editing METHOD, not Qwen-specific.
+- **Level is model-dependent AND the mechanism predicts the direction:** Llama KNOWS MORE (prior-acc 0.222
+  vs 0.138) and edits WORSE (0.57 < 0.69) — cross-model confirmation of R-mech ("confident priors resist
+  editing"). **More capable base ⇒ harder to edit** — a real product tension.
+- **HYPOTHESIS (R-univ):** solo-fidelity is negatively predicted by base prior-acc. Sweep more cached bases
+  → (prior-acc, fidelity) scatter; a clean correlation = a quantitative law + a base-selection lever.
 
 ## 4. Theory connections *(from the 2026 literature pass)*
 
