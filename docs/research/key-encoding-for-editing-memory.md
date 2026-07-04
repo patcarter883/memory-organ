@@ -877,6 +877,25 @@ largest `(prompt, subject-length)` bucket. The store keys on the subject's last-
   count must equal rel_subj_len[its relation]` — the DocBuilder's **fixed-subject-length** assumption.
   That is exactly what N1 lifts (length-bucketed bind). (N0/N0b are probe-only measurements; the assert
   fires in DocBuilder construction, after the N is printed — the count is valid.)
+- **N1 RESULT (DONE, `CAM_LENGTH_SPLIT=1` — first REAL scaled bind + triad):** split each relation into
+  fixed-length sub-relations (`relkey=rid#L<slen>`) → the assertion is lifted with NO DocBuilder change;
+  bound **441 edits (3× the 147)**, held-out carry 0.896. **The triad largely HOLDS at 3× scale:**
+
+  | metric | N=147 | N=441 (3×) |
+  |--------|-------|-----------|
+  | below-gate (K1 addressing) | 0 | **0/441** ✓ |
+  | efficacy (delivery, α=2 hard) | ~0.81 | **0.565** |
+  | locality-keep / leak | ~0.55 / 0.03 | 0.45–0.51 / 0.075 |
+  | generality (GEN-hit) | ~0.82 | 0.73–0.83 |
+
+  - **Addressing scales perfectly** (below-gate 0/441 — K1 self-addressing holds); locality + generality
+    hold. **Efficacy is the scale-sensitive axis** (0.81 → 0.55). n=1, α∈{0,2} only — confirm with fuller
+    α + reps; candidate causes: (i) length-split's sorted `rel_order` binds only the first M relkeys
+    (P101/P103 buckets) → less RELATION diversity in the tap fit; (ii) shared-readout crowding at scale.
+  - **Harness fixes:** added `CAM_MAX_SUBJ_LEN` (long subjects L>8 overflow the bind block; also raise
+    `--seg-len`/`--qa-seg`). And `build_cf_query`'s `slot_relid.index(q_rid)` **crashes when R buckets > M**
+    (used by the tap-fit locality-loss + Track-1 eval) — worked around with `--locality-weight 0`; the
+    persistent triad path doesn't use it. Real fix = dynamic per-build slot relation assignment (**N1b**).
 - **Risks:** (a) more subjects/relation → more per-bank crowding at fixed B; scale `CAM_DISJOINT_BANKS` with
   N (K1 makes crowding cheap). (b) mixed-length bind batches complicate the DocBuilder — length-bucketing
   is the mitigation. (c) the RDNA4 cohort-forward flake (§3.18) recurs at larger N → watchdog first.
