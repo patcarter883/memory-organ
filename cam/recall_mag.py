@@ -720,14 +720,27 @@ def setup_counterfact_multi(base, tok, args):
         pre, _, suf = prompt.partition("{}")
         return pre.rstrip(), suf
     # rid -> (prompt, subject_len) -> [recs]; pick, per relation_id, the (prompt,len) with the most facts.
+    # Phase N (N0b): the relation prompt/suffix filter is what caps the fact pool at ~10 relations (§6g N0
+    # result). CAM_MAX_SUFFIX_TOK raises the suffix-length cap (legacy 6); CAM_ALLOW_EMPTY_PREFIX admits
+    # sentence-initial-subject prompts (pre==""). Both default to legacy. The store keys on the subject
+    # (last-token/pooled), so a longer suffix / empty prefix only affects the query-prompt text, not
+    # addressing — safe to relax for measurement; N1 validates for bind.
+    max_suf = int(os.environ.get("CAM_MAX_SUFFIX_TOK", "6"))
+    allow_empty_pre = os.environ.get("CAM_ALLOW_EMPTY_PREFIX") == "1"
+    n_skip_suf = n_skip_pre = 0
     by_rid = defaultdict(lambda: defaultdict(list))
     for r in kept:
         if "{}" not in r.prompt:
             continue
         pre, suf = _split(r.prompt)
-        if not pre or len(tok(suf, add_special_tokens=False).input_ids) > 6:
-            continue
+        if not pre and not allow_empty_pre:
+            n_skip_pre += 1; continue
+        if len(tok(suf, add_special_tokens=False).input_ids) > max_suf:
+            n_skip_suf += 1; continue
         by_rid[r.relation_id][(r.prompt, len(r.subject_tids))].append(r)
+    print(f"[mag][cf-multi] relation-filter (MAX_SUFFIX_TOK={max_suf}, allow_empty_prefix={allow_empty_pre}): "
+          f"{len(by_rid)} relations pass; skipped {n_skip_suf} long-suffix + {n_skip_pre} empty-prefix facts",
+          flush=True)
     R = max(2, args.multi_relations)
     per_rel_min = max(2, (args.M + R - 1) // R + 1)      # distinct subjects for this relation's doc-slot share
     # Phase N (N0, CAM_ALL_SUBJ_LENGTHS=1): the legacy grouping keeps only each relation's ONE largest
