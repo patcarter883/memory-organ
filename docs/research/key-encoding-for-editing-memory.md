@@ -657,16 +657,69 @@ ckpt via the `logit_locality.sh` + `CAM_CONF_DIAG` harness):**
   candidate — WITHOUT changing the final `topk` slots mixed (no added readout contamination). Cheap; watch
   the DEP-leak/keep cost anyway; likely dominated by K1.
 
-**Requires retrain (structural; the §3.4 / §4 theory family — only if K1 leaves a residual):**
-- **K4 — TIE the projections.** Share weights `to_wkey ≡ read_q[0]` (+ fold `head_bias[0]`), retrain
-  addr-sup. Makes `_address` see identical vectors at write and read for ALL subjects by construction — the
-  permanent version of K1. Risk: lower capacity; validate delivery doesn't regress.
-- **K5 — RaBitQ-style rotation before addressing** (§4): normalize + fixed random Hadamard rotation on the
-  address vector → data-independent, unbiased product-cell assignment (O(1/√D) error), **zero training** to
-  fit → fewer boundary subjects. Strictly better than the ZCA whitening we have; compose with K1.
-- **K6 — hard self-consistency addr-sup term.** Add a per-subject loss forcing
-  `_address(read_q[0](k)) == _address(to_wkey(k))` (straight-through on the top-k) so boundary cases are
-  trained to agree, not just pulled softly.
+**Requires retrain (re-run the bind stage; NOTE — bind is only 1000 steps + 150 tap, so a "retrain" run
+is ~the same ~2 min cached cost as any K1/K2/K3 locality run — the retrain tier is cheap here, its only
+cost is that it touches the trained ckpt, so K1's persistent-only property is preferred *if it suffices*).
+The §3.4 / §4 theory family — pursue only if K1–K3 leave a residual:**
+
+- **K4 — TIE the write-key and factual-read-query projections** *(recommended first retrain lever)*.
+  - *Mechanism.* Today `to_wkey` (write address) and `read_q[0]` (factual read query) are **separate**
+    `Linear(d_hub,d_hub)` maps (`pk_store.py:87,91`) coupled only by the addr-sup `(a)` InfoNCE, which
+    aligns them by **cosine** (`pk_store_adapter.py:571`) — looser than product-*cell* agreement, so
+    boundary subjects still split. Tie them: `to_wkey ≡ read_q[0]`. Then for the persistent path
+    (key == query == pooled subject) the write address `to_wkey(s)` and read address
+    `read_q[0](s)+head_bias[0]` are **identical** — because the factual **head 0 bias is exactly zero**
+    (`pk_store.py:104`, "head 0 (factual) has no bias") — so `_address` sees the same vector at write and
+    read → same product cell **by construction, for every subject** (the permanent, retrained form of K1).
+  - *Change.* `pk_store.__init__`: under `CAM_TIE_WKEY_READQ=1`, set `self.to_wkey = self.read_q[0]`
+    (share the Module; drop the separate param). `to_wval` stays independent (values must differ from
+    addresses). Assert `head_bias[0]` stays frozen at 0. ~5 lines.
+  - *Cost/risk.* One bind re-run. Risk = capacity: read query and write key can no longer specialise
+    apart — but for a symmetric key↔key store they *should* be one map (the addr-sup was already forcing
+    it). Validate episodic delivery (the QA-cargo read also flows through `read_q[0]`) doesn't regress;
+    the persistent subject read is the production target and is exactly what tying optimises.
+  - *Expected.* below-gate → the genuinely-unreadable floor (~4–6, the readout/value misses), delivery ↑
+    toward the ~0.88 solo ceiling, locality flat. Distinguishes from K1: K1 relocates the value at eval
+    for a fixed ckpt; K4 makes the ckpt itself self-consistent (so even the episodic path benefits).
+
+- **K5 — RaBitQ-style rotation before addressing** (§4 theory).
+  - *Mechanism.* Insert a **fixed random orthogonal rotation** (fast Hadamard + random sign, or a frozen
+    random `R ∈ O(d_hub)`) on the address vector inside `_address`, after the query-BN, *before* the
+    sub-codebook scoring. Applied **identically to write and read** it preserves self-match while
+    isotropising the space the product cells quantise → data-independent, unbiased cell assignment
+    (RaBitQ O(1/√D) bound, [2405.12497]) → fewer subjects sit on a top-k boundary. Strictly better than
+    the ZCA whitening we have; **composes with K1/K4** (rotation reduces boundary *count*, K1/K4 fixes the
+    write/read *gap*).
+  - *Change.* `_address`: `if CAM_RABITQ_ROT: q = q @ self._rot` where `self._rot` is a frozen buffer set
+    once at init (Hadamard/random-orthogonal). ~8 lines + the buffer.
+  - *Cost/risk — the catch.* The **codebooks were fit (`anchor_keys`) in the UNrotated space**, so a
+    rotation applied at eval-only would mis-match them and *degrade* addressing. K5 therefore needs the
+    **codebooks refit in the rotated space** → retrain tier (not persistent-only, unlike K1). Zero
+    training for the rotation *itself*, but the store must be re-bound with it on.
+  - *Expected.* Reduces the *incidence* of boundary subjects (a distributional win), not a
+    by-construction guarantee like K4 — so its value is as a **compounding** lever under K4, or standalone
+    if tying proves too restrictive.
+
+- **K6 — hard self-consistency addr-sup term** *(targeted loss; use if K4's weight-tie is too restrictive
+  for delivery)*.
+  - *Mechanism.* Keep `to_wkey` and `read_q[0]` separate but add a training loss that forces their
+    product-**cell** distributions to agree (not just their cosine). For each binding compute the soft
+    candidate-cell scores (the `cand` tensor in `_address`, pre-top-k) for both `to_wkey(k)` and
+    `read_q[0](k)`, form softmax distributions `p_w`, `p_r` over the sub_topk² candidates, and add
+    `λ·½(KL(p_r‖p_w)+KL(p_w‖p_r))` to the aux loss. This trains the two maps to select the **same cells**
+    at the boundary — precisely the failure mode — while leaving them free to differ elsewhere (more
+    capacity than K4's hard tie). Straight-through is unnecessary; the soft cell scores are differentiable.
+  - *Change.* Expose the pre-top-k `cand`+`slot` from `_address` (small refactor), add
+    `_compute_addr_sup` term under `CAM_ADDR_SELFCONSIST_W>0`. ~20 lines.
+  - *Cost/risk.* One bind re-run. Risk = the extra term competes with the delivery/value losses; sweep λ.
+  - *Expected.* Between K4 (hard, by-construction) and the status quo (soft cosine): closes most of the
+    boundary gap while retaining projection capacity. Preferred if K4 regresses episodic delivery.
+
+**Recommended order (retrain tier):** **K4 first** (cheapest, by-construction, ~5 lines) → if it regresses
+episodic delivery, **K6** (soft cell-consistency, keeps capacity) → **K5** to *compose* on top of either
+(reduce boundary incidence). Only enter this tier if K1–K3 (persistent-only) leave a residual below-gate
+count above the ~4–6 unreadable floor. The unreadable floor itself (values whose object token the readout
+can't peak) is a *different* lever — value/readout, tracked separately from Phase K.
 
 **Measurement (same harness, all runs):** `CAM_CONF_DIAG=1` below-gate count + deliverable-weak split;
 hard-gated delivery / DEP-keep / DEP-leak at the §3.15 operating point (B=137, C0=em/12). Success = below-gate
