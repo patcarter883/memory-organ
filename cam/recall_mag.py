@@ -1360,10 +1360,17 @@ def eval_persistent_locality(base, adapter, injector, tok, kept, args):
     # editing triad. A paraphrase is about the edit's OWN subject, so it routes to the edit's bank and
     # retrieves strongly (unlike a neighbour); we WANT it to fire (gold = new_tid). Keyed on the edit's
     # subject_tids (deployment-faithful: the engine parses the paraphrase's subject = the edit's subject).
+    # Bound cohort work + hang exposure at scale: skip pathologically long prompts (long CounterFact
+    # paraphrase preambles are the likely RDNA4 kernel-flake trigger AND are not needed) and cap each
+    # cohort to a fixed subset regardless of N. Delivery/confdiag still run over ALL N.
+    maxtok = int(os.environ.get("CAM_PROMPT_MAXTOK", "64"))
+    cohort_cap = int(os.environ.get("CAM_COHORT_CAP", "0")) or None       # 0 = uncapped
+    def _short(p):
+        return bool(p) and len(tok(p, add_special_tokens=False).input_ids) <= maxtok
     dep, adv, gen, n_unparsed = [], [], [], 0
     for r in kept:
         for p in r.neighborhood_prompts[:cap]:
-            if not p:
+            if not _short(p):
                 continue
             adv.append(_NbrRec(r.subject_tids, p, r.new_tid, r.true_tid, r.relation_id))
             st = _nbr_subject_tids(tok, r, p)
@@ -1372,8 +1379,10 @@ def eval_persistent_locality(base, adapter, injector, tok, kept, args):
             else:
                 n_unparsed += 1
         for p in getattr(r, "paraphrase_prompts", [])[:cap]:
-            if p:
+            if _short(p):
                 gen.append(_NbrRec(r.subject_tids, p, r.new_tid, r.true_tid, r.relation_id))
+    if cohort_cap:                                                        # bound eval at scale
+        dep, adv, gen = dep[:cohort_cap], adv[:cohort_cap], gen[:cohort_cap]
     if not adv:
         print("[mag][persistent] locality: no neighbourhood_prompts on records; skipping.", flush=True)
         return {}
