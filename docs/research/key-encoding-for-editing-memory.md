@@ -39,13 +39,15 @@ usable operating point (§3.15). The wall is a property of the *site*, not of fr
 a conf-gate escapes it deployably. Shipped: `CAM_LOGIT_INJECT`, `CAM_LOGIT_GATE_C0`/`_K`/`_HARD`.
 
 **BOTTOM LINE (product):** the per-fact **~0.7 residual ceiling is NOT fundamental** — hard-conf-gated
-logit injection escapes it at ~zero locality cost, and the residual gap is **addressing-limited** (bank
-crowding degrades value-readout PURITY, not retrieval strength). **Scaling disjoint banks lifts delivery
-AND locality together** (B=32→137: delivery 0.64→0.72, neighbour-keep 0.51→0.58, leak flat 0.01) — no
-trade. End-to-end usable operating point: **B=137 + hard-conf-gated logit injection = ~0.72 delivery / 0.58
-neighbour-keep / 0.01 leak**, past both the old ~0.66 addressing plateau and the ~0.7 residual wall.
-Fidelity and addressing are now one frontier; the only residual lever is the ~19 genuinely weak-retrieval
-edits (keys/writes, B-independent). No frozen-base architecture cap remains.
+logit injection escapes it at ~zero locality cost, and the residual gap was **addressing-limited**. That
+addressing frontier is now **CLOSED by K1 write-where-you-read** (§3.16, `CAM_WRITE_AT_READ`, persistent-
+path only): addressing the write with the *read* query eliminated every self-addressing failure
+(below-gate 15–25 → **0** in all 3 reps), collapsed the neighbour-collision tail (conf p95 118 → 2), and
+lifted end-to-end delivery to **~0.90 (n=3) / neighbour-keep ~0.53 / leak ~0.03** — a +0.18 jump over the
+B=137 baseline (0.72), past both the ~0.66 addressing plateau and the ~0.7 residual wall. The C0 gate
+calibration is now moot (in/out conf separate at any threshold). The retrain tier (K4–K6) is obviated; the
+only residual is the ~10% genuine readout/value-miss floor (a value-side lever, not addressing). No
+frozen-base architecture cap remains.
 
 ## 1. The question
 
@@ -443,6 +445,43 @@ the object token's embedding — so conf mixes *addressing quality* with *token-
 logit-space injection; the locality cost that made it look like a mere trade is **eliminated by a hard
 conf-gate**, which the store's near-binary in/out retrieval confidence makes almost free. Shipped:
 `CAM_LOGIT_GATE_C0` / `_K` / `_HARD`, `--persistent-locality` (dep+adv cohorts, self-calibrated gate).
+
+## 3.16 PHASE K / K1 — the addressing story CLOSES: write-where-you-read (2026-07-04)
+
+The last open lever (§3.15 / §6e). Root cause of the ~15 weak-retrieval edits: WRITE addresses via
+`_address(to_wkey(key))` but READ addresses via `_address(read_q[0](q)+head_bias[0])` — two learned
+projections coupled only *softly* (cosine addr-sup), so a subject near a product-key top-k boundary lands
+in **different cells** at write vs read → its read query misses its own value → conf≈0. **K1
+(`CAM_WRITE_AT_READ=1`, persistent-path only, NO retrain):** address the write with the *read* query
+`head_query(key)` so the value lands at the exact slot the read selects. Result at B=137 (n=3 reps;
+means, with the structural wins reproducing exactly in every run):
+
+| metric | B=137 baseline | **K1 (n=3)** |
+|--------|----------------|--------------|
+| below-gate edits | ~15–25 | **0 / 137 (all 3 reps)** |
+| edit conf (median / min) | ~109 / <1 | **~133 / 68** |
+| neighbour conf p95 | 22–118 | **~2** |
+| hard-gate delivery (α=8) | ~0.72 | **~0.90** (0.87 / 0.91 / 0.93) |
+| DEP-keep / leak | ~0.58 / 0.01 | ~0.53 / 0.027 |
+
+- **below-gate 15–25 → 0.** Every edit now self-retrieves strongly (min conf 68 ≫ gate); the addressing
+  false-negatives are *gone*. By construction: write and read address the identical vector.
+- **Neighbour-collision tail COLLAPSES (p95 118 → 2.14).** The value now sits at the edit's *exact*
+  read-address, not the broader `to_wkey` cell, so a different subject's read query almost never hits it →
+  the bimodal tail (§3.15) that set the irreducible locality floor is largely eliminated too. K1 fixes
+  BOTH sides — delivery AND the locality floor — with one change.
+- **The C0-threshold sweep goes FLAT** (0.934 / 0.548 for C0 = 0.5…20): with perfect self-addressing,
+  in-store (133) and out-of-store (~0–2) conf are cleanly separated at *any* threshold — the gate
+  calibration problem of §3.15/§3.16-prior is now moot. The hard gate still beats unconditional on
+  locality (keep 0.548 vs 0.425 at α=8) by suppressing the rare neighbour hit, but C0 placement is free.
+- **Delivery ~0.90 (n=3: 0.87/0.91/0.93) at held locality (keep ~0.53, leak ~0.027)** — a +0.18 jump over
+  the B=137 baseline (0.72), at/near the ~0.88 solo ceiling, for a small locality cost (keep −0.05, leak
+  +0.013 vs baseline — within run noise). The residual ~10% non-delivery is the genuine readout/value-miss
+  floor (`below-gate DELIVER-under-unconditional = 0` → not addressing), a separate value-side lever.
+
+**Consequence: K1 alone closes the addressing frontier — the retrain tier (K4–K6) is OBVIATED** (there is
+no residual self-addressing failure to retrain away; below-gate = 0 in all 3 reps). Shipped:
+`CAM_WRITE_AT_READ` (K1), `CAM_WRITE_REDUNDANT` (K2), `CAM_READ_SUB_TOPK` (K3, unneeded).
 
 ## 4. Theory connections *(from the 2026 literature pass)*
 
