@@ -864,6 +864,12 @@ largest `(prompt, subject-length)` bucket. The store keys on the subject's last-
   the new N (probe-only). **N1** — DocBuilder length-bucketed bind so training handles the mixed-length set;
   re-run the triad + the scale-N curve §3.18 couldn't run (now with real N). **N2** — generation-coherence
   check at scale.
+- **N0 RESULT (DONE, `CAM_ALL_SUBJ_LENGTHS=1`, probe-only):** relaxing the length grouping unlocks
+  **N 147 → 464 (3.2×)** — e.g. P103 37→130, P37 31→111, P364 33→104. Confirms the §3.19 diagnosis: the
+  subject-length grouping *was* a major artifact. It doesn't reach the ~2,936 ceiling because only **10
+  relation_ids** clear the *prompt/suffix* filter (`"{}"` present, suffix ≤6 tokens); the remaining
+  ~2,470 base-known facts sit in relations that fail it → the NEXT lever (N0b) is relaxing that relation
+  filter. But **464 is already a real deployment-scale test set** (3.2× the validated 147) — enough for N1.
 - **Risks:** (a) more subjects/relation → more per-bank crowding at fixed B; scale `CAM_DISJOINT_BANKS` with
   N (K1 makes crowding cheap). (b) mixed-length bind batches complicate the DocBuilder — length-bucketing
   is the mitigation. (c) the RDNA4 cohort-forward flake (§3.18) recurs at larger N → watchdog first.
