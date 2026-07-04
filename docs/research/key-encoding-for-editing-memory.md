@@ -866,10 +866,17 @@ largest `(prompt, subject-length)` bucket. The store keys on the subject's last-
   check at scale.
 - **N0 RESULT (DONE, `CAM_ALL_SUBJ_LENGTHS=1`, probe-only):** relaxing the length grouping unlocks
   **N 147 → 464 (3.2×)** — e.g. P103 37→130, P37 31→111, P364 33→104. Confirms the §3.19 diagnosis: the
-  subject-length grouping *was* a major artifact. It doesn't reach the ~2,936 ceiling because only **10
-  relation_ids** clear the *prompt/suffix* filter (`"{}"` present, suffix ≤6 tokens); the remaining
-  ~2,470 base-known facts sit in relations that fail it → the NEXT lever (N0b) is relaxing that relation
-  filter. But **464 is already a real deployment-scale test set** (3.2× the validated 147) — enough for N1.
+  subject-length grouping *was* a major artifact.
+- **N0b RESULT (DONE, `CAM_MAX_SUFFIX_TOK` / `CAM_ALLOW_EMPTY_PREFIX`, probe-only):** the suffix cap was a
+  **red herring** (0 facts skipped at cap 6). The real second lever is the **empty-prefix** filter — it was
+  dropping **2,173** base-known facts (sentence-initial subjects). Admitting them lifts relations 10 → 32
+  and **N 464 → 1,105 (7.5× the legacy 147)** across 29 relations (now P17/P176/P30/P27/P937/… — real
+  relation diversity). Remaining gap to the ~2,936 ceiling = `per_rel_min` + dominant-prompt-only (a
+  further, optional relaxation). **1,105 is a strong deployment-scale test set.**
+- **N1 barrier PINPOINTED:** with mixed lengths the run hits `AssertionError: each fact's subject token
+  count must equal rel_subj_len[its relation]` — the DocBuilder's **fixed-subject-length** assumption.
+  That is exactly what N1 lifts (length-bucketed bind). (N0/N0b are probe-only measurements; the assert
+  fires in DocBuilder construction, after the N is printed — the count is valid.)
 - **Risks:** (a) more subjects/relation → more per-bank crowding at fixed B; scale `CAM_DISJOINT_BANKS` with
   N (K1 makes crowding cheap). (b) mixed-length bind batches complicate the DocBuilder — length-bucketing
   is the mitigation. (c) the RDNA4 cohort-forward flake (§3.18) recurs at larger N → watchdog first.
