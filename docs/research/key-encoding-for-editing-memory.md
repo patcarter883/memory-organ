@@ -38,16 +38,34 @@ on the injection recovers full baseline locality (keep flat at 0.47) while still
 usable operating point (§3.15). The wall is a property of the *site*, not of frozen-ness; logit-space with
 a conf-gate escapes it deployably. Shipped: `CAM_LOGIT_INJECT`, `CAM_LOGIT_GATE_C0`/`_K`/`_HARD`.
 
-**BOTTOM LINE (product):** the per-fact **~0.7 residual ceiling is NOT fundamental** — hard-conf-gated
-logit injection escapes it at ~zero locality cost, and the residual gap was **addressing-limited**. That
-addressing frontier is now **CLOSED by K1 write-where-you-read** (§3.16, `CAM_WRITE_AT_READ`, persistent-
-path only): addressing the write with the *read* query eliminated every self-addressing failure
-(below-gate 15–25 → **0** in all 3 reps), collapsed the neighbour-collision tail (conf p95 118 → 2), and
-lifted end-to-end delivery to **~0.90 (n=3) / neighbour-keep ~0.53 / leak ~0.03** — a +0.18 jump over the
-B=137 baseline (0.72), past both the ~0.66 addressing plateau and the ~0.7 residual wall. The C0 gate
-calibration is now moot (in/out conf separate at any threshold). The retrain tier (K4–K6) is obviated; the
-only residual is the ~10% genuine readout/value-miss floor (a value-side lever, not addressing). No
-frozen-base architecture cap remains.
+**(D) THE EDITING TRIAD & SCALE (Phase M/N, §3.16–3.19, §6f–6g).** With addressing + fidelity solved, we
+(i) closed the standard editing triad and (ii) stress-tested it past N=137:
+- **K1 write-where-you-read closes addressing** (§3.16, `CAM_WRITE_AT_READ`, persistent-path only):
+  address the write with the *read* query → self-addressing exact by construction → below-gate 15–25 → **0**
+  (n=3), neighbour-collision tail collapses (conf p95 118 → 2), delivery **0.72 → ~0.90**. Retrain tier
+  K4–K6 obviated.
+- **Generality is free by design** (§3.17): the edit fires on *paraphrases* as well as on the exact prompt
+  (GEN-hit ≈ efficacy) because retrieval is subject-keyed. Triad at N=137: **efficacy ~0.81 / locality-keep
+  ~0.55 / generality ~0.82**.
+- **The N=147 cap was a mirage, then a batching artifact** (§3.18–3.19, M0/N0/N0b): multi-token objects add
+  ≤2.7% (NOT the gate — a probe *refuted* that before we built it); the real cap was the per-relation
+  single-subject-length grouping. Relaxing it (`CAM_ALL_SUBJ_LENGTHS`, `CAM_ALLOW_EMPTY_PREFIX`) unlocked
+  **N 147 → 464 → 1,105** of the ~2,936 base-known facts, pure config.
+- **Scale-tested to 3× (N=441)** via `CAM_LENGTH_SPLIT` (per-length sub-relations; no DocBuilder change):
+  **the triad HOLDS** — addressing *perfect* (below-gate 0/441), locality + generality hold — but
+  **efficacy is the scale-sensitive axis** (~0.81 → ~0.55). Config-isolated and confirmed a **genuine scale
+  effect** (config exonerated; bind-diversity refuted). Since below-gate=0 at both N, the limit is the
+  **shared READOUT/injection capacity**, not addressing — a distinct, previously-untouched subsystem.
+
+**BOTTOM LINE.** The persistent knowledge-editing memory is architecturally complete on the addressing +
+fidelity axes: **disjoint banks + K1** give perfect addressing that scales (below-gate 0 at 3×);
+**hard-conf-gated logit injection** escapes the ~0.7 residual wall deployably; the full **triad holds**
+(efficacy/locality/generality) and generalises across phrasings. Available editable set is ~2,936 facts
+(Qwen3.5-4B); validated to N=441. **The one open limit is efficacy-at-scale, and it is now precisely
+located: shared readout/tap capacity** (a value/readout lever, not addressing — every prior campaign lever
+was addressing-side). **Two caveats before "shippable":** (1) every metric is a single-next-token proxy —
+**generation coherence is unvalidated** (the decisive next check); (2) the RDNA4 gen-cohort forward flakes
+at scale (needs a harness watchdog). No frozen-base architecture cap remains.
 
 ## 1. The question
 
