@@ -586,7 +586,10 @@ def probe_and_filter_counterfact(base, tok, records, batch=16):
         for i in range(0, len(items), batch):
             chunk = items[i:i + batch]
             rows = [bos + p_ids for (_r, p_ids) in chunk]
-            gold = torch.tensor([r.true_tid for (r, _p) in chunk], dtype=torch.long, device=DEV)
+            # base-known gate: base predicts the true object's FIRST token (Phase M proxy for multi-token
+            # objects; identical to true_tid for single-token). Full-sequence base-known is Phase M1.
+            gold = torch.tensor([(r.true_ids[0] if r.true_ids else r.true_tid) for (r, _p) in chunk],
+                                dtype=torch.long, device=DEV)
             ids = torch.tensor(rows, dtype=torch.long, device=DEV)
             pred = _last_logit(base, input_ids=ids).argmax(-1)
             for j, (r, _p) in enumerate(chunk):
@@ -664,9 +667,15 @@ def setup_counterfact_multi(base, tok, args):
     relation_id (semantic diversity). Returns (builder, kept, prior_acc)."""
     path = os.path.join(args.data_dir, "counterfact.json")
     records, stats = load_counterfact(path, tok, single_token_only=False)
-    obj = [r for r in records if r.true_tid != -1 and r.new_tid != -1]     # single-token OBJECTS; subject any len
-    print(f"[mag][cf-multi] CounterFact <- {path} | objects-single {len(obj)} of {stats['total']} "
-          f"(subject may be multi-token)", flush=True)
+    # Phase M (M0): allow objects up to CAM_MAX_OBJ_TOK tokens (default 1 = legacy single-token behaviour).
+    # Lifting this is the productionization gate (§3.18/§6f): it unlocks the ~96% of CounterFact facts the
+    # single-token filter drops. The base-known probe uses the first-token proxy (probe_and_filter_counterfact).
+    K = max(1, int(os.environ.get("CAM_MAX_OBJ_TOK", "1")))
+    obj = [r for r in records if 1 <= len(r.true_ids) <= K and 1 <= len(r.new_ids) <= K]
+    n_multi = sum(1 for r in records if len(r.true_ids) > 1 or len(r.new_ids) > 1)
+    print(f"[mag][cf-multi] CounterFact <- {path} | MAX_OBJ_TOK={K} -> {len(obj)} candidate facts of "
+          f"{stats['total']} (objects-single {stats['objects_single']}; multi-token-object supply {n_multi})",
+          flush=True)
     # cap the probe pool (probing ~20k is expensive) — deterministic sample surfaces many relations.
     rng = np.random.default_rng(args.seed)
     cap = min(len(obj), getattr(args, "cf_probe_cap", 8000))
@@ -680,7 +689,7 @@ def setup_counterfact_multi(base, tok, args):
     cache_on = os.environ.get("CAM_PROBE_CACHE", "1") != "0"
     cache_dir = os.environ.get("CAM_PROBE_CACHE_DIR") or os.path.join(args.data_dir, "probe_cache")
     import hashlib as _hl, pickle as _pk
-    key = _hl.sha1(f"{model_id}|{args.seed}|{cap}|{len(obj)}".encode()).hexdigest()[:16]
+    key = _hl.sha1(f"{model_id}|{args.seed}|{cap}|{len(obj)}|K{K}".encode()).hexdigest()[:16]
     cpath = os.path.join(cache_dir, f"cfmulti_{key}.pkl")
     if cache_on and os.path.exists(cpath):
         try:
@@ -740,9 +749,14 @@ def setup_counterfact_multi(base, tok, args):
         rel_templates[relkey] = (pre, suf)
         rel_subj_len[relkey] = slen
         for r in recs:
-            facts.append((r.subject, r.true_str, r.subject_last_tid, r.true_tid))  # KEY = subject LAST token
+            # Phase M: use the object's FIRST token as the single-token stand-in (KEY is subject_last_tid;
+            # cf value = new object's first token). Full K-token perpos write is M1; this keeps M0 (measure
+            # the N unlock, probe-only) constructing cleanly for multi-token objects.
+            _tt = r.true_ids[0] if r.true_ids else r.true_tid
+            _nt = r.new_ids[0] if r.new_ids else r.new_tid
+            facts.append((r.subject, r.true_str, r.subject_last_tid, _tt))  # KEY = subject LAST token
             fact_relid.append(relkey)
-            cf_tid.append(r.new_tid)
+            cf_tid.append(_nt)
             fact_subj_tids.append(list(r.subject_tids))
             r._relkey = relkey                           # tag the record so eval can bucket by relation
             kept_multi.append(r)
