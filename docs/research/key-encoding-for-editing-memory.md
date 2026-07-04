@@ -501,6 +501,36 @@ means, with the structural wins reproducing exactly in every run):
 no residual self-addressing failure to retrain away; below-gate = 0 in all 3 reps). Shipped:
 `CAM_WRITE_AT_READ` (K1), `CAM_WRITE_REDUNDANT` (K2), `CAM_READ_SUB_TOPK` (K3, unneeded).
 
+## 3.20 GENERATION COHERENCE — the reality check: the editor is REAL, but only answer-span-injected (2026-07-04)
+
+Every prior metric was single-next-token argmax. The decisive question: does the edited memory produce
+FLUENT text carrying the edit, or just flip one token? `--persistent-generate` writes all edits, then
+GENERATES 16 greedy tokens from a sample of edit prompts with memory OFF vs ON. Result (N=137, α=8):
+
+- **The edit reliably takes in free generation: 12/12** the NEW object appears; base recalls the TRUE
+  object 12/12 (clean baseline).
+- **BUT naive always-on injection DEGENERATES into repetition** — the single-token metrics hid this:
+  - OFF: `The mother tongue of Achille Varzi is` → `Italian, and he was born in Milan, Italy. He is known for…`
+  - ON (constant): → `French French French French French…` (×16 — unusable)
+- **Cause: the memory (both the residual TAP and the logit injection) stays active at EVERY generation
+  step**, forcing the object token forever. Gating only the logit injection is NOT enough — the trained
+  tap alone still repeats.
+- **FIX — inject the answer span, then disable the whole memory** (`CAM_GEN_INJECT_STEPS=1`: inject + tap
+  for the answer token, then `set_bank(None)` → base continues). Result is FLUENT and carries the edit,
+  12/12:
+  - `Achille Varzi is` → `French, and he was born in Paris. He was a French-Italian cyclist` (fluent,
+    coherent, edit present, plausible continuation)
+  - `Oleg Kotov is` → `English. The first step is to find a good place to live.`
+  - `Raymond Triboulet is` → `Dutch. The 10 Best Hotels in San Juan de la Cruz -` (edit + base's own tail)
+
+**Verdict: the editor is REAL** — it produces fluent generated text with the edit applied, not just a
+token flip. **Deployment insight:** the memory must be **answer-span-scoped** (fire while producing the
+edited answer, then release), NOT left on throughout generation. Always-on is the degenerate failure the
+single-token metrics couldn't see; this is the single most important thing the generation check surfaced.
+Shipped: `--persistent-generate`, `CAM_GEN_LEN`/`CAM_GEN_SAMPLE`/`CAM_GEN_INJECT_STEPS`. (Open: an automatic
+answer-span detector for real deployment — here it's a fixed K; and the RDNA4 flake watchdog, `tools/
+watchdog_run.sh`, was exercised across these runs.)
+
 ## 3.19 M0 CORRECTION — multi-token is NOT the gate; the cap is a subject-length BATCHING artifact (2026-07-04)
 
 §3.18 concluded multi-token objects were the scale gate. **M0 (a cheap `--probe-only` sweep of
