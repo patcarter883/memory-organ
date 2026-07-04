@@ -1356,7 +1356,11 @@ def eval_persistent_locality(base, adapter, injector, tok, kept, args):
     cap = int(os.environ.get("CAM_LOCALITY_NBR_CAP", "3"))           # neighbours per edit (budget)
     # DEPLOYMENT cohort: neighbour keyed on its OWN parsed subject (out-of-store; addressing in play).
     # ADVERSARIAL cohort: same neighbour prompt keyed on the EDIT's subject (edit's value forced in).
-    dep, adv, n_unparsed = [], [], 0
+    # GEN cohort: the edit's PARAPHRASE prompts (rephrasings of the SAME fact) — the third leg of the
+    # editing triad. A paraphrase is about the edit's OWN subject, so it routes to the edit's bank and
+    # retrieves strongly (unlike a neighbour); we WANT it to fire (gold = new_tid). Keyed on the edit's
+    # subject_tids (deployment-faithful: the engine parses the paraphrase's subject = the edit's subject).
+    dep, adv, gen, n_unparsed = [], [], [], 0
     for r in kept:
         for p in r.neighborhood_prompts[:cap]:
             if not p:
@@ -1367,6 +1371,9 @@ def eval_persistent_locality(base, adapter, injector, tok, kept, args):
                 dep.append(_NbrRec(st, p, r.new_tid, r.true_tid, r.relation_id))
             else:
                 n_unparsed += 1
+        for p in getattr(r, "paraphrase_prompts", [])[:cap]:
+            if p:
+                gen.append(_NbrRec(r.subject_tids, p, r.new_tid, r.true_tid, r.relation_id))
     if not adv:
         print("[mag][persistent] locality: no neighbourhood_prompts on records; skipping.", flush=True)
         return {}
@@ -1400,11 +1407,17 @@ def eval_persistent_locality(base, adapter, injector, tok, kept, args):
           f"neighbour median={dm:.3f} p95={dp95:.3f}  separation={em - dm:+.3f}  -> gate "
           f"C0={c0 if c0 is None else round(c0, 3)} (~em/12, above nbr bulk) K={round(gate_k, 3)}", flush=True)
 
-    def _score(cohort, a):
+    dbg = os.environ.get("CAM_TRIAD_DEBUG") == "1"
+
+    def _score(cohort, a, tag=""):
         if not cohort:
             return None, None
+        if dbg:
+            print(f"[triad-dbg] score {tag} a={a} n={len(cohort)} ...", flush=True)
         os.environ["CAM_LOGIT_INJECT"] = str(a)
         pr = _persistent_preds(base, adapter, injector, tok, V, cohort)
+        if dbg:
+            print(f"[triad-dbg] score {tag} a={a} DONE", flush=True)
         n = max(1, len(cohort))
         keep = sum(int(pr[i] == cohort[i].true_tid) for i in range(len(cohort))) / n
         leak = sum(int(pr[i] == cohort[i].new_tid) for i in range(len(cohort))) / n
@@ -1421,26 +1434,34 @@ def eval_persistent_locality(base, adapter, injector, tok, kept, args):
             os.environ.pop("CAM_LOGIT_GATE_C0", None); os.environ.pop("CAM_LOGIT_GATE_HARD", None)
         rows = []
         for a in alphas:
+            if dbg:
+                print(f"[triad-dbg] sweep gated={gated} hard={hard} a={a} -> delivery(kept n={N}) ...", flush=True)
             os.environ["CAM_LOGIT_INJECT"] = str(a)
             ep = _persistent_preds(base, adapter, injector, tok, V, kept)   # edit prompts (own bank) = delivery
             delivery = sum(int(ep[i] == kept[i].new_tid) for i in range(N)) / max(1, N)
-            dk, dl = _score(dep, a); ak, al = _score(adv, a)
-            rows.append({"alpha": a, "delivery": delivery,
-                         "dep_keep": dk, "dep_leak": dl, "adv_keep": ak, "adv_leak": al})
+            dk, dl = _score(dep, a, "dep"); ak, al = _score(adv, a, "adv")
+            g_prior, g_hit = _score(gen, a, "gen")                          # GEN: hit = pred==new (fires on
+            rows.append({"alpha": a, "delivery": delivery,                  # paraphrase); prior = pred==true
+                         "dep_keep": dk, "dep_leak": dl, "adv_keep": ak, "adv_leak": al,
+                         "gen_hit": g_hit, "gen_prior": g_prior})
         return rows
 
     def _print(title, rows):
         print(f"\n  --- {title} ---", flush=True)
-        print(f"  {'alpha':>6}  {'delivery':>9} | {'DEP-keep':>9} {'DEP-leak':>9} | {'ADV-keep':>9} {'ADV-leak':>9}",
-              flush=True)
+        print(f"  {'alpha':>6}  {'delivery':>9} | {'DEP-keep':>9} {'DEP-leak':>9} | {'GEN-hit':>8} {'GEN-prior':>9} | "
+              f"{'ADV-keep':>9} {'ADV-leak':>9}", flush=True)
         for row in rows:
             dk = f"{row['dep_keep']:.3f}" if row['dep_keep'] is not None else "  -  "
             dl = f"{row['dep_leak']:.3f}" if row['dep_leak'] is not None else "  -  "
-            print(f"  {row['alpha']:>6.1f}  {row['delivery']:>9.3f} | {dk:>9} {dl:>9} | "
+            gh = f"{row['gen_hit']:.3f}" if row.get('gen_hit') is not None else "  -  "
+            gp = f"{row['gen_prior']:.3f}" if row.get('gen_prior') is not None else "  -  "
+            print(f"  {row['alpha']:>6.1f}  {row['delivery']:>9.3f} | {dk:>9} {dl:>9} | {gh:>8} {gp:>9} | "
                   f"{row['adv_keep']:>9.3f} {row['adv_leak']:>9.3f}", flush=True)
 
-    print(f"\n[mag][persistent] === Logit-injection LOCALITY: {N} edits | dep={len(dep)} "
-          f"adv={len(adv)} neighbours ({n_unparsed} unparsed) ===", flush=True)
+    print(f"\n[mag][persistent] === Logit-injection TRIAD: {N} edits | dep={len(dep)} adv={len(adv)} "
+          f"neighbours ({n_unparsed} unparsed) | gen={len(gen)} paraphrases ===", flush=True)
+    print(f"  (delivery=efficacy | DEP=locality (keep the neighbour) | GEN-hit=generality (edit fires on "
+          f"paraphrase, gold=new) | ADV=adversarial upper bound)", flush=True)
     ungated = _sweep(gated=False)
     _print("UNCONDITIONAL injection", ungated)
     gated = _sweep(gated=True) if c0 is not None else None
