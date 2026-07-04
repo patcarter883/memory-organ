@@ -483,6 +483,33 @@ means, with the structural wins reproducing exactly in every run):
 no residual self-addressing failure to retrain away; below-gate = 0 in all 3 reps). Shipped:
 `CAM_WRITE_AT_READ` (K1), `CAM_WRITE_REDUNDANT` (K2), `CAM_READ_SUB_TOPK` (K3, unneeded).
 
+## 3.18 SCALE-N de-risk — blocked by the single-token cap; multi-token objects are the real gate (2026-07-04)
+
+Before productionizing, we asked: does the triad hold as N grows (137 → 1000)? The sweep (`--multi-relations`
+6/15/30/60, the N knob) delivered a **more decisive finding than a triad-vs-N curve**:
+
+- **N caps at ~147 on single-token CounterFact.** R6 → 137 edits / 6 relations; R15/R30/R60 → **147 / 9
+  relations** (identical — 9 is the ceiling). `cf-probe-cap 21500` probes ~all 21k records, so this is not
+  probe-limited: only ~147 CounterFact facts have a single-token subject AND single-token both-objects AND
+  are base-known by Qwen3.5-4B. The store's single-token-VALUE design is the cap. **We cannot test true
+  deployment scale (500–1000+) on this data at all** without multi-token object support.
+- **Consequence for productionization:** multi-token object support is a **prerequisite**, not a
+  refinement — it is needed both to reach real scale AND because real edited facts have multi-token
+  objects. The scale-N question is *gated* on it; there is no point writing serving code for a
+  single-token-capped store.
+- Two harness issues surfaced: (1) `--multi-relations R` with R > available-base-known-relations **crashes**
+  (`ValueError: '<rid>' not in slot_relid`) — must clamp R to the available set; (2) the paraphrase-cohort
+  forward **intermittently HANGS on RDNA4** even with cohort/length caps + debug flushes (a genuine
+  kernel-sync flake, not a logic bug) — the triad eval needs a watchdog/retry, or the cohort scoring moved
+  off the flaky path, before it's a reliable production gate. Added robustness knobs (`CAM_COHORT_CAP`,
+  `CAM_PROMPT_MAXTOK`, `ALPHA_SWEEP`) that bound the work but do not eliminate the flake.
+- **What we CAN say at N≈137–147:** the triad (§3.16/§3.17) holds — efficacy ~0.81, locality-keep ~0.55,
+  generality ~0.82, below-gate 0. But 147 ≈ 137, so this is not a scaling *curve*, just stability in a
+  narrow band.
+
+**Verdict: do multi-token object support BEFORE productionizing** — it is the true gate for scale and
+realism, and it unblocks the scale-N question that this sweep could not answer.
+
 ## 3.17 GENERALITY — the third leg: the edit fires on PARAPHRASES too (2026-07-04)
 
 We had measured efficacy (delivery) and locality but not **generality** (does the edit fire on
