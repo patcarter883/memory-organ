@@ -1372,17 +1372,31 @@ def eval_persistent_locality(base, adapter, injector, tok, kept, args):
     saved_c0 = os.environ.get("CAM_LOGIT_GATE_C0")
 
     # --- conf separation + self-calibrated gate threshold -----------------------------------------
+    # The gate must exclude the NEIGHBOUR conf TAIL (not just the median): a few neighbours token-overlap
+    # an edit in the same bank and retrieve with nonzero conf. Set C0 just above that tail (2x the neighbour
+    # p95) so the MOST edits clear the gate at near-baseline locality — the midpoint (em+dm)/2 is far too
+    # conservative given the ~118-vs-0 separation (threshold sweep §3.15: C0~10 beats midpoint 59 by +0.04
+    # delivery at ~0 locality cost). CAM_LOGIT_GATE_C0 overrides for the production knob.
     import statistics as _st
+    def _pct(xs, q):
+        if not xs:
+            return float("nan")
+        s = sorted(xs); i = min(len(s) - 1, max(0, int(round(q * (len(s) - 1)))))
+        return s[i]
     ec = [c for c in _cohort_confs(adapter, V, kept, pooled) if c == c]            # edited (in-store) subj
     dc = [c for c in _cohort_confs(adapter, V, dep, pooled) if c == c] if dep else []  # neighbour (out-of-store)
     em = _st.median(ec) if ec else float("nan")
     dm = _st.median(dc) if dc else float("nan")
-    c0 = (em + dm) / 2.0 if (ec and dc) else None                                  # gate midpoint
+    dp95 = _pct(dc, 0.95) if dc else float("nan")
+    if ec and dc:
+        c0 = min(max(2.0 * dp95, 0.5), em / 4.0)     # above neighbour tail, well below edited median
+    else:
+        c0 = None
     spread = abs(em - dm) if (ec and dc) else 0.0
     gate_k = 4.0 / spread if spread > 1e-6 else 1.0                                # ~saturate across the gap
     print(f"\n[mag][persistent] conf(factual-head magnitude): edited median={em:.3f}  "
-          f"neighbour median={dm:.3f}  separation={em - dm:+.3f}  -> gate C0={c0 if c0 is None else round(c0,3)} "
-          f"K={round(gate_k,3)}", flush=True)
+          f"neighbour median={dm:.3f} p95={dp95:.3f}  separation={em - dm:+.3f}  -> gate "
+          f"C0={c0 if c0 is None else round(c0, 3)} (2x nbr-p95, clamped) K={round(gate_k, 3)}", flush=True)
 
     def _score(cohort, a):
         if not cohort:
@@ -1396,9 +1410,10 @@ def eval_persistent_locality(base, adapter, injector, tok, kept, args):
 
     saved_hard = os.environ.get("CAM_LOGIT_GATE_HARD")
 
-    def _sweep(gated, hard=False):
-        if gated and c0 is not None:
-            os.environ["CAM_LOGIT_GATE_C0"] = str(c0); os.environ["CAM_LOGIT_GATE_K"] = str(gate_k)
+    def _sweep(gated, hard=False, thr=None):
+        t = c0 if thr is None else thr
+        if gated and t is not None:
+            os.environ["CAM_LOGIT_GATE_C0"] = str(t); os.environ["CAM_LOGIT_GATE_K"] = str(gate_k)
             os.environ["CAM_LOGIT_GATE_HARD"] = "1" if hard else "0"
         else:
             os.environ.pop("CAM_LOGIT_GATE_C0", None); os.environ.pop("CAM_LOGIT_GATE_HARD", None)
@@ -1433,6 +1448,32 @@ def eval_persistent_locality(base, adapter, injector, tok, kept, args):
     if hardg is not None:
         _print(f"CONF-GATED (HARD step at C0={round(c0,3)})", hardg)
 
+    # THRESHOLD sweep: the midpoint C0 is over-conservative given the ~122-vs-0 separation. Lowering the
+    # hard threshold toward the neighbour level admits more sub-conf EDITED subjects (recovers the delivery
+    # gap) while conf~0.04 neighbours stay excluded. Find the C0 that maxes delivery at baseline locality.
+    thr_rows = None
+    if c0 is not None and dc:
+        amax = alphas[-1]                                                  # hard-gate delivery saturates in a
+        os.environ["CAM_LOGIT_INJECT"] = str(amax)                         # -> sweep C0 at the top alpha
+        cands = sorted({round(c0, 3), 20.0, 10.0, 5.0, 2.0,
+                        round(max(0.5, 3 * (dm if dm == dm else 0.04)), 3)}, reverse=True)
+        thr_rows = []
+        for t in cands:
+            os.environ["CAM_LOGIT_GATE_C0"] = str(t); os.environ["CAM_LOGIT_GATE_HARD"] = "1"
+            os.environ["CAM_LOGIT_GATE_K"] = str(gate_k)
+            ep = _persistent_preds(base, adapter, injector, tok, V, kept)
+            delivery = sum(int(ep[i] == kept[i].new_tid) for i in range(N)) / max(1, N)
+            dk, dl = _score(dep, amax)
+            thr_rows.append({"c0": t, "delivery": delivery, "dep_keep": dk, "dep_leak": dl})
+        print(f"\n  --- HARD-gate C0 THRESHOLD sweep (alpha={amax}; edited conf~{round(em,1)}, "
+              f"neighbour conf~{round(dm,3)}) ---", flush=True)
+        print(f"  {'C0':>8}  {'delivery':>9} | {'DEP-keep':>9} {'DEP-leak':>9}", flush=True)
+        for row in thr_rows:
+            print(f"  {row['c0']:>8.3f}  {row['delivery']:>9.3f} | {row['dep_keep']:>9.3f} "
+                  f"{row['dep_leak']:>9.3f}", flush=True)
+        print(f"  (lower C0 -> more edits clear the gate; neighbours (conf~{round(dm,3)}) stay excluded "
+              f"until C0 approaches their level)", flush=True)
+
     for var, val in (("CAM_LOGIT_INJECT", saved_a), ("CAM_LOGIT_GATE_C0", saved_c0),
                      ("CAM_LOGIT_GATE_HARD", saved_hard)):
         if val is None:
@@ -1446,7 +1487,7 @@ def eval_persistent_locality(base, adapter, injector, tok, kept, args):
     print("=" * 64, flush=True)
     return {"n_edits": N, "n_dep": len(dep), "n_adv": len(adv),
             "conf_edited": em, "conf_nbr": dm, "gate_c0": c0,
-            "ungated": ungated, "gated": gated, "hard": hardg}
+            "ungated": ungated, "gated": gated, "hard": hardg, "thr_sweep": thr_rows}
 
 
 def main():

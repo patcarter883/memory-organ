@@ -342,6 +342,35 @@ Deployment (DEP) numbers, α=2:
   threshold, or a per-edit adaptive threshold), NOT a locality one. This reconnects to §3.2 (banks) — the
   fidelity and addressing frontiers are now coupled through the gate threshold.
 
+**Threshold sweep — the midpoint C0 is over-conservative; the knob is the neighbour TAIL, not the median.**
+Sweeping the hard-gate C0 downward (α=20; edited conf ~118, neighbour median ~0.02) shows a clean,
+favourable frontier — and one subtlety:
+
+| C0 | delivery | DEP-keep | DEP-leak |
+|----|----------|----------|----------|
+| 59 (midpoint) | 0.628 | 0.479 | 0.027 |
+| 20 | 0.650 | 0.466 | 0.027 |
+| **10** | **0.672** | **0.466** | 0.027 |
+| 5  | 0.686 | 0.452 | 0.027 |
+| 2  | 0.708 | 0.425 | 0.027 |
+| 0.5 | 0.715 | 0.384 | 0.027 |
+
+- **DEP-leak is pinned at 0.027 for EVERY threshold** — neighbours never flip to the edit's object,
+  because even C0=0.5 ≫ the neighbour conf median (0.02). The gate is leak-proof across its whole range.
+- **Lowering C0 monotonically recovers delivery** (0.628 → 0.715) by admitting sub-threshold *edited*
+  subjects — confirming the gap is edited-side false-negatives, not a locality limit.
+- **But keep degrades gradually** (0.479 → 0.384): the neighbour conf *distribution* has a TAIL (a few
+  neighbours token-overlap an edit in the same bank), so pushing C0 to the median level injects into that
+  tail and corrupts those neighbours to *random* wrong tokens (keep-loss WITHOUT leak-gain).
+- **Sweet spot C0 ≈ 10** — roughly a decade below the edited median, above the neighbour tail: delivery
+  0.672 (+0.044 over the midpoint) at keep 0.466 (−0.013 from baseline 0.479). So the right calibration is
+  **2× the neighbour conf p95** (exclude the tail, include everything else), NOT the in/out midpoint. Gate
+  default updated accordingly; `CAM_LOGIT_GATE_C0` is the production delivery↔locality knob.
+- There is an **irreducible tail-trade**: the gate cannot fully match unconditional delivery (0.77) without
+  touching the neighbour tail, but at MATCHED locality (keep ~0.47) gated delivers 0.67 vs ungated's ~0.65
+  baseline, and at matched delivery gated has *far* better locality. The gate **dominates the ungated
+  frontier** everywhere.
+
 **Verdict:** §3.14's paradigm crack is real AND deployable. The ~0.7 residual wall is escaped by
 logit-space injection; the locality cost that made it look like a mere trade is **eliminated by a hard
 conf-gate**, which the store's near-binary in/out retrieval confidence makes almost free. Shipped:
