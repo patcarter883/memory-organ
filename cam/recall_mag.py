@@ -727,20 +727,23 @@ def setup_counterfact_multi(base, tok, args):
     # addressing — safe to relax for measurement; N1 validates for bind.
     max_suf = int(os.environ.get("CAM_MAX_SUFFIX_TOK", "6"))
     allow_empty_pre = os.environ.get("CAM_ALLOW_EMPTY_PREFIX") == "1"
-    n_skip_suf = n_skip_pre = 0
+    max_subj = int(os.environ.get("CAM_MAX_SUBJ_LEN", "999"))   # N1: cap subject len so the bind block fits
+    n_skip_suf = n_skip_pre = n_skip_subj = 0
     by_rid = defaultdict(lambda: defaultdict(list))
     for r in kept:
         if "{}" not in r.prompt:
             continue
+        if len(r.subject_tids) > max_subj:
+            n_skip_subj += 1; continue
         pre, suf = _split(r.prompt)
         if not pre and not allow_empty_pre:
             n_skip_pre += 1; continue
         if len(tok(suf, add_special_tokens=False).input_ids) > max_suf:
             n_skip_suf += 1; continue
         by_rid[r.relation_id][(r.prompt, len(r.subject_tids))].append(r)
-    print(f"[mag][cf-multi] relation-filter (MAX_SUFFIX_TOK={max_suf}, allow_empty_prefix={allow_empty_pre}): "
-          f"{len(by_rid)} relations pass; skipped {n_skip_suf} long-suffix + {n_skip_pre} empty-prefix facts",
-          flush=True)
+    print(f"[mag][cf-multi] relation-filter (MAX_SUFFIX_TOK={max_suf}, allow_empty_prefix={allow_empty_pre}, "
+          f"MAX_SUBJ_LEN={max_subj}): {len(by_rid)} relations pass; skipped {n_skip_suf} long-suffix + "
+          f"{n_skip_pre} empty-prefix + {n_skip_subj} long-subject facts", flush=True)
     R = max(2, args.multi_relations)
     per_rel_min = max(2, (args.M + R - 1) // R + 1)      # distinct subjects for this relation's doc-slot share
     # Phase N (N0, CAM_ALL_SUBJ_LENGTHS=1): the legacy grouping keeps only each relation's ONE largest
@@ -749,39 +752,51 @@ def setup_counterfact_multi(base, tok, args):
     # store keys length-agnostically on the subject last-token/pooled span). slen=-1 flags mixed lengths;
     # bind must then length-bucket (N1). Default off = byte-identical legacy behaviour.
     all_lengths = os.environ.get("CAM_ALL_SUBJ_LENGTHS") == "1"
+    length_split = os.environ.get("CAM_LENGTH_SPLIT") == "1"   # N1: bind-ready per-(rid,len) sub-relations
     # ceiling diagnostic: base-known facts kept per relation across ALL lengths (dominant prompt).
+    # Each `best` entry: (n, relkey, rid, prompt, slen, recs). relkey is the DocBuilder relation key —
+    # legacy/N0 use rid; N1 (length_split) uses "rid#L<slen>" so every fact in a relkey shares ONE subject
+    # length (satisfies the DocBuilder rel_subj_len assertion) while ALL lengths are bound.
     tot_all = 0
     best = []
     for rid, variants in by_rid.items():
-        if all_lengths:
-            by_prompt = defaultdict(list)
-            for (prompt, _slen), recs in variants.items():
-                by_prompt[prompt].extend(recs)
-            prompt, recs = max(by_prompt.items(), key=lambda kv: len(kv[1]))
-            slen = -1                                    # mixed subject lengths (bind must length-bucket)
-        else:
+        if length_split or all_lengths:
+            by_prompt = defaultdict(lambda: defaultdict(list))    # prompt -> slen -> recs
+            for (prompt, slen), recs in variants.items():
+                by_prompt[prompt][slen].extend(recs)
+            dom = max(by_prompt.items(), key=lambda kv: sum(len(v) for v in kv[1].values()))[0]
+            slen_buckets = by_prompt[dom]
+            if length_split:                             # N1: one fixed-length relkey PER length bucket
+                for slen, recs in slen_buckets.items():
+                    tot_all += len(recs)
+                    if len(recs) >= per_rel_min:
+                        best.append((len(recs), f"{rid}#L{slen}", rid, dom, slen, recs))
+            else:                                        # N0 (measure only): merge lengths (slen=-1)
+                recs = [r for rs in slen_buckets.values() for r in rs]
+                tot_all += len(recs)
+                if len(recs) >= per_rel_min:
+                    best.append((len(recs), rid, rid, dom, -1, recs))
+        else:                                            # legacy: single largest (prompt,length) bucket
             (prompt, slen), recs = max(variants.items(), key=lambda kv: len(kv[1]))
-        tot_all += len(recs)
-        if len(recs) >= per_rel_min:
-            best.append((len(recs), rid, prompt, slen, recs))
+            tot_all += len(recs)
+            if len(recs) >= per_rel_min:
+                best.append((len(recs), rid, rid, prompt, slen, recs))
     best.sort(reverse=True, key=lambda c: c[0])
     chosen = best[:R]
-    print(f"[mag][cf-multi] grouping={'ALL-LENGTHS' if all_lengths else 'one-length'} | "
-          f"{len(best)} relations pass per_rel_min>={per_rel_min} (of {len(by_rid)}); "
-          f"top-{R} kept; dominant-prompt fact pool across kept relations = {sum(c[0] for c in chosen)}",
+    mode = "LENGTH-SPLIT(N1)" if length_split else ("ALL-LENGTHS" if all_lengths else "one-length")
+    print(f"[mag][cf-multi] grouping={mode} | {len(best)} relation-buckets pass per_rel_min>={per_rel_min} "
+          f"(of {len(by_rid)} rids); top-{R} kept; fact pool across kept = {sum(c[0] for c in chosen)}",
           flush=True)
-    assert len(chosen) >= 2, (f"need >= 2 relations with >= {per_rel_min} base-known facts at one subject "
-                              f"length (got {[(c[1], c[0]) for c in best[:6]]}); lower --multi-relations/--M")
-    print(f"[mag][cf-multi] EDITING {len(chosen)} relations (rid, subj_len, #facts): "
-          f"{[(rid, slen, n) for (n, rid, _p, slen, _r) in chosen]}", flush=True)
+    assert len(chosen) >= 2, (f"need >= 2 relation-buckets with >= {per_rel_min} base-known facts "
+                              f"(got {[(c[1], c[0]) for c in best[:6]]}); lower --multi-relations/--M")
+    print(f"[mag][cf-multi] EDITING {len(chosen)} relation-buckets (relkey, subj_len, #facts): "
+          f"{[(rk, slen, n) for (n, rk, _rid, _p, slen, _r) in chosen]}", flush=True)
     facts, fact_relid, cf_tid, fact_subj_tids, kept_multi = [], [], [], [], []
     rel_templates, rel_subj_len = {}, {}
-    for (_n, rid, prompt, slen, recs) in chosen:
-        relkey = rid                                     # one relation per relation_id
+    for (_n, relkey, rid, prompt, slen, recs) in chosen:
         pre, suf = _split(prompt)
         rel_templates[relkey] = (pre, suf)
-        # mixed-length relations (N0): use the max subject length so construction/padding is valid; the
-        # real per-length sub-batching is N1 (probe-only exits before bind, so any positive value is safe).
+        # N1: relkey is per-length so slen>0 (assertion holds). N0-merge (slen=-1) uses max (probe-only).
         rel_subj_len[relkey] = slen if slen > 0 else max(len(r.subject_tids) for r in recs)
         for r in recs:
             # Phase M: use the object's FIRST token as the single-token stand-in (KEY is subject_last_tid;
