@@ -221,6 +221,12 @@ next-token direction) should recover the strong-prior failures — a targeted le
 global-strength/depth levers couldn't be, because it attacks the *specific* 12–30% that fails, not the
 average. Metric: solo-fidelity, esp. on the always-FAIL / high-prior subset; watch locality.
 
+**R1-prior-v1 (CAM_TWOSIDED, blind residual-damp) NEGATIVE:** ON 0.616 ≈ OFF 0.613; recovery of the
+always-FAIL subset = 0.125 (≈ noise). Damping ALL of h (not the original object's direction) → optimizer
+keeps it ~0 (no-op). **v2 (CAM_VALUE_SUPPRESS=λ): compose the stored value = new − λ·original** (we have
+r.true_tid) so the injection promotes new AND damps the ORIGINAL logit specifically — eval-only, no
+retrain. Directly attacks the strong-prior failures. A/B λ∈{0,0.5,1.0} on solo + always-FAIL recovery.
+
 ## 4. Theory connections *(from the 2026 literature pass)*
 
 One-line map: **whitening = the "make quantization error data-independent" half of modern PQ (OPQ/RaBitQ);

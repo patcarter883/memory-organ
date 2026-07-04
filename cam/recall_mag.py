@@ -1034,6 +1034,9 @@ def _persistent_write_val(adapter, V, r, val_tid, pooled):
         subj_emb = adapter._e(tids)                                                        # [1,S,mem_dim]
         key = adapter._pool_subject(subj_emb, keepdim=True) if pooled else subj_emb[:, -1:]  # [1,H,mem] or [1,1,mem]
     val = adapter._e(torch.tensor([[val_tid]], dtype=torch.long, device=DEV))              # [1,1,mem_dim]
+    lam = float(os.environ.get("CAM_VALUE_SUPPRESS", "0"))    # R1-prior-v2: promote new, SUPPRESS original
+    if lam > 0 and getattr(r, "true_tid", -1) >= 0:           # value = new - lam*original (damps the base's
+        val = val - lam * adapter._e(torch.tensor([[r.true_tid]], dtype=torch.long, device=DEV))  # confident prior)
     if key.shape[1] > 1:                        # multi-vector keys: repeat the value across the H key slots
         val = val.expand(-1, key.shape[1], -1)
     b = _subject_bank(r.subject_tids, len(V))
