@@ -190,6 +190,12 @@ deep for a 4B model?). Metric: solo-fidelity vs the 0.69 single-L24 ceiling.
 solo-fidelity vs single-L24 (~0.69): **multi[16,20,24] = 0.698** (0.745/0.686/0.664, ≈ baseline);
 single-L18 = 0.565 (worse — L24 not too deep). Multi-layer injection did NOT break the ceiling.
 
+**Depth sweep completed (P-R2b):** L18 0.565 · L24 ~0.69 · **L28 0.701** · L30 0.623. Fidelity peaks
+mid-late (L24–28 ~0.70), no depth escapes the wall; L30 drops (matches "final quarter reverts"). 5th
+confirmation. **Next (R-mech): what IS the ~30% that fails solo — a consistent un-editable subset (⇒
+characterizable editability boundary, a real lever) or uniform noise (⇒ stochastic floor)?** Per-fact
+logging (CAM_SOLO_LOG) + 3-rep consistency analysis. Reframes the wall rather than adding a 6th knob.
+
 **CONVERGED CONCLUSION:** ~0.7 is the robust reliability ceiling of a trained gated *residual* injection
 into a frozen LM — stable across encoder (P2), gate calibration (P-R1), layer count + depth (P-R2), and
 matching WISE (0.70–0.77) / MEMIT (0.66). Four independent confirmations of the lit's "single additive

@@ -1215,6 +1215,11 @@ def eval_persistent_solo(base, adapter, injector, tok, kept, args):
     n = max(1, len(kept))
     solo = sum(int(preds[i] == kept[i].new_tid) for i in range(len(kept))) / n
     prior = sum(int(preds[i] == kept[i].true_tid) for i in range(len(kept))) / n
+    if os.environ.get("CAM_SOLO_LOG") == "1":                # per-fact outcomes: is the ~30% failure a
+        for i, r in enumerate(kept):                          # CONSISTENT subset or noise? (subject-tids key)
+            key = "_".join(map(str, r.subject_tids))
+            print(f"[solofact] rid={r.relation_id} subj={key} hit={int(preds[i]==r.new_tid)} "
+                  f"prior={int(preds[i]==r.true_tid)} slen={len(r.subject_tids)}", flush=True)
     print(f"\n[mag][persistent] === Phase R/R0: SINGLE-FACT FIDELITY over {len(kept)} edits (each ALONE) ===",
           flush=True)
     print(f"  solo-delivery {solo:.3f} | prior {prior:.3f}   (per-fact store/tap ceiling — no collision "
