@@ -1370,7 +1370,10 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
         bank = adapter.persistent_bank(V[_subject_bank(r.subject_tids, len(V))], q)
         return bank, getattr(adapter, "_last_conf", None)
 
-    def _gen(prompt_ids, bank, conf):
+    # CAM_GEN_INJECT_STEPS: how many leading generation steps get the logit injection. 0 = ALL steps
+    # (naive constant — degenerates into repetition of the object). >0 = inject only the first K steps (the
+    # ANSWER span) then let the base continue fluently — the fix for the repetition failure.
+    def _gen(prompt_ids, bank, conf, inj_steps):
         injector.set_bank(bank, conf=conf, relidx=0) if bank is not None else injector.set_bank(None)
         inj = None
         if bank is not None and alpha > 0:
@@ -1384,9 +1387,9 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
                 inj = inj * g.view(-1, 1)
         cur = torch.tensor([prompt_ids], dtype=torch.long, device=DEV)
         out = []
-        for _t in range(gen_len):
+        for t in range(gen_len):
             logits = base(inputs_embeds=base_embed(cur)).logits[:, -1]        # [1,vocab] (no KV cache; small)
-            if inj is not None:
+            if inj is not None and (inj_steps == 0 or t < inj_steps):
                 logits = logits + inj.to(logits.device)
             nxt = logits.argmax(-1)
             out.append(int(nxt.item()))
@@ -1394,23 +1397,31 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
         injector.set_bank(None)
         return tok.decode(out).replace("\n", " ").strip()
 
-    print(f"\n[mag][persistent] === GENERATION COHERENCE ({len(sample)} edits, {gen_len} tok, α={alpha}) ===",
-          flush=True)
-    new_on = true_off = 0
+    k_ans = int(os.environ.get("CAM_GEN_INJECT_STEPS", "2"))                  # answer-span injection width
+    print(f"\n[mag][persistent] === GENERATION COHERENCE ({len(sample)} edits, {gen_len} tok, α={alpha}, "
+          f"answer-inject-steps={k_ans}) ===", flush=True)
+    new_const = new_ans = true_off = 0
     for r in sample:
         pid = bos + tok(r.prompt_text, add_special_tokens=False).input_ids
         bank, conf = _bank_conf(r)
-        g_off, g_on = _gen(pid, None, None), _gen(pid, bank, conf)
-        new_in = r.new_str.strip().lower() in g_on.lower()
-        new_on += int(new_in); true_off += int(r.true_str.strip().lower() in g_off.lower())
+        g_off = _gen(pid, None, None, 0)
+        g_const = _gen(pid, bank, conf, 0)                                   # inject EVERY step (naive)
+        g_ans = _gen(pid, bank, conf, k_ans)                                 # inject only the answer span
+        nl = r.new_str.strip().lower()
+        new_const += int(nl in g_const.lower()); new_ans += int(nl in g_ans.lower())
+        true_off += int(r.true_str.strip().lower() in g_off.lower())
         print(f"  [{r.relation_id}] {r.prompt_text!r}  edit {r.true_str!r}->{r.new_str!r}", flush=True)
-        print(f"     OFF: {g_off!r}", flush=True)
-        print(f"     ON : {g_on!r}   [new present: {new_in}]", flush=True)
+        print(f"     OFF        : {g_off!r}", flush=True)
+        print(f"     ON constant: {g_const!r}", flush=True)
+        print(f"     ON answer-{k_ans}: {g_ans!r}   [new: {nl in g_ans.lower()}]", flush=True)
     n = max(1, len(sample))
-    print(f"  --> NEW object in mem-ON gen: {new_on}/{len(sample)} ({new_on/n:.2f}); "
-          f"base recalls TRUE in mem-OFF: {true_off}/{len(sample)} ({true_off/n:.2f})", flush=True)
+    print(f"  --> NEW object present — constant-inject: {new_const}/{len(sample)} ({new_const/n:.2f}) | "
+          f"answer-span-inject: {new_ans}/{len(sample)} ({new_ans/n:.2f}); base TRUE-recall {true_off}/{len(sample)}",
+          flush=True)
+    print(f"  (constant-inject = repetition/degenerate; answer-span-inject should read FLUENT with the edit)",
+          flush=True)
     print("=" * 64, flush=True)
-    return {"n": len(sample), "new_in_gen": new_on / n, "true_in_base": true_off / n}
+    return {"n": len(sample), "new_constant": new_const / n, "new_answer": new_ans / n, "true_in_base": true_off / n}
 
 
 class _NbrRec:
