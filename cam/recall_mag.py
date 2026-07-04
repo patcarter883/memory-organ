@@ -1504,6 +1504,39 @@ def eval_persistent_locality(base, adapter, injector, tok, kept, args):
         for rid, (n, s) in sorted(by_rel.items()):
             print(f"    {rid}: n={n:3d}  mean-conf={s / max(1, n):8.2f}", flush=True)
 
+    # BANK SWEEP (§3.15 capstone): the delivery gap = weakly-retrieved edits (bank crowding). Scaling
+    # disjoint banks de-crowds them -> raises in-store conf -> more edits clear the gate AND the bimodal
+    # neighbour tail shrinks (fewer same-bank collisions). For each B: re-route into B banks, recompute the
+    # per-B C0=em/12 hard gate, report gated delivery + DEP locality at the top alpha. (Disjoint banks are
+    # persistent-path only — bind/tap unchanged — so this is a pure re-routing sweep, no re-bind.)
+    bank_list = os.environ.get("CAM_BANK_SWEEP", "")
+    if bank_list and dep:
+        Bs = [int(x) for x in bank_list.split(",")]
+        amax = alphas[-1]
+        print(f"\n  --- BANK sweep (alpha={amax}, hard gate C0=em/12 per B) ---", flush=True)
+        print(f"  {'B':>5}  {'edit-conf':>9} {'C0':>7} {'below':>6} | {'delivery':>9} {'DEP-keep':>9} {'DEP-leak':>9}",
+              flush=True)
+        for B in Bs:
+            Vb = _init_banks(adapter, B)
+            for r in kept:
+                Vb = _persistent_write_one(adapter, Vb, r, pooled)
+            ecb = [c for c in _cohort_confs(adapter, Vb, kept, pooled) if c == c]
+            emb = _st.median(ecb) if ecb else float("nan")
+            c0b = max(emb / 12.0, 0.5) if ecb else 0.5
+            below = sum(1 for c in ecb if c < c0b)
+            os.environ["CAM_LOGIT_INJECT"] = str(amax); os.environ["CAM_LOGIT_GATE_HARD"] = "1"
+            os.environ["CAM_LOGIT_GATE_C0"] = str(c0b); os.environ["CAM_LOGIT_GATE_K"] = str(gate_k)
+            ep = _persistent_preds(base, adapter, injector, tok, Vb, kept)
+            delivery = sum(int(ep[i] == kept[i].new_tid) for i in range(N)) / max(1, N)
+            prb = _persistent_preds(base, adapter, injector, tok, Vb, dep)
+            nn = max(1, len(dep))
+            keep = sum(int(prb[i] == dep[i].true_tid) for i in range(len(dep))) / nn
+            leak = sum(int(prb[i] == dep[i].new_tid) for i in range(len(dep))) / nn
+            print(f"  {B:>5}  {emb:>9.2f} {c0b:>7.2f} {below:>6} | {delivery:>9.3f} {keep:>9.3f} {leak:>9.3f}",
+                  flush=True)
+        print(f"  (more banks -> de-crowd -> higher edit-conf, fewer below-gate, delivery up at flat locality)",
+              flush=True)
+
     for var, val in (("CAM_LOGIT_INJECT", saved_a), ("CAM_LOGIT_GATE_C0", saved_c0),
                      ("CAM_LOGIT_GATE_HARD", saved_hard)):
         if val is None:

@@ -38,12 +38,14 @@ on the injection recovers full baseline locality (keep flat at 0.47) while still
 usable operating point (§3.15). The wall is a property of the *site*, not of frozen-ness; logit-space with
 a conf-gate escapes it deployably. Shipped: `CAM_LOGIT_INJECT`, `CAM_LOGIT_GATE_C0`/`_K`/`_HARD`.
 
-**BOTTOM LINE (product):** addressing gives **~0.66 at N=137**; the per-fact **~0.7 residual ceiling is
-NOT fundamental** — hard-conf-gated logit injection escapes it at zero locality cost. The remaining gap is
-now **addressing-limited** (edited subjects with sub-threshold retrieval conf get gated out), which
-recouples fidelity to the bank/write-strength levers of (A) rather than to a frozen-base architecture cap.
-Next frontier: raise in-store retrieval conf so more edits clear the gate (adaptive per-edit threshold /
-stronger writes).
+**BOTTOM LINE (product):** the per-fact **~0.7 residual ceiling is NOT fundamental** — hard-conf-gated
+logit injection escapes it at ~zero locality cost, and the residual gap is **addressing-limited** (bank
+crowding degrades value-readout PURITY, not retrieval strength). **Scaling disjoint banks lifts delivery
+AND locality together** (B=32→137: delivery 0.64→0.72, neighbour-keep 0.51→0.58, leak flat 0.01) — no
+trade. End-to-end usable operating point: **B=137 + hard-conf-gated logit injection = ~0.72 delivery / 0.58
+neighbour-keep / 0.01 leak**, past both the old ~0.66 addressing plateau and the ~0.7 residual wall.
+Fidelity and addressing are now one frontier; the only residual lever is the ~19 genuinely weak-retrieval
+edits (keys/writes, B-independent). No frozen-base architecture cap remains.
 
 ## 1. The question
 
@@ -390,6 +392,29 @@ unconditional max-α (readable?) and residual-only (base?):
   banks (B>32) / better keys to de-crowd their bank — so a *safe* high C0 captures full delivery AND the
   bimodal neighbour tail shrinks (fewer same-bank collisions). Fidelity is now fully recoupled to the
   addressing frontier; there is no separate frozen-base fidelity cap left to attack.
+
+**CAPSTONE — scaling disjoint banks lifts BOTH delivery and locality at once (no trade), via readout
+PURITY not retrieval magnitude.** `CAM_BANK_SWEEP` re-routes the standing store into B banks (bind/tap
+unchanged — persistent-path only), per-B hard gate C0=em/12, α=20:
+
+| B (edits/bank) | edit-conf | below-gate | delivery | DEP-keep | DEP-leak |
+|----------------|-----------|------------|----------|----------|----------|
+| 32 (~4)        | 109       | 18         | 0.635    | 0.507    | 0.014    |
+| 64 (~2)        | 109       | 20         | 0.679    | 0.534    | 0.014    |
+| 137 (~1)       | 109       | 19         | **0.723**| **0.575**| 0.014    |
+
+- **Both axes improve together:** delivery 0.635→0.723 AND neighbour-keep 0.507→0.575, leak pinned 0.014.
+  Scaling addressing is a *pure* win here — no delivery↔locality trade.
+- **Mechanism CORRECTION:** edit-conf median (~109) and below-gate count (~19) are **FLAT across B** — so
+  the gain is NOT de-crowding raising retrieval magnitude (the §3.15 hypothesis). It's **readout PURITY**:
+  at B=32 an edit's bank holds ~4 mixed values, so the retrieved+injected value is contaminated *at the
+  same conf*; at B=137 (1 edit/bank) the bank is pure → cleaner delivery, and a neighbour that collides
+  into a bank finds 1 value not 4 → cleaner separation → higher keep. **Bank crowding degrades the VALUE
+  READOUT, not the retrieval STRENGTH.** (The ~19 below-gate edits are a stable, B-independent subset —
+  genuinely weak self-retrieval / the ~6 unreadable — a *separate* residual lever: keys/writes, not banks.)
+- **Usable end-to-end operating point:** B=137 + hard-conf-gated logit injection → delivery 0.72, keep
+  0.58, leak 0.01. The persistent editing memory now delivers ~0.72 of edits AND preserves neighbours,
+  well past the old ~0.66 addressing plateau and the ~0.7 residual fidelity wall — both escaped, together.
 
 **Verdict:** §3.14's paradigm crack is real AND deployable. The ~0.7 residual wall is escaped by
 logit-space injection; the locality cost that made it look like a mere trade is **eliminated by a hard

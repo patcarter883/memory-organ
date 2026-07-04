@@ -15,6 +15,7 @@ docker run --rm --device /dev/kfd --device /dev/dri --group-add video \
   -e CAM_NATIVE_GDN=1 -e CAM_SKIP_CEILING=1 -e GDN_HIP_NATIVE_BWD=1 -e CAM_PERSISTENT_EVAL_BATCH=4 -e CAM_PROBE_CACHE_DIR=/probe_cache \
   -e CAM_POOLED_SUBJ_KEY=1 -e CAM_SUBJ_ONLY_QUERY=1 -e CAM_LEARNED_KEY_POOL=1 -e CAM_DISJOINT_BANKS=32 \
   -e CAM_LOGIT_INJECT_SWEEP="0,2,8,20" -e CAM_LOCALITY_NBR_CAP=3 -e CAM_CONF_DIAG="${CONF_DIAG:-0}" \
+  -e CAM_BANK_SWEEP="${BANK_SWEEP:-}" \
   -v "$MINISGL":/minisgl:ro -v "$ENGINE":/engine:ro -v "$DATA":/data:ro -v "$CACHE":/probe_cache \
   -v /home/pat/.cache/huggingface:/root/.cache/huggingface --entrypoint bash titans:dev -lc \
   "source /app/.venv/bin/activate && timeout 1200 python /engine/cam/recall_mag.py \
