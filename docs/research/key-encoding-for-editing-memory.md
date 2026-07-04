@@ -501,6 +501,35 @@ means, with the structural wins reproducing exactly in every run):
 no residual self-addressing failure to retrain away; below-gate = 0 in all 3 reps). Shipped:
 `CAM_WRITE_AT_READ` (K1), `CAM_WRITE_REDUNDANT` (K2), `CAM_READ_SUB_TOPK` (K3, unneeded).
 
+## 3.21 HELD-OUT SUBJECTS — test-time editing works on subjects the bind NEVER saw (2026-07-04)
+
+The cleanest test of *true* test-time editing (and the feasibility gate for "point it at an arbitrary
+codebase/domain"): in all prior runs the edited subjects OVERLAP the bind training set. `CAM_HELDOUT_FRAC`
+splits each relation-bucket WITHIN-bucket into a BIND portion (train the projections + tap) and a disjoint
+HELD-OUT portion (write + query in the persistent store) — isolating **novel subject, seen relation**.
+
+Result (frac=0.3, N=137 legacy config, K1 on): **BIND=96 subjects / HELD-OUT=41 subjects** (6 relations
+each, no overlap). Bind held-out carry 0.744. **Persistent delivery on the 41 NEVER-BOUND subjects:
+cf-delivery 0.659** — vs in-distribution ~0.774 at the same α=0.
+
+- **Novel-subject editing WORKS** — 0.66 delivery for subjects the machinery never trained on, a modest
+  ~0.11 drop from in-distribution (not a collapse). K1 write-where-you-read makes addressing self-consistent
+  for *any* subject by construction, and the trained readout (`out_proj`) evidently generalises across
+  subjects within a relation. So you can **bind the machinery once on a representative distribution, then
+  edit arbitrary new facts at inference** without re-binding per subject.
+- **Caveat (honest):** the held-out store holds 41 subjects vs the in-distribution 137, so store size differs
+  (smaller = less crowding) — a size-matched comparison would tighten the 0.66-vs-0.77 gap. And this is
+  *novel subject, SEEN relation*; novel-RELATION generalisation is a separate, harder claim (untested). The
+  full triad (hard-gate α-sweep, below-gate, locality, generality) didn't complete — the generality cohort
+  hit the deterministic RDNA4 gen-forward flake; the `watchdog_run.sh` watchdog correctly caught the stall
+  and killed the container, but the flake re-triggers on that cohort, so only the retention delivery landed.
+- **Implication for the codebase / RAG use case:** memory-organ can serve symbols it never bound on (edit
+  novel facts into a frozen model at test time), which is what makes an "override/cache layer over RAG"
+  practical — bind once, then patch/cache arbitrary repo symbols. The ~0.11 novelty cost + the readout
+  scale-softening (§3.20-adjacent) bound how large that layer can be before efficacy erodes.
+
+Shipped: `CAM_HELDOUT_FRAC` (default 0 = byte-identical), `tools/heldout_test.sh`.
+
 ## 3.20 GENERATION COHERENCE — the reality check: the editor is REAL, but only answer-span-injected (2026-07-04)
 
 Every prior metric was single-next-token argmax. The decisive question: does the edited memory produce
