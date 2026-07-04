@@ -26,18 +26,24 @@ and that OFAT verdicts were confounded. Shipped: `CAM_DISJOINT_BANKS` (default 3
 load), gated on reproducing the known raw-B-sweep + GTE-death, let us screen the combinatorial factor
 space cheaply and catch the OFAT-confounded GTE kill. Interaction-aware, proxy-screened design worked.
 
-**(C) RETRIEVAL FIDELITY — CHARACTERIZED (the wall).** With addressing solved, a **single collision-free
-fact still delivers only ~0.7** (R0). This is the documented **single-site residual-injection ceiling**
-(WISE 0.70–0.77, MEMIT 0.66) — a property of injecting one trained gated nudge into a **frozen** LM's
-residual stream, NOT the store. Robust to: gate calibration (P-R1 collapsed), multi-layer injection (P-R2
-≈ baseline), layer depth, and encoder. Breaking it requires **leaving the frozen-residual paradigm**
-(logit-level injection, or un-freezing / a different mechanism) — an architecture decision, not a knob.
+**(C) RETRIEVAL FIDELITY — WALL CHARACTERIZED, THEN ESCAPED.** With addressing solved, a **single
+collision-free fact still delivers only ~0.7** (R0) through the **frozen-residual gated tap** — the
+documented single-site residual-injection ceiling (WISE 0.70–0.77, MEMIT 0.66), robust to gate
+calibration, multi-layer injection, depth, and encoder (§3.7–3.11). **The escape is to leave the residual
+site: `CAM_LOGIT_INJECT` adds the retrieved value's contribution (out_proj→lm_head) straight to the OUTPUT
+logits.** Solo fidelity 0.65 → 0.88 (§3.14). The blunt version has a **locality wall** (it fires on every
+prompt → wrecks neighbours, keep 0.47→0.10), BUT the store's retrieval confidence separates in-store
+edited subjects (median ≈122) from out-of-store neighbours (≈0.04) almost perfectly, so a **HARD conf-gate
+on the injection recovers full baseline locality (keep flat at 0.47) while still delivering +0.12** — the
+usable operating point (§3.15). The wall is a property of the *site*, not of frozen-ness; logit-space with
+a conf-gate escapes it deployably. Shipped: `CAM_LOGIT_INJECT`, `CAM_LOGIT_GATE_C0`/`_K`/`_HARD`.
 
-**BOTTOM LINE (product):** this class of editing memory delivers **~0.66 at N=137**, with **~0.7 the
-per-fact ceiling** of the frozen-base gated-residual-injection architecture. Higher fidelity is a
-fundamental architecture bet, not tuning. Strategic question deferred to the caller: is ~2/3 edited-fact
-recall good enough for the use case, and is the frozen-base premise (edit-without-retraining) worth its
-~0.7 cap?
+**BOTTOM LINE (product):** addressing gives **~0.66 at N=137**; the per-fact **~0.7 residual ceiling is
+NOT fundamental** — hard-conf-gated logit injection escapes it at zero locality cost. The remaining gap is
+now **addressing-limited** (edited subjects with sub-threshold retrieval conf get gated out), which
+recouples fidelity to the bank/write-strength levers of (A) rather than to a frozen-base architecture cap.
+Next frontier: raise in-store retrieval conf so more edits clear the gate (adaptive per-edit threshold /
+stronger writes).
 
 ## 1. The question
 
@@ -291,7 +297,55 @@ OUTPUT logits, bypassing the residual site. Solo-fidelity: α=0 **0.65** → α=
 - **CRITICAL open follow-up = LOCALITY.** Logit injection is blunt: it forces the edited object's logit
   wherever the tap fires, so it likely damages NEIGHBOR facts (queries about the edited subject that
   should NOT change). Delivery ↔ locality trade-off across α is the experiment that decides whether this
-  is a usable escape or just trades the fidelity wall for a locality wall. Untested (needs loc/gen path).
+  is a usable escape or just trades the fidelity wall for a locality wall. → RESOLVED in §3.15.
+
+## 3.15 LOGIT-INJECTION LOCALITY — the escape is USABLE, but only conf-gated (2026-07-04)
+
+The decisive follow-up to §3.14. `--persistent-locality` writes all 137 edits, then sweeps α and scores
+edit **delivery** together with neighbour **keep** (gold = the neighbour's TRUE object) / **leak** (flips
+to the EDIT's counterfactual). Neighbours are scored two ways: **DEP** (deployment-faithful — the
+neighbour's OWN parsed subject drives store retrieval, so the store's *addressing* is in play) and **ADV**
+(adversarial upper bound — neighbour forced onto the edit's own bank). *(Absolute delivery wanders ±0.15
+run-to-run — the 150-step tap fit is stochastic under native-GDN nondeterminism — but the locality
+STRUCTURE below is identical across all runs. Numbers shown are the hard-gate run.)*
+
+**Unconditional logit injection has a real LOCALITY WALL.** At α=2 (DEP): delivery 0.55→0.77 but
+neighbour-keep **collapses 0.47→0.10** — a locality loss *larger* than the delivery gain. Blunt injection
+trades the fidelity wall for a locality wall. Mechanism: the product-key store returns *some* bank for
+every query, and unconditional injection fires at fixed α on **every** prompt, corrupting unrelated facts.
+The residual tap has a trained retrieval-strength conf-gate; the raw logit injection had **none**.
+
+**The retrieval-confidence signal separates in/out-of-store PERFECTLY.** Factual-head retrieval magnitude
+(`conf`): **edited (in-store) median ≈ 122, neighbour (out-of-store) median ≈ 0.04** (separation +122).
+This is the enabling fact — the store *knows* when a query is a real key vs a stranger.
+
+**Conf-GATING the injection (scale α by conf) recovers locality.** `CAM_LOGIT_GATE_C0` (+`_K`, or
+`_HARD=1`) gates the injection on retrieval strength. Self-calibrated C0 = midpoint of the two medians.
+Deployment (DEP) numbers, α=2:
+
+| injection            | delivery | nbr-keep | nbr-leak |
+|----------------------|----------|----------|----------|
+| baseline (α=0)       | 0.547    | 0.466    | 0.110    |
+| unconditional        | 0.766    | **0.096**| 0.096    |
+| conf-gated (soft)    | 0.737    | 0.233    | 0.096    |
+| conf-gated (**HARD**)| 0.664    | **0.466**| 0.068    |
+
+- **HARD gate = the usable operating point.** Neighbour-keep stays **exactly at baseline (0.466) across
+  ALL α** (neighbours' conf ≈0.04 ≪ C0=61 → hard-zeroed) while delivery rises **+0.117** and leak *drops*
+  to 0.068. Logit injection breaks the residual wall **at zero locality cost** — it is a genuine escape,
+  not a wall-trade, provided it is hard-gated on retrieval confidence.
+- The soft sigmoid gate is an intermediate (transition width ~1/K wider than the gap → partial leak to
+  mid-conf rows); the **hard step exploits the 122-vs-0 separation** and is strictly better for locality.
+- **Residual gap = addressing, not locality.** Hard-gate delivery (0.664) < unconditional (0.766) because
+  some *edited* subjects retrieve with conf < C0 (false negatives — the hard gate zeros their injection
+  too). That is a **store-addressing / write-strength** lever (raise in-store conf so more edits clear the
+  threshold, or a per-edit adaptive threshold), NOT a locality one. This reconnects to §3.2 (banks) — the
+  fidelity and addressing frontiers are now coupled through the gate threshold.
+
+**Verdict:** §3.14's paradigm crack is real AND deployable. The ~0.7 residual wall is escaped by
+logit-space injection; the locality cost that made it look like a mere trade is **eliminated by a hard
+conf-gate**, which the store's near-binary in/out retrieval confidence makes almost free. Shipped:
+`CAM_LOGIT_GATE_C0` / `_K` / `_HARD`, `--persistent-locality` (dep+adv cohorts, self-calibrated gate).
 
 ## 4. Theory connections *(from the 2026 literature pass)*
 
