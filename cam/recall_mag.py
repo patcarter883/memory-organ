@@ -1388,8 +1388,11 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
         cur = torch.tensor([prompt_ids], dtype=torch.long, device=DEV)
         out = []
         for t in range(gen_len):
+            if inj_steps > 0 and t == inj_steps and bank is not None:
+                injector.set_bank(None)                                       # disable the TAP too after the
+                inj = None                                                    # answer span -> base continues fluent
             logits = base(inputs_embeds=base_embed(cur)).logits[:, -1]        # [1,vocab] (no KV cache; small)
-            if inj is not None and (inj_steps == 0 or t < inj_steps):
+            if inj is not None:
                 logits = logits + inj.to(logits.device)
             nxt = logits.argmax(-1)
             out.append(int(nxt.item()))
