@@ -1977,6 +1977,11 @@ def main():
                          "facts JSON (CounterFact schema; target_true.str = the CORRECT current answer). "
                          "Probe the frozen base + report how often it is already correct vs WRONG (editable), "
                          "then exit. The cheap gate before building the full API-override edit+eval.")
+    ap.add_argument("--private-facts", type=str, default="", dest="private_facts",
+                    help="DEMO of the validated niche (§3.21/3.23): bind on CounterFact schemas, then SWAP "
+                         "the persistent-eval set to this JSON of INVENTED 'private' facts (CounterFact "
+                         "schema; use a SEEN relation template + novel subjects/values the base can't know). "
+                         "Run with --persistent-generate to show fluent delivery of unknowable facts.")
     ap.add_argument("--persistent-generate", action="store_true", dest="persistent_generate",
                     help="GENERATION-COHERENCE (reality check): after writing all edits, GENERATE "
                          "CAM_GEN_LEN tokens (greedy) from a sample of edit prompts with memory OFF vs ON "
@@ -2078,6 +2083,18 @@ def main():
         if args.dataset == "counterfact" and multi_relation:
             # Track 1 MULTI-RELATION (#16): edit N distinct relations in ONE memory (faithful prefix).
             builder, cf_records, prior_acc_full = setup_counterfact_multi(base, tok, args)
+            if getattr(args, "private_facts", ""):
+                # DEMO of the validated niche (§3.21/3.23): bind trains the readout on the CounterFact
+                # relation SCHEMAS above; here we SWAP the persistent-eval set to fully INVENTED "private"
+                # facts of a SEEN schema (novel subjects + values the base cannot know). The machinery then
+                # writes+delivers them at inference with NO retraining — the schema-bound, subject-free niche.
+                _priv, _pstats = load_counterfact(args.private_facts, tok, single_token_only=False)
+                for _r in _priv:
+                    _r._relkey = _r.relation_id or "private"
+                cf_records = _priv
+                print(f"[mag][private] DEMO: bound on CounterFact schemas; SWAPPED persistent-eval set to "
+                      f"{len(cf_records)} INVENTED private facts (base cannot know them). e.g. "
+                      f"{cf_records[0].prompt_text!r} -> {cf_records[0].new_str!r}", flush=True)
             if getattr(args, "probe_only", False):
                 # cache-build run: the probe (the costly part) ran + cached inside setup; exit before the
                 # single-card-fragile stage-2 so the cache is ready for a subsequent (2-card) sweep.
