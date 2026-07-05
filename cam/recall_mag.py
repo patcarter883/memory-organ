@@ -169,7 +169,7 @@ def build_adapter(args, embed_weight, H, builder=None):
             addr_sup_weight=args.addr_sup_weight,
             read_heads=(args.pk_read_heads if args.pk_read_heads > 0 else None),
             mt_value=getattr(args, "mt_value", "mean"),
-            mt_positions=max(2, getattr(args, "cargo_tokens", 1)),
+            mt_positions=(getattr(args, "mt_positions", 0) or max(2, getattr(args, "cargo_tokens", 1))),
             readout=getattr(args, "readout", "linear"),
             dec_layers=getattr(args, "dec_layers", 2),
             dec_heads=getattr(args, "dec_heads", 4),
@@ -183,9 +183,42 @@ def build_adapter(args, embed_weight, H, builder=None):
 
 
 # ---- stage 1: bind (direct tied-unembed; no base in the loop) ----------------------------------
-def bind_adapter(adapter, builder, rng, args):
+def _mt_recon_loss(adapter, unembed, rng, batch, K, weight):
+    """Perpos MULTI-TOKEN reconstruction (autoencoder) loss — the Track-4 delivery path made trainable.
+    For a batch of random single-token "names" and random K-token "objects": write embed(obj_t) at
+    _pos_key(name, t) into a FRESH per-row store, then read each position back and score
+    CE(out_proj(read_t) @ unembed^T, obj_t). Backprops into in_proj/out_proj/pos_tag/pos_proj/codebooks
+    so the store learns to STORE and REPRODUCE arbitrary multi-token sequences (incl. rare subwords) at
+    position-SEPARATED addresses — exactly what Phase-C generation needs to deliver a multi-token object.
+    Random tokens give broad vocab coverage so it generalizes to unseen invented objects."""
+    import torch.nn.functional as F
+    dev = DEV
+    Vsz = int(adapter.embed.weight.shape[0])
+    names = torch.from_numpy(rng.integers(0, Vsz, size=(batch, 1))).long().to(dev)      # [B,1] key tokens
+    objs = torch.from_numpy(rng.integers(0, Vsz, size=(batch, K))).long().to(dev)       # [B,K] value tokens
+    name_key = adapter._pool_subject(adapter._e(names), keepdim=True)                    # [B,H,mem]
+    V = adapter.store.init_state(batch, dev, dtype=torch.float32)
+    for t in range(K):
+        key_t = adapter._pos_key(name_key, t)                                           # [B,H,mem]
+        val_t = adapter._e(objs[:, t:t + 1])                                            # [B,1,mem]
+        if key_t.shape[1] > 1:                                                           # multi-vector keys
+            val_t = val_t.expand(-1, key_t.shape[1], -1)
+        V = adapter.persistent_write(V, key_t, val_t)
+    ue = unembed.to(dev).float()                                                        # [vocab, hidden]
+    loss = 0.0
+    for t in range(K):
+        read = adapter.persistent_bank(V, adapter._pos_key(name_key, t))                 # [B,K',mem]
+        logits = adapter.out_proj(read).mean(1).float() @ ue.t()                         # [B,vocab]
+        loss = loss + F.cross_entropy(logits, objs[:, t])
+    return weight * loss / max(1, K)
+
+
+def bind_adapter(adapter, builder, rng, args, unembed=None):
     train_params = [p for p in adapter.parameters() if p.requires_grad]
     opt = torch.optim.AdamW(train_params, lr=args.lr)
+    mt_w = float(getattr(args, "mt_recon_weight", 0.0))
+    mt_k = min(int(getattr(args, "mt_recon_tokens", 4)), int(getattr(adapter, "mt_positions", 4)))
+    mt_on = mt_w > 0 and unembed is not None and hasattr(adapter, "_pos_key")
     for step in range(args.bind_steps):
         opt.zero_grad()
         ids, ans, apos = builder.build(rng, args.batch, local=False)
@@ -200,13 +233,17 @@ def bind_adapter(adapter, builder, rng, args):
         aux_fn = getattr(adapter, "aux_loss", None)
         aux = aux_fn() if aux_fn is not None else None
         loss = lm + aux if aux is not None else lm
+        mt = _mt_recon_loss(adapter, unembed, rng, args.batch, mt_k, mt_w) if mt_on else None
+        if mt is not None:
+            loss = loss + mt
         loss.backward()
         torch.nn.utils.clip_grad_norm_(train_params, 1.0)
         opt.step()
         if step % 200 == 0 or step == args.bind_steps - 1:
             em, pt = _seq_metrics(_dlogits(adapter, pref, ans, _dec), ans)   # exact-match ; per-token
             astr = f" addr {aux.item():.3f}" if aux is not None else ""
-            print(f"[mag] bind step {step:4d} loss {lm.item():.3f}{astr} "
+            mstr = f" mt-recon {mt.item():.3f}" if mt is not None else ""
+            print(f"[mag] bind step {step:4d} loss {lm.item():.3f}{astr}{mstr} "
                   f"direct_acc(exact) {em.mean().item():.3f} per_tok {pt.mean().item():.3f}", flush=True)
     d_carry, d_abl, pt_carry, pt_abl = eval_direct(adapter, builder, rng, args)
     print(f"[mag] binding held-out: carry(exact) {d_carry:.3f} | ablated(exact) {d_abl:.3f} | "
@@ -411,6 +448,7 @@ def save_ckpt(path, adapter, injector, tap_layer, args, d_carry, cf_meta=None):
         "pk_read_heads": getattr(args, "pk_read_heads", 0),
         "phrasing": getattr(args, "phrasing", "dict"),      # doc format (v1 rebuilds the same builder)
         "cargo_tokens": getattr(args, "cargo_tokens", 1),   # multi-token answer length (v1 rebuilds K)
+        "mt_positions": (getattr(args, "mt_positions", 0) or max(2, getattr(args, "cargo_tokens", 1))),
         "mt_value": getattr(args, "mt_value", "mean"),      # multi-token value mode (mean/perpos)
         "readout": getattr(args, "readout", "linear"),      # Stage-1 value readout (linear/decoder)
         "dec_layers": getattr(args, "dec_layers", 2),
@@ -449,7 +487,7 @@ def load_ckpt(path, embed_weight, base, dev, builder=None):
             addr_sup_weight=ck.get("addr_sup_weight", 0.0),
             read_heads=(ck.get("pk_read_heads", 0) if ck.get("pk_read_heads", 0) > 0 else None),
             mt_value=ck.get("mt_value", "mean"),
-            mt_positions=max(2, ck.get("cargo_tokens", 1)),
+            mt_positions=ck.get("mt_positions", max(2, ck.get("cargo_tokens", 1))),
             readout=ck.get("readout", "linear"),
             dec_layers=ck.get("dec_layers", 2),
             dec_heads=ck.get("dec_heads", 4),
@@ -1193,6 +1231,35 @@ def _init_banks(adapter, B):
     return [adapter.store.init_state(1, DEV, dtype=torch.float32) for _ in range(B)]
 
 
+# ---- MULTI-TOKEN object support (Track 4) --------------------------------------------------------
+# The single-token store value/inject/score pipeline can only carry a 1-token object. A multi-token
+# object (e.g. an invented "Klingon" -> several BPE tokens) is stored/delivered as a per-position
+# SEQUENCE using the existing perpos scheme (key = name + pos_tag[t] -> token t), so generation can
+# retrieve and emit each token in turn. All of this is GATED on `_is_multi(r)`; single-token records
+# take the byte-identical legacy path.
+def _obj_tids(r):
+    """Full object token-id sequence for edit r (the invented/new object), else [new_tid]."""
+    nids = getattr(r, "new_ids", None)
+    return list(nids) if nids else [getattr(r, "new_tid", -1)]
+
+
+def _is_multi(r):
+    """True when the object is genuinely multi-token (has a >1-length new_ids sequence)."""
+    return getattr(r, "new_ids", None) is not None and len(r.new_ids) > 1
+
+
+def _target_tid(r):
+    """Single-token delivery/scoring target: new_tid if resolved, else the object's FIRST token
+    (mirrors realedit.py's new_ids[0] fallback so a multi-token object scores on its first token)."""
+    nt = getattr(r, "new_tid", -1)
+    return nt if nt is not None and nt >= 0 else _obj_tids(r)[0]
+
+
+def _mt_cap(adapter):
+    """How many answer positions the store's learned pos_tag table can address (mt_positions)."""
+    return int(getattr(adapter, "mt_positions", 4) or 4)
+
+
 @torch.no_grad()
 def _persistent_write_val(adapter, V, r, val_tid, pooled):
     """Incremental error-correcting write of subject(`r`) -> `val_tid` into the standing bank(s) V (a LIST
@@ -1223,9 +1290,37 @@ def _persistent_write_val(adapter, V, r, val_tid, pooled):
     return V
 
 
+@torch.no_grad()
+def _persistent_write_seq(adapter, V, r, obj_tids, pooled):
+    """Write a MULTI-token object as position-tagged associations into the subject's standing bank:
+    for each object token t, key = _pos_key(subject_key, t) = name + learned pos_tag[t], value =
+    embed(token_t). Generation queries name+pos_tag[t] at answer step t to retrieve and deliver each
+    token in turn — the perpos sequence-store scheme, extended from the episodic path to Track 4."""
+    cap = _mt_cap(adapter)
+    L = min(len(obj_tids), cap)
+    tids = torch.tensor([r.subject_tids], dtype=torch.long, device=DEV)
+    if getattr(adapter, "_gte_keys", None) is not None:
+        base_key = adapter._gte_key(tids).unsqueeze(1)                                # [1,1,mem]
+    else:
+        subj_emb = adapter._e(tids)                                                   # [1,S,mem]
+        base_key = adapter._pool_subject(subj_emb, keepdim=True) if pooled else subj_emb[:, -1:]
+    b = _subject_bank(r.subject_tids, len(V))
+    for t in range(L):
+        key_t = adapter._pos_key(base_key, t)                                         # [1,H,mem] name+pos_tag[t]
+        val_t = adapter._e(torch.tensor([[int(obj_tids[t])]], dtype=torch.long, device=DEV))  # [1,1,mem]
+        if key_t.shape[1] > 1:                                                        # multi-vector keys
+            val_t = val_t.expand(-1, key_t.shape[1], -1)
+        V[b] = adapter.persistent_write(V[b], key_t, val_t)
+    return V
+
+
 def _persistent_write_one(adapter, V, r, pooled):
-    """One incremental write of edit `r` (value = its own new_tid) into the standing bank(s) V."""
-    return _persistent_write_val(adapter, V, r, r.new_tid, pooled)
+    """One incremental write of edit `r` into the standing bank(s) V. A MULTI-token object is written
+    as a per-position sequence (name+pos_tag[t] -> object token t) so generation can deliver the whole
+    object; a single-token object takes the byte-identical single-value path."""
+    if _is_multi(r) and hasattr(adapter, "_pos_key"):
+        return _persistent_write_seq(adapter, V, r, _obj_tids(r), pooled)
+    return _persistent_write_val(adapter, V, r, _target_tid(r), pooled)
 
 
 def _persistent_preds(base, adapter, injector, tok, V, cohort, bank_ids=None):
@@ -1255,6 +1350,8 @@ def _persistent_preds(base, adapter, injector, tok, V, cohort, bank_ids=None):
             q = adapter._e(tids)
             if learned_pool:                                            # symmetric with the pooled write key
                 q = adapter._pool_subject(q, keepdim=True)              # [1,1,mem]
+        if _is_multi(r) and hasattr(adapter, "_pos_key"):              # multi-token: the value lives at the
+            q = adapter._pos_key(q, 0)                                 # pos-tagged slots; score answer position 0
         b = bank_ids[i] if bank_ids is not None else _subject_bank(r.subject_tids, len(V))  # R0 solo: identity
         banks.append(adapter.persistent_bank(V[b], q))                    # [1,K,mem]
         confs.append(getattr(adapter, "_last_conf", None))               # [1] or None
@@ -1301,7 +1398,7 @@ def _persistent_score(base, adapter, injector, tok, V, cohort):
     """cf_delivery, prior_recall over `cohort` — fraction predicting the edit's new_tid / true_tid."""
     preds = _persistent_preds(base, adapter, injector, tok, V, cohort)
     n = max(1, len(cohort))
-    cf_hit = sum(int(preds[i] == cohort[i].new_tid) for i in range(len(cohort)))
+    cf_hit = sum(int(preds[i] == _target_tid(cohort[i])) for i in range(len(cohort)))   # multi-token: 1st obj token
     pr_hit = sum(int(preds[i] == cohort[i].true_tid) for i in range(len(cohort)))
     return cf_hit / n, pr_hit / n
 
@@ -1464,38 +1561,65 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
     gen_len = int(os.environ.get("CAM_GEN_LEN", "16"))
     sample = kept[:int(os.environ.get("CAM_GEN_SAMPLE", "16"))]
 
-    def _bank_conf(r):
+    def _banks_seq(r):
+        """Per-answer-position bank list for edit r. Multi-token -> one bank per object position
+        (queried with name+pos_tag[t]); single-token -> a 1-element list (plain subject query,
+        byte-identical to the legacy single-bank read)."""
         tids = torch.tensor([r.subject_tids], dtype=torch.long, device=DEV)
         if gte:
-            q = adapter._gte_key(tids).unsqueeze(1)
+            base_q = adapter._gte_key(tids).unsqueeze(1)
         else:
-            q = adapter._e(tids)
+            base_q = adapter._e(tids)
             if learned_pool:
-                q = adapter._pool_subject(q, keepdim=True)
-        bank = adapter.persistent_bank(V[_subject_bank(r.subject_tids, len(V))], q)
-        return bank, getattr(adapter, "_last_conf", None)
+                base_q = adapter._pool_subject(base_q, keepdim=True)
+        Vb = V[_subject_bank(r.subject_tids, len(V))]
+        if _is_multi(r) and hasattr(adapter, "_pos_key"):
+            L = min(len(_obj_tids(r)), _mt_cap(adapter))
+            banks, conf = [], None
+            for t in range(L):
+                bt = adapter.persistent_bank(Vb, adapter._pos_key(base_q, t))
+                if t == 0:
+                    conf = getattr(adapter, "_last_conf", None)
+                banks.append(bt)
+            return banks, conf
+        return [adapter.persistent_bank(Vb, base_q)], getattr(adapter, "_last_conf", None)
 
-    # CAM_GEN_INJECT_STEPS: how many leading generation steps get the logit injection. 0 = ALL steps
-    # (naive constant — degenerates into repetition of the object). >0 = inject only the first K steps (the
-    # ANSWER span) then let the base continue fluently — the fix for the repetition failure.
-    def _gen(prompt_ids, bank, conf, inj_steps):
-        injector.set_bank(bank, conf=conf, relidx=0) if bank is not None else injector.set_bank(None)
-        inj = None
-        if bank is not None and alpha > 0:
-            inj = alpha * (adapter.out_proj(bank).mean(1).to(lm.device, lm.dtype) @ lm.t())   # [1,vocab]
-            if c0env is not None and conf is not None:
-                cc = conf.to(inj.device)
-                if hard:
-                    g = (cc > float(c0env)).to(inj.dtype)
-                else:
-                    g = torch.sigmoid(float(os.environ.get("CAM_LOGIT_GATE_K", "1")) * (cc - float(c0env)))
-                inj = inj * g.view(-1, 1)
+    def _inj_for(bank_t, conf):
+        """Logit contribution of a retrieved value bank (conf-gated), or None when off/alpha<=0."""
+        if bank_t is None or alpha <= 0:
+            return None
+        v = alpha * (adapter.out_proj(bank_t).mean(1).to(lm.device, lm.dtype) @ lm.t())   # [1,vocab]
+        if c0env is not None and conf is not None:
+            cc = conf.to(v.device)
+            if hard:
+                g = (cc > float(c0env)).to(v.dtype)
+            else:
+                g = torch.sigmoid(float(os.environ.get("CAM_LOGIT_GATE_K", "1")) * (cc - float(c0env)))
+            v = v * g.view(-1, 1)
+        return v
+
+    # mode: 'off' (no memory) | 'const' (inject answer position 0 EVERY step — the naive/degenerate
+    # repetition baseline) | 'answer' (inject position t at step t for `span` steps, then release so the
+    # base continues fluently AFTER the whole object is delivered). For a multi-token object span=L walks
+    # the object token-by-token; for a single-token object span=k_ans injects the one value k_ans times
+    # (byte-identical to the legacy answer-span path).
+    def _gen(prompt_ids, banks, conf, mode, span=None):
+        L = 0 if not banks else len(banks)
+        if span is None:
+            span = L
         cur = torch.tensor([prompt_ids], dtype=torch.long, device=DEV)
         out = []
         for t in range(gen_len):
-            if inj_steps > 0 and t == inj_steps and bank is not None:
-                injector.set_bank(None)                                       # disable the TAP too after the
-                inj = None                                                    # answer span -> base continues fluent
+            if mode == "off" or not banks:
+                injector.set_bank(None); inj = None
+            elif mode == "const":
+                injector.set_bank(banks[0], conf=conf, relidx=0); inj = _inj_for(banks[0], conf)
+            else:                                                             # 'answer' — walk positions then release
+                if t < span:
+                    bt = banks[min(t, L - 1)]                                # multi: banks[t]; single: banks[0] x span
+                    injector.set_bank(bt, conf=conf, relidx=0); inj = _inj_for(bt, conf)
+                else:
+                    injector.set_bank(None); inj = None
             logits = base(inputs_embeds=base_embed(cur)).logits[:, -1]        # [1,vocab] (no KV cache; small)
             if inj is not None:
                 logits = logits + inj.to(logits.device)
@@ -1505,23 +1629,24 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
         injector.set_bank(None)
         return tok.decode(out).replace("\n", " ").strip()
 
-    k_ans = int(os.environ.get("CAM_GEN_INJECT_STEPS", "2"))                  # answer-span injection width
+    k_ans = int(os.environ.get("CAM_GEN_INJECT_STEPS", "2"))                  # single-token answer-span width
     print(f"\n[mag][persistent] === GENERATION COHERENCE ({len(sample)} edits, {gen_len} tok, α={alpha}, "
-          f"answer-inject-steps={k_ans}) ===", flush=True)
+          f"answer-span=object-length, single-tok k_ans={k_ans}) ===", flush=True)
     new_const = new_ans = true_off = 0
     for r in sample:
         pid = bos + tok(r.prompt_text, add_special_tokens=False).input_ids
-        bank, conf = _bank_conf(r)
-        g_off = _gen(pid, None, None, 0)
-        g_const = _gen(pid, bank, conf, 0)                                   # inject EVERY step (naive)
-        g_ans = _gen(pid, bank, conf, k_ans)                                 # inject only the answer span
+        banks, conf = _banks_seq(r)
+        span = len(banks) if _is_multi(r) else k_ans                         # walk the object, else legacy k_ans
+        g_off = _gen(pid, None, None, "off")
+        g_const = _gen(pid, banks, conf, "const")                            # inject pos-0 EVERY step (naive)
+        g_ans = _gen(pid, banks, conf, "answer", span)                       # walk the object then release
         nl = r.new_str.strip().lower()
         new_const += int(nl in g_const.lower()); new_ans += int(nl in g_ans.lower())
         true_off += int(r.true_str.strip().lower() in g_off.lower())
-        print(f"  [{r.relation_id}] {r.prompt_text!r}  edit {r.true_str!r}->{r.new_str!r}", flush=True)
+        print(f"  [{r.relation_id}] {r.prompt_text!r}  edit {r.true_str!r}->{r.new_str!r} ({len(_obj_tids(r))} tok)", flush=True)
         print(f"     OFF        : {g_off!r}", flush=True)
         print(f"     ON constant: {g_const!r}", flush=True)
-        print(f"     ON answer-{k_ans}: {g_ans!r}   [new: {nl in g_ans.lower()}]", flush=True)
+        print(f"     ON answer  : {g_ans!r}   [new: {nl in g_ans.lower()}]", flush=True)
     n = max(1, len(sample))
     print(f"  --> NEW object present — constant-inject: {new_const}/{len(sample)} ({new_const/n:.2f}) | "
           f"answer-span-inject: {new_ans}/{len(sample)} ({new_ans/n:.2f}); base TRUE-recall {true_off}/{len(sample)}",
@@ -2027,6 +2152,22 @@ def main():
                          "reads/writes/addr-sups against store t ONLY, so the per-position address cannot "
                          "be contaminated by the other position's slots (key = L2(name)+pos_tag[t]). "
                          "Only active under perpos.")
+    ap.add_argument("--mt-positions", type=int, default=0, dest="mt_positions",
+                    help="answer positions the perpos store can address (pos_tag/pos_proj table size). "
+                         "0 = auto = max(2, cargo_tokens). Set >1 to store/deliver MULTI-token objects in "
+                         "the Track-4 persistent path WITHOUT the single-token counterfactual-phrasing "
+                         "restriction on --cargo-tokens (they are now decoupled).")
+    ap.add_argument("--mt-recon-weight", type=float, default=0.0, dest="mt_recon_weight",
+                    help="weight of the perpos MULTI-TOKEN reconstruction auxiliary loss added to Stage-1 "
+                         "bind (0 = off, byte-identical). >0 teaches the store to round-trip an arbitrary "
+                         "K-token object: write embed(tok_t) at _pos_key(name,t) into a fresh store, read "
+                         "each position back, CE(out_proj(read_t)@unembed, tok_t). Trains in_proj/out_proj/"
+                         "pos_tag/pos_proj/codebooks to STORE + REPRODUCE arbitrary multi-token sequences "
+                         "(incl. rare subwords) at position-separated addresses — the Track-4 delivery path. "
+                         "Pair with --perpos-key codebook (strong per-position separation) and --mt-positions K.")
+    ap.add_argument("--mt-recon-tokens", type=int, default=4, dest="mt_recon_tokens",
+                    help="K: object length trained by the --mt-recon-weight reconstruction loss (positions "
+                         "0..K-1). Capped at --mt-positions.")
     args = ap.parse_args()
 
     # '--readout perpos' is shorthand: it selects the per-position VALUE STORE (mt_value=perpos) +
@@ -2171,7 +2312,8 @@ def main():
     # ---- stage 1: bind once ----
     adapter = build_adapter(args, embed_weight, H, builder=builder)
     with StageCost(f"stage-1 bind (M={args.M}, {args.bind_steps} steps, batch {args.batch})"):
-        d_carry = bind_adapter(adapter, builder, rng, args)
+        d_carry = bind_adapter(adapter, builder, rng, args,
+                               unembed=base.get_output_embeddings().weight.detach())
     # free stage-1's AdamW state + autograd fragments before stage-2 — on a single 16GB card the leftover
     # fragmentation (bind runs many steps) is what pushed stage-2's first backward over the wall + wedged.
     import gc as _gc0

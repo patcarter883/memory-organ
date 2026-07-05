@@ -223,7 +223,7 @@ class PKStoreAdapter(nn.Module):
 
     def _e(self, ids):
         """frozen embed -> in_proj -> LayerNorm: base ids -> [B,L,mem_dim] normalized mem embeds."""
-        if ids.numel() and (int(ids.min()) < 0 or int(ids.max()) >= self.embed.weight.shape[0]):
+        if ids.numel() and (int(ids.min()) < 0 or int(ids.max()) >= int(self.embed.weight.shape[0])):
             # a negative/OOB token id (e.g. the -1 multi-token sentinel) is an out-of-bounds embedding
             # gather -> an unrecoverable HSA_STATUS_ERROR_EXCEPTION 0x1016 GPU abort. Fail loud in Python.
             raise ValueError(f"PKStoreAdapter._e: token id out of range [0,{self.embed.weight.shape[0]}) "
