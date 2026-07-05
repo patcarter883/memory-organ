@@ -855,7 +855,10 @@ def setup_counterfact_multi(base, tok, args):
             split_buckets.append((relkey, rid, prompt, slen, [], recs))
             continue
         if not heldout_on:
-            split_buckets.append((relkey, rid, prompt, slen, recs, recs))
+            # BIND bucket. When relation-holdout is active, it is BIND-ONLY (held=[]) so kept_multi holds
+            # ONLY the novel-relation subjects; otherwise legacy (bind==eval, held=recs).
+            held = [] if heldout_rels > 0 else recs
+            split_buckets.append((relkey, rid, prompt, slen, recs, held))
             continue
         # Deterministic per-bucket shuffle seeded by (args.seed, relkey) so the split is stable across runs
         # and independent of bucket order. hashlib (not builtin hash(): PYTHONHASHSEED-salted -> non-repro).
