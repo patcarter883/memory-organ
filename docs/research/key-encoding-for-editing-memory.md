@@ -501,6 +501,34 @@ means, with the structural wins reproducing exactly in every run):
 no residual self-addressing failure to retrain away; below-gate = 0 in all 3 reps). Shipped:
 `CAM_WRITE_AT_READ` (K1), `CAM_WRITE_REDUNDANT` (K2), `CAM_READ_SUB_TOPK` (K3, unneeded).
 
+## 3.23 NOVEL-RELATION held-out — editing FAILS for relation shapes the bind never saw (2026-07-05)
+
+The last generalisation axis, and the decisive one for the private/codebase-facts niche: held-out SUBJECT
+(§3.21) worked (0.66), but a private-API fact / project convention is usually a novel RELATION *shape*.
+`CAM_HELDOUT_RELATIONS=k` holds out the k smallest relation-buckets ENTIRELY from the bind (no DocBuilder
+facts, no template); the persistent evals write+query them via each record's own prompt (subject-keyed
+read). Result (hold out P140+P276, N=137 legacy, K1): **BIND = 121 subj / 4 relations; HELD-OUT = 16 subj /
+2 NOVEL relations.**
+
+- **Novel-relation delivery = 0.000** (residual tap, α=0) — a *total* failure, vs in-distribution ~0.77 and
+  novel-subject 0.66. prior-recall 0.19 (the tap even corrupts most of the base's correct prior). The
+  memory delivers NOTHING for facts whose relation the bind never trained on.
+- **Interpretation: the READOUT is relation-SPECIFIC.** K1 makes *addressing* subject-agnostic, but
+  `out_proj`/the tap were trained on the bind relations' objects and do not map a novel relation's value to
+  its object. Novel *subject* generalises (same relation's object space); novel *relation* does not.
+  (α>0 logit-injection recovery is an open detail — but it uses the SAME `out_proj`, so likely also fails;
+  the α=0 total failure is already decisive.)
+- **Consequence for the use case — a real, sharpening LIMIT:** memory-organ edits **novel subjects of a
+  relation SCHEMA the bind has seen** — not novel relation *types*. To inject private/codebase facts you
+  must **bind the machinery on the RELATION SHAPES** of those facts (e.g. "the definition of {} is …",
+  "{} has type …", "the config key for {} is …"), then you can inject arbitrary *subjects* (symbols) of
+  those shapes. A genuinely new KIND of fact needs re-binding on that shape. This is the honest boundary of
+  the "point it at an arbitrary codebase" premise: schema-bound, subject-free.
+
+**Net (with §3.21/§3.22): memory-organ = inject facts of KNOWN relation schemas, NOVEL subjects, that the
+base cannot know** (private / post-cutoff / niche). NOT novel relation types (needs re-bind), NOT common
+knowledge (base has it). Shipped `CAM_HELDOUT_RELATIONS`, `tools/heldout_rel_test.sh`.
+
 ## 3.22 API-OVERRIDE PREMISE PROBE — the base ISN'T confidently wrong about common APIs; use-case redirect (2026-07-05)
 
 First move on the "library-API override" use case: the cheap premise gate (like M0) — is the frozen base
