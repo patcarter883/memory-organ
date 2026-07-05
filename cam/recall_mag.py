@@ -183,19 +183,29 @@ def build_adapter(args, embed_weight, H, builder=None):
 
 
 # ---- stage 1: bind (direct tied-unembed; no base in the loop) ----------------------------------
-def _mt_recon_loss(adapter, unembed, rng, batch, K, weight):
+def _mt_recon_loss(adapter, unembed, rng, batch, K, weight, pool=None):
     """Perpos MULTI-TOKEN reconstruction (autoencoder) loss — the Track-4 delivery path made trainable.
-    For a batch of random single-token "names" and random K-token "objects": write embed(obj_t) at
-    _pos_key(name, t) into a FRESH per-row store, then read each position back and score
-    CE(out_proj(read_t) @ unembed^T, obj_t). Backprops into in_proj/out_proj/pos_tag/pos_proj/codebooks
-    so the store learns to STORE and REPRODUCE arbitrary multi-token sequences (incl. rare subwords) at
-    position-SEPARATED addresses — exactly what Phase-C generation needs to deliver a multi-token object.
-    Random tokens give broad vocab coverage so it generalizes to unseen invented objects."""
+    For a batch of "names" (keys) and K-token "objects" (values): write embed(obj_t) at _pos_key(name, t)
+    into a FRESH per-row store, then read each position back and score CE(out_proj(read_t) @ unembed^T,
+    obj_t). Backprops into in_proj/out_proj/pos_tag/pos_proj/codebooks so the store learns to STORE and
+    REPRODUCE multi-token sequences at position-SEPARATED addresses — exactly what Phase-C generation
+    needs to deliver a multi-token object.
+
+    `pool` (1-D LongTensor of REALISTIC subword ids — ASCII word-pieces) restricts both keys and values
+    to plausible language subwords. This is the load-bearing lever: sampling uniformly over the full
+    248320 vocab spreads the 512-d value capacity across every CJK/Cyrillic/symbol token (the store then
+    delivers garbage like '她要'/'пи'), whereas focusing on ~word-piece tokens lets it actually round-trip
+    the invented objects' subwords. Falls back to uniform when pool is None."""
     import torch.nn.functional as F
     dev = DEV
-    Vsz = int(adapter.embed.weight.shape[0])
-    names = torch.from_numpy(rng.integers(0, Vsz, size=(batch, 1))).long().to(dev)      # [B,1] key tokens
-    objs = torch.from_numpy(rng.integers(0, Vsz, size=(batch, K))).long().to(dev)       # [B,K] value tokens
+    if pool is not None and len(pool) > 0:
+        P = len(pool)
+        names = pool[torch.from_numpy(rng.integers(0, P, size=(batch, 1))).long()].to(dev)   # [B,1]
+        objs = pool[torch.from_numpy(rng.integers(0, P, size=(batch, K))).long()].to(dev)     # [B,K]
+    else:
+        Vsz = int(adapter.embed.weight.shape[0])
+        names = torch.from_numpy(rng.integers(0, Vsz, size=(batch, 1))).long().to(dev)
+        objs = torch.from_numpy(rng.integers(0, Vsz, size=(batch, K))).long().to(dev)
     name_key = adapter._pool_subject(adapter._e(names), keepdim=True)                    # [B,H,mem]
     V = adapter.store.init_state(batch, dev, dtype=torch.float32)
     for t in range(K):
@@ -213,7 +223,7 @@ def _mt_recon_loss(adapter, unembed, rng, batch, K, weight):
     return weight * loss / max(1, K)
 
 
-def bind_adapter(adapter, builder, rng, args, unembed=None):
+def bind_adapter(adapter, builder, rng, args, unembed=None, mt_pool=None):
     train_params = [p for p in adapter.parameters() if p.requires_grad]
     opt = torch.optim.AdamW(train_params, lr=args.lr)
     mt_w = float(getattr(args, "mt_recon_weight", 0.0))
@@ -233,7 +243,7 @@ def bind_adapter(adapter, builder, rng, args, unembed=None):
         aux_fn = getattr(adapter, "aux_loss", None)
         aux = aux_fn() if aux_fn is not None else None
         loss = lm + aux if aux is not None else lm
-        mt = _mt_recon_loss(adapter, unembed, rng, args.batch, mt_k, mt_w) if mt_on else None
+        mt = _mt_recon_loss(adapter, unembed, rng, args.batch, mt_k, mt_w, pool=mt_pool) if mt_on else None
         if mt is not None:
             loss = loss + mt
         loss.backward()
@@ -2311,9 +2321,25 @@ def main():
 
     # ---- stage 1: bind once ----
     adapter = build_adapter(args, embed_weight, H, builder=builder)
+    # REALISTIC subword pool for the multi-token reconstruction loss: ASCII word-piece tokens only
+    # (strip BPE space markers). Excludes CJK/Cyrillic/symbol/number tokens so the store focuses its
+    # value capacity on the language subwords that invented objects are actually built from.
+    mt_pool = None
+    if float(getattr(args, "mt_recon_weight", 0.0)) > 0:
+        _marks = ("Ġ", "▁", "Ċ", "Ġ", "▁")
+        _ids = []
+        for _piece, _id in tok.get_vocab().items():
+            _s = _piece
+            for _m in _marks:
+                _s = _s.replace(_m, "")
+            if len(_s) >= 1 and _s.isascii() and _s.isalpha():
+                _ids.append(int(_id))
+        mt_pool = torch.tensor(sorted(set(_ids)), dtype=torch.long, device=DEV)
+        print(f"[mag] mt-recon realistic subword pool: {len(mt_pool)} ASCII word-piece tokens "
+              f"(of {len(tok.get_vocab())} vocab)", flush=True)
     with StageCost(f"stage-1 bind (M={args.M}, {args.bind_steps} steps, batch {args.batch})"):
         d_carry = bind_adapter(adapter, builder, rng, args,
-                               unembed=base.get_output_embeddings().weight.detach())
+                               unembed=base.get_output_embeddings().weight.detach(), mt_pool=mt_pool)
     # free stage-1's AdamW state + autograd fragments before stage-2 — on a single 16GB card the leftover
     # fragmentation (bind runs many steps) is what pushed stage-2's first backward over the wall + wedged.
     import gc as _gc0
