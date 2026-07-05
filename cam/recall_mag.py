@@ -839,10 +839,21 @@ def setup_counterfact_multi(base, tok, args):
     heldout_on = heldout_frac > 0.0
     if heldout_on:
         assert 0.0 < heldout_frac < 1.0, f"CAM_HELDOUT_FRAC must be in (0,1); got {heldout_frac}"
+    # HELD-OUT RELATION split (novel-RELATION test, the private/codebase-facts axis): CAM_HELDOUT_RELATIONS=k
+    # holds out the k SMALLEST relation-buckets ENTIRELY from the bind — they contribute NO DocBuilder facts
+    # (and no template), and ALL their records go to kept_multi. The persistent evals query them via each
+    # record's OWN prompt_text (subject-keyed store read; no bind template needed), so this measures whether
+    # the trained readout delivers facts of a relation SHAPE the bind never saw. (bind keeps the biggest
+    # buckets so it stays robust.) Composes with / overrides CAM_HELDOUT_FRAC per-relkey.
+    heldout_rels = int(os.environ.get("CAM_HELDOUT_RELATIONS", "0") or "0")
+    held_rel_keys = {c[1] for c in chosen[len(chosen) - heldout_rels:]} if heldout_rels > 0 else set()
     # Per-bucket bind/held record lists (default: bind==held==recs -> byte-identical legacy construction).
     split_buckets = []                                   # (relkey, rid, prompt, slen, bind_recs, held_recs)
     n_held_drop = 0
     for (_n, relkey, rid, prompt, slen, recs) in chosen:
+        if relkey in held_rel_keys:                      # novel-RELATION held-out: whole bucket -> held, no bind
+            split_buckets.append((relkey, rid, prompt, slen, [], recs))
+            continue
         if not heldout_on:
             split_buckets.append((relkey, rid, prompt, slen, recs, recs))
             continue
@@ -867,36 +878,39 @@ def setup_counterfact_multi(base, tok, args):
     facts, fact_relid, cf_tid, fact_subj_tids, kept_multi = [], [], [], [], []
     rel_templates, rel_subj_len = {}, {}
     for (relkey, rid, prompt, slen, bind_recs, held_recs) in split_buckets:
-        pre, suf = _split(prompt)
-        rel_templates[relkey] = (pre, suf)
-        # N1: relkey is per-length so slen>0 (assertion holds). N0-merge (slen=-1) uses max (probe-only).
-        # rel_subj_len is taken over the WHOLE bucket (bind+held share ONE fixed subject length by N1).
-        _all = bind_recs if bind_recs is held_recs else (bind_recs + held_recs)
-        rel_subj_len[relkey] = slen if slen > 0 else max(len(r.subject_tids) for r in _all)
-        # BIND portion -> DocBuilder facts (projection/tap training subjects).
-        for r in bind_recs:
-            # Phase M: use the object's FIRST token as the single-token stand-in (KEY is subject_last_tid;
-            # cf value = new object's first token). Full K-token perpos write is M1; this keeps M0 (measure
-            # the N unlock, probe-only) constructing cleanly for multi-token objects.
-            _tt = r.true_ids[0] if r.true_ids else r.true_tid
-            _nt = r.new_ids[0] if r.new_ids else r.new_tid
-            facts.append((r.subject, r.true_str, r.subject_last_tid, _tt))  # KEY = subject LAST token
-            fact_relid.append(relkey)
-            cf_tid.append(_nt)
-            fact_subj_tids.append(list(r.subject_tids))
+        if bind_recs:                                    # BIND bucket -> template + DocBuilder facts.
+            pre, suf = _split(prompt)                    # (held-out-RELATION buckets have bind_recs==[] -> no
+            rel_templates[relkey] = (pre, suf)           #  template, no facts: their relation is NEVER bound.)
+            # N1: relkey is per-length so slen>0 (assertion holds). N0-merge (slen=-1) uses max (probe-only).
+            _all = bind_recs if bind_recs is held_recs else (bind_recs + held_recs)
+            rel_subj_len[relkey] = slen if slen > 0 else max(len(r.subject_tids) for r in _all)
+            for r in bind_recs:
+                # Phase M: object's FIRST token as the single-token stand-in (KEY is subject_last_tid).
+                _tt = r.true_ids[0] if r.true_ids else r.true_tid
+                _nt = r.new_ids[0] if r.new_ids else r.new_tid
+                facts.append((r.subject, r.true_str, r.subject_last_tid, _tt))  # KEY = subject LAST token
+                fact_relid.append(relkey)
+                cf_tid.append(_nt)
+                fact_subj_tids.append(list(r.subject_tids))
         # HELD-OUT portion -> kept_multi (persistent-eval write/query subjects). Default: held is recs.
         for r in held_recs:
             r._relkey = relkey                           # tag the record so eval can bucket by relation
             kept_multi.append(r)
-    if heldout_on:
+    if heldout_on or heldout_rels > 0:
         n_held_rel = len({rk for (rk, _r, _p, _s, _b, h) in split_buckets if h})
         assert len(facts) >= args.M, (f"HELD-OUT split left only {len(facts)} bind facts (< M={args.M}); "
-                                      f"lower CAM_HELDOUT_FRAC ({heldout_frac}) or --M, or raise --cf-probe-cap")
-        assert kept_multi, ("HELD-OUT split produced ZERO held-out records (every bucket too small to split); "
-                            f"lower CAM_HELDOUT_FRAC ({heldout_frac}) or raise the fact supply (--cf-probe-cap)")
-        # Every held-out relkey must have a bind template (split-within-bucket guarantees this).
-        _missing = [r._relkey for r in kept_multi if r._relkey not in rel_templates]
+                                      f"lower CAM_HELDOUT_FRAC/RELATIONS or --M, or raise --cf-probe-cap")
+        assert kept_multi, "HELD-OUT split produced ZERO held-out records; lower the held-out amount"
+        # FRAC held-outs (novel SUBJECT) MUST have a bind template; RELATION held-outs (novel relation) must
+        # NOT (that is the point) — exempt held_rel_keys from the template-presence check.
+        _missing = [r._relkey for r in kept_multi
+                    if r._relkey not in rel_templates and r._relkey not in held_rel_keys]
         assert not _missing, f"held-out records reference relkeys with no bind template: {set(_missing)}"
+        if heldout_rels > 0:
+            print(f"[mag][cf-multi][HELD-OUT-RELATION] {heldout_rels} relation-bucket(s) held out ENTIRELY "
+                  f"({sorted(held_rel_keys)}): BIND={len(facts)} subj / {len(rel_templates)} rels vs "
+                  f"HELD-OUT={len(kept_multi)} subj / {n_held_rel} NOVEL rels (bind never saw their relation)",
+                  flush=True)
         print(f"[mag][cf-multi][HELD-OUT] frac={heldout_frac} seed={args.seed} | BIND={len(facts)} subjects "
               f"across {len(rel_templates)} relations vs HELD-OUT={len(kept_multi)} subjects across "
               f"{n_held_rel} relations | {n_held_drop} bucket(s) too small to split (kept whole in bind)",
