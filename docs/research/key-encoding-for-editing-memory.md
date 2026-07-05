@@ -501,6 +501,34 @@ means, with the structural wins reproducing exactly in every run):
 no residual self-addressing failure to retrain away; below-gate = 0 in all 3 reps). Shipped:
 `CAM_WRITE_AT_READ` (K1), `CAM_WRITE_REDUNDANT` (K2), `CAM_READ_SUB_TOPK` (K3, unneeded).
 
+## 3.22 API-OVERRIDE PREMISE PROBE — the base ISN'T confidently wrong about common APIs; use-case redirect (2026-07-05)
+
+First move on the "library-API override" use case: the cheap premise gate (like M0) — is the frozen base
+actually *confidently wrong* about library APIs, so there's something to fix? Curated 30 API facts
+(`data/api_facts.json`, CounterFact schema, target_true = correct current answer), `--apitask` probes the
+base and logs prediction vs correct.
+
+**Raw:** base correct 5/30 (0.17), "wrong" 25/30. **But read honestly, that number is a CONFOUND, not
+signal:**
+- **Prompting:** most "wrong" predictions are `'\n\n'` / `'...'` / `' The'` / `'@'` — the 4B base *isn't
+  answering* (the terse `...requests.` / `@app.` prompts don't elicit a completion), not answering *wrong*.
+- **Tokenization:** several *correct* answers are marked wrong by space-prefix mismatch — LangChain →
+  base predicted **`'invoke'`** (right!) but gold is `' invoke'`; `dataclasses` → `'data'` (right stem).
+- **Where the base engages, it's mostly RIGHT:** `concatenate`, `command`, `join`, `dotenv`, `AsyncClient`,
+  `invoke`. A recent 4B model **knows common library APIs** reasonably well.
+
+**Conclusion — the premise is WEAK for common libraries, and that redirects the use case (valuable, honest):**
+memory-organ's override value is NOT re-teaching pandas/numpy/pytorch (the base knows them). It's injecting
+facts the base **cannot** know — **private/internal APIs, project conventions ("in this repo X means Y"),
+genuinely post-training-cutoff changes, niche libraries.** That is exactly the *novel-fact* regime the
+held-out test (§3.21) validated, and the *private-facts* branch of the save-policy discussion. So for a
+codebase: **RAG for the map + memory-organ for the unknowable, project-specific specifics** — not for
+common-library knowledge the model already has.
+
+*(Caveat: a cleaner probe — few-shot / code-context prompts, tokenization-matched — would raise the base's
+apparent accuracy further and sharpen the exact number, but the qualitative read (base knows common APIs)
+is robust across the cases where it engaged. Shipped `--apitask`, `data/api_facts.json`.)*
+
 ## 3.21 HELD-OUT SUBJECTS — test-time editing works on subjects the bind NEVER saw (2026-07-04)
 
 The cleanest test of *true* test-time editing (and the feasibility gate for "point it at an arbitrary

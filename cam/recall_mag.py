@@ -565,6 +565,36 @@ def setup_counterfactual(base, tok, args):
 
 # ---- COUNTERFACTUAL on the REAL CounterFact benchmark (Track 1, issue #16) ----------------------
 @torch.no_grad()
+@torch.no_grad()
+def apitask_probe(base, tok, path):
+    """API-OVERRIDE PREMISE GATE (issue #19 use case). Before building the full edit+eval on library-API
+    facts, ask the cheap decisive question: is the frozen base actually CONFIDENTLY WRONG about library APIs
+    (so there is something to fix)? If the base already gets APIs right, the override use case is moot.
+
+    Loads a curated API-facts JSON in CounterFact schema (target_true.str = the CORRECT current API answer),
+    forwards the base on each record's natural prompt, and logs the base's top-1 prediction vs correct
+    (first-token match). Low base accuracy = many editable candidates = the use case is real. No editing."""
+    records, _stats = load_counterfact(path, tok, single_token_only=False)
+    bos = [tok.bos_token_id] if tok.bos_token_id is not None else []
+    print(f"\n[apitask] === API-OVERRIDE PREMISE PROBE ({len(records)} curated facts, base={MODEL}) ===",
+          flush=True)
+    hit = 0
+    for r in records:
+        ids = torch.tensor([bos + tok(r.prompt_text, add_special_tokens=False).input_ids],
+                           dtype=torch.long, device=DEV)
+        pred = int(_last_logit(base, input_ids=ids).argmax(-1).item())
+        gold = r.true_ids[0] if r.true_ids else r.true_tid
+        ok = int(pred == gold)
+        hit += ok
+        print(f"  [{'OK   ' if ok else 'WRONG'}] {r.prompt_text!r}  correct={r.true_str!r}  "
+              f"base->{tok.decode([pred])!r}", flush=True)
+    n = max(1, len(records))
+    print(f"  --> base ALREADY CORRECT on {hit}/{len(records)} ({hit/n:.2f}); "
+          f"WRONG = editable candidates {len(records) - hit}/{len(records)} ({1 - hit/n:.2f})", flush=True)
+    print("  (high WRONG rate => the base is stale on APIs => the override use case is real)", flush=True)
+    print("=" * 64, flush=True)
+
+
 def probe_and_filter_counterfact(base, tok, records, batch=16):
     """PROBE the frozen base on each CounterFact record using the record's OWN natural prompt
     (requested_rewrite.prompt formatted with the subject) — NOT the fixed curated header. A record is
@@ -1925,6 +1955,11 @@ def main():
                          "(does forcing the object logit damage same-true-object neighbours?). The decisive "
                          "delivery<->locality trade for the logit-injection paradigm. Implies "
                          "--persistent-sweep.")
+    ap.add_argument("--apitask", type=str, default="",
+                    help="API-override PREMISE PROBE (issue #19 use case): path to a curated library-API "
+                         "facts JSON (CounterFact schema; target_true.str = the CORRECT current answer). "
+                         "Probe the frozen base + report how often it is already correct vs WRONG (editable), "
+                         "then exit. The cheap gate before building the full API-override edit+eval.")
     ap.add_argument("--persistent-generate", action="store_true", dest="persistent_generate",
                     help="GENERATION-COHERENCE (reality check): after writing all edits, GENERATE "
                          "CAM_GEN_LEN tokens (greedy) from a sample of edit prompts with memory OFF vs ON "
@@ -1996,6 +2031,9 @@ def main():
         args.base1 = args.base1 or MODEL
 
     base, tok = load_frozen_base(args.base1)
+    if getattr(args, "apitask", ""):                      # API-override premise probe -> report + exit
+        apitask_probe(base, tok, args.apitask)
+        return
     H = base.config.get_text_config().hidden_size
     n_layers = base.config.get_text_config().num_hidden_layers
     embed_weight = base.get_input_embeddings().weight.detach().float().clone()
