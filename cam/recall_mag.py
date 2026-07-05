@@ -1199,6 +1199,10 @@ def _persistent_write_val(adapter, V, r, val_tid, pooled):
     of B disjoint banks; subject routed by stable hash — Phase C). Key = pooled subject span (mean, or the
     learned attention pool when CAM_LEARNED_KEY_POOL=1), else last token. `val_tid` lets the overwrite test
     write a SECOND value for the same key."""
+    if val_tid is not None and int(val_tid) < 0:                 # multi-token object -> new_tid sentinel -1
+        _nids = getattr(r, "new_ids", None)                      # (realedit.py:133). embed(-1) is an OOB
+        if _nids:                                                # gather -> HSA 0x1016 abort; fall back to
+            val_tid = int(_nids[0])                              # the object's FIRST token (mirrors L~893).
     tids = torch.tensor([r.subject_tids], dtype=torch.long, device=DEV)
     if getattr(adapter, "_gte_keys", None) is not None:                                    # DECOUPLED: GTE key
         key = adapter._gte_key(tids).unsqueeze(1)                                          # [1,1,mem_dim]
