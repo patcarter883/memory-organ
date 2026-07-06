@@ -1610,6 +1610,124 @@ def eval_persistent_graded(base, adapter, injector, tok, kept, args):
 
 
 @torch.no_grad()
+def _collect_router_data(base, adapter, injector, tok, V, cohort, bank_ids=None):
+    """Per-fact frozen constants for router training: off [N,V] base last-token logits, raw [N,V] store push
+    logits (out_proj(bank)@lmT), conf [N] retrieval strength (or None), true_tid [N]. One OFF forward + the
+    per-fact store reads; no gradients."""
+    bos = [tok.bos_token_id] if tok.bos_token_id is not None else []
+    base_embed = base.get_input_embeddings()
+    bs = max(1, int(os.environ.get("CAM_PERSISTENT_EVAL_BATCH", "1")))
+    pad_id = tok.pad_token_id if tok.pad_token_id is not None else 0
+    lm = base.get_output_embeddings().weight
+    learned_pool = os.environ.get("CAM_LEARNED_KEY_POOL") == "1"
+    gte = getattr(adapter, "_gte_keys", None) is not None
+    banks, confs, id_lists = [], [], []
+    for r in cohort:
+        tids = torch.tensor([r.subject_tids], dtype=torch.long, device=DEV)
+        if gte:
+            q = adapter._gte_key(tids).unsqueeze(1)
+        else:
+            q = adapter._e(tids)
+            if learned_pool:
+                q = adapter._pool_subject(q, keepdim=True)
+        b = _subject_bank(r.subject_tids, len(V)) if bank_ids is None else bank_ids[cohort.index(r)]
+        banks.append(adapter.persistent_bank(V[b], q))
+        confs.append(getattr(adapter, "_last_conf", None))
+        id_lists.append(bos + tok(r.prompt_text, add_special_tokens=False).input_ids)
+    offs, raws = [], []
+    have_conf = all(c is not None for c in confs)
+    injector.set_bank(None)
+    for i in range(0, len(cohort), bs):
+        rows = list(range(i, min(i + bs, len(cohort))))
+        lens = [len(id_lists[j]) for j in rows]
+        Tmax = max(lens)
+        ids = torch.full((len(rows), Tmax), pad_id, dtype=torch.long, device=DEV)
+        for b, j in enumerate(rows):
+            ids[b, :lens[b]] = torch.tensor(id_lists[j], dtype=torch.long, device=DEV)
+        logits = base(inputs_embeds=base_embed(ids)).logits
+        ld = logits.device
+        last = torch.tensor([lens[b] - 1 for b in range(len(rows))], device=ld)
+        offs.append(logits[torch.arange(len(rows), device=ld), last].float().cpu())
+        for j in rows:
+            bh = adapter.out_proj(banks[j]).mean(1)                      # [1,H]
+            raws.append((bh.to(lm.device, lm.dtype) @ lm.t()).float().squeeze(0).cpu())  # [V]
+    off = torch.cat(offs, 0)
+    raw = torch.stack(raws, 0)
+    conf = torch.cat([c.float().cpu() for c in confs], 0) if have_conf else None
+    true_tid = torch.tensor([r.true_tid for r in cohort], dtype=torch.long)
+    return off, raw, conf, true_tid
+
+
+def eval_persistent_router(base, adapter, injector, tok, kept, args):
+    """Track 5 (#99) — LEARNED GATE ROUTER. Replace the hand-composed multigate product with ONE small MLP
+    over label-free signals, trained (outcome-supervised, backprop through the logit injection) on a TRAIN
+    split and evaluated on a HELD-OUT split. Tests the ceiling claim: does a learned gate GENERALISE to
+    unseen facts, and does it recover the self-dosing (high gain where the base is unsure)?"""
+    try:
+        from .gate_router import fit_router, signal_features
+    except ImportError:                                          # run as a file: _HERE already on sys.path
+        from gate_router import fit_router, signal_features
+    injector.eval()
+    pooled = os.environ.get("CAM_POOLED_SUBJ_KEY") == "1"
+    N = len(kept)
+    B = _n_disjoint_banks()
+    V = _init_banks(adapter, B)
+    for r in kept:
+        V = _persistent_write_one(adapter, V, r, pooled)
+    off, raw, conf, true_tid = _collect_router_data(base, adapter, injector, tok, V, kept)
+    off, raw = off.to(DEV), raw.to(DEV)
+    true_tid = true_tid.to(DEV)
+    conf = conf.to(DEV) if conf is not None else None
+    # deterministic stride split spanning relations (no rng): every 3rd fact held out
+    ho_mask = torch.tensor([(i % 3 == 0) for i in range(N)], device=DEV)
+    tr = (~ho_mask).nonzero(as_tuple=True)[0]
+    ho = ho_mask.nonzero(as_tuple=True)[0]
+    alpha_ref = float(os.environ.get("CAM_ROUTER_ALPHA", "1.5"))
+    topk = int(os.environ.get("CAM_MULTIGATE_TOPK", "16"))
+    kl_w = float(os.environ.get("CAM_ROUTER_KL", "0.3"))
+    steps = int(os.environ.get("CAM_ROUTER_STEPS", "400"))
+    router = fit_router(off[tr], raw[tr], true_tid[tr], None if conf is None else conf[tr],
+                        alpha_ref, kl_weight=kl_w, steps=steps, topk=topk, device=str(DEV))
+    # evaluate on HELD-OUT facts
+    o, r_, t = off[ho], raw[ho], true_tid[ho]
+    c = None if conf is None else conf[ho]
+    idx = torch.arange(len(ho), device=DEV)
+    with torch.no_grad():
+        sig = signal_features(o, r_, c)
+        g = router.gain(sig)                                          # learned per-fact gain
+        inj = alpha_ref * r_
+        if 0 < topk < inj.shape[-1]:
+            keep = r_.topk(topk, -1).indices
+            m = torch.zeros_like(inj); m.scatter_(1, keep, 1.0); inj = inj * m
+        on = o + g.unsqueeze(-1) * inj
+        p_off = torch.softmax(o, -1); p_on = torch.softmax(on, -1)
+        lp_off = torch.log_softmax(o, -1); lp_on = torch.log_softmax(on, -1)
+        kl = (p_off * (lp_off - lp_on)).sum(-1)
+        pofft, pont = p_off[idx, t], p_on[idx, t]
+    print(f"\n[mag][persistent] === Track 5 (#99): LEARNED GATE ROUTER — {len(tr)} train / {len(ho)} HELD-OUT "
+          f"(alpha_ref={alpha_ref}, kl_w={kl_w}, k={topk}) ===", flush=True)
+    print("  generalisation to UNSEEN facts + learned dose, bucketed by the base's pre-edit P(true):", flush=True)
+    print("  P(true)_off bucket    N   dP(true)   meanKL   mean_gain", flush=True)
+    for lo, hi in [(0.0, 0.1), (0.1, 0.3), (0.3, 0.6), (0.6, 1.01)]:
+        sel = [(pofft[i], pont[i], kl[i], g[i]) for i in range(len(ho)) if lo <= float(pofft[i]) < hi]
+        if not sel:
+            continue
+        n = len(sel)
+        dP = sum(float(b - a) for a, b, _, _ in sel) / n
+        mkl = sum(float(k) for _, _, k, _ in sel) / n
+        mg = sum(float(gg) for _, _, _, gg in sel) / n
+        print(f"  [{lo:.2f}, {hi:.2f})       {n:4d}   {dP:+.4f}   {mkl:6.3f}    {mg:.3f}", flush=True)
+    dP_all = float((pont - pofft).mean())
+    print(f"  ALL                   {len(ho):4d}   {dP_all:+.4f}   {float(kl.mean()):6.3f}    {float(g.mean()):.3f}",
+          flush=True)
+    corr = float(torch.corrcoef(torch.stack([g, 1.0 - pofft]))[0, 1]) if len(ho) > 2 else float("nan")
+    print(f"  learned dose: corr(gain, base-uncertainty 1-P(true)) = {corr:+.3f}  "
+          f"(positive = the router learned to push HARDER where the base is less sure)", flush=True)
+    print("=" * 64, flush=True)
+    return {"dP": dP_all, "gain_uncertainty_corr": corr}
+
+
+@torch.no_grad()
 def eval_persistent_generate(base, adapter, injector, tok, kept, args):
     """GENERATION-COHERENCE check (the reality test): does the edited memory produce FLUENT text carrying
     the edit, or only flip the next-token argmax? All prior metrics are single-token. Here we write all
@@ -2166,6 +2284,13 @@ def main():
                          "PRE-EDIT P(true) (§3.12: biggest lift where the base is UNCERTAIN). Pair with "
                          "CAM_BIND_TRUE=1 (reinforce the true object, not overwrite) and a LOW "
                          "CAM_LOGIT_INJECT on CAM_LOGIT_GATE_HARD=1. Implies --persistent-sweep.")
+    ap.add_argument("--persistent-router", action="store_true", dest="persistent_router",
+                    help="LEARNED GATE ROUTER (Track 5, #99): train ONE small MLP over label-free signals "
+                         "(retrieval conf, base entropy, headroom, store peak, agreement margin, base conf) -> "
+                         "per-fact injection gain, outcome-supervised (backprop through the logit injection) on "
+                         "a TRAIN split, evaluated on a HELD-OUT split. Tests whether a learned gate generalises "
+                         "to unseen facts and recovers the self-dosing. Implies --persistent-sweep. Knobs: "
+                         "CAM_ROUTER_ALPHA, CAM_ROUTER_KL, CAM_ROUTER_STEPS, CAM_MULTIGATE_TOPK.")
     ap.add_argument("--query-rel", type=str, default="", dest="query_rel",
                     help="ADVERSARIAL paraphrase probe (issue #10, natural phrasing only): bind and "
                          "train exactly as normal (bindings + training queries use ' lives in'), then "
@@ -2343,7 +2468,7 @@ def main():
     # ---- stage 2: MAG delivery ----
     if (getattr(args, "persistent_overwrite", False) or getattr(args, "persistent_solo", False)
             or getattr(args, "persistent_locality", False) or getattr(args, "persistent_generate", False)
-            or getattr(args, "persistent_graded", False)):
+            or getattr(args, "persistent_graded", False) or getattr(args, "persistent_router", False)):
         args.persistent_sweep = True         # the online-update / solo / locality tests run after the sweep
     if getattr(args, "persistent_sweep", False):
         args.persistent_eval = True          # the sweep is a superset of the persistent eval
@@ -2388,6 +2513,9 @@ def main():
                 if getattr(args, "persistent_graded", False):
                     with StageCost(f"persistent soft-steering graded lean L={tag}"):
                         eval_persistent_graded(base, adapter, injector, tok, cf_records, args)
+                if getattr(args, "persistent_router", False):
+                    with StageCost(f"persistent learned gate-router L={tag}"):
+                        eval_persistent_router(base, adapter, injector, tok, cf_records, args)
             injector.detach()
             continue
         with StageCost(f"delivery eval L={tag}"):
