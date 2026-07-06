@@ -1594,12 +1594,14 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
             return banks, conf
         return [adapter.persistent_bank(Vb, base_q)], getattr(adapter, "_last_conf", None)
 
-    def _inj_for(bank_t, conf):
-        """Logit contribution of a retrieved value bank (conf-gated), or None when off/alpha<=0."""
+    def _inj_for(bank_t, conf, gate=True):
+        """Logit contribution of a retrieved value bank (conf-gated), or None when off/alpha<=0.
+        gate=False bypasses the conf-gate (delivery diagnostic: isolates whether the hard gate,
+        not the injection magnitude, is what zeros ON==OFF)."""
         if bank_t is None or alpha <= 0:
             return None
         v = alpha * (adapter.out_proj(bank_t).mean(1).to(lm.device, lm.dtype) @ lm.t())   # [1,vocab]
-        if c0env is not None and conf is not None:
+        if gate and c0env is not None and conf is not None:
             cc = conf.to(v.device)
             if hard:
                 g = (cc > float(c0env)).to(v.dtype)
@@ -1613,7 +1615,7 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
     # base continues fluently AFTER the whole object is delivered). For a multi-token object span=L walks
     # the object token-by-token; for a single-token object span=k_ans injects the one value k_ans times
     # (byte-identical to the legacy answer-span path).
-    def _gen(prompt_ids, banks, conf, mode, span=None):
+    def _gen(prompt_ids, banks, conf, mode, span=None, gate=True):
         L = 0 if not banks else len(banks)
         if span is None:
             span = L
@@ -1623,11 +1625,11 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
             if mode == "off" or not banks:
                 injector.set_bank(None); inj = None
             elif mode == "const":
-                injector.set_bank(banks[0], conf=conf, relidx=0); inj = _inj_for(banks[0], conf)
+                injector.set_bank(banks[0], conf=conf, relidx=0); inj = _inj_for(banks[0], conf, gate=gate)
             else:                                                             # 'answer' — walk positions then release
                 if t < span:
                     bt = banks[min(t, L - 1)]                                # multi: banks[t]; single: banks[0] x span
-                    injector.set_bank(bt, conf=conf, relidx=0); inj = _inj_for(bt, conf)
+                    injector.set_bank(bt, conf=conf, relidx=0); inj = _inj_for(bt, conf, gate=gate)
                 else:
                     injector.set_bank(None); inj = None
             logits = base(inputs_embeds=base_embed(cur)).logits[:, -1]        # [1,vocab] (no KV cache; small)
@@ -1642,7 +1644,8 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
     k_ans = int(os.environ.get("CAM_GEN_INJECT_STEPS", "2"))                  # single-token answer-span width
     print(f"\n[mag][persistent] === GENERATION COHERENCE ({len(sample)} edits, {gen_len} tok, α={alpha}, "
           f"answer-span=object-length, single-tok k_ans={k_ans}) ===", flush=True)
-    new_const = new_ans = true_off = 0
+    new_const = new_ans = new_ans_ug = true_off = 0
+    gate_open = 0
     for r in sample:
         pid = bos + tok(r.prompt_text, add_special_tokens=False).input_ids
         banks, conf = _banks_seq(r)
@@ -1650,16 +1653,27 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
         g_off = _gen(pid, None, None, "off")
         g_const = _gen(pid, banks, conf, "const")                            # inject pos-0 EVERY step (naive)
         g_ans = _gen(pid, banks, conf, "answer", span)                       # walk the object then release
+        g_ans_ug = _gen(pid, banks, conf, "answer", span, gate=False)        # DIAGNOSTIC: gate bypassed
         nl = r.new_str.strip().lower()
         new_const += int(nl in g_const.lower()); new_ans += int(nl in g_ans.lower())
+        new_ans_ug += int(nl in g_ans_ug.lower())
         true_off += int(r.true_str.strip().lower() in g_off.lower())
-        print(f"  [{r.relation_id}] {r.prompt_text!r}  edit {r.true_str!r}->{r.new_str!r} ({len(_obj_tids(r))} tok)", flush=True)
-        print(f"     OFF        : {g_off!r}", flush=True)
-        print(f"     ON constant: {g_const!r}", flush=True)
-        print(f"     ON answer  : {g_ans!r}   [new: {nl in g_ans.lower()}]", flush=True)
+        # DIAGNOSTIC: is the hard conf-gate open at generation query time?  cc = _last_conf vs c0.
+        cc = float(conf.max().item()) if conf is not None else float("nan")
+        _c0 = float(c0env) if c0env is not None else float("nan")
+        _open = (c0env is None) or (cc > _c0)
+        gate_open += int(_open)
+        print(f"  [{r.relation_id}] {r.prompt_text!r}  edit {r.true_str!r}->{r.new_str!r} ({len(_obj_tids(r))} tok)"
+              f"  | conf={cc:.3f} c0={_c0:.3f} gate={'OPEN' if _open else 'CLOSED'}", flush=True)
+        print(f"     OFF          : {g_off!r}", flush=True)
+        print(f"     ON constant  : {g_const!r}", flush=True)
+        print(f"     ON answer    : {g_ans!r}   [new: {nl in g_ans.lower()}]", flush=True)
+        print(f"     ON ans UNGATED: {g_ans_ug!r}   [new: {nl in g_ans_ug.lower()}]", flush=True)
     n = max(1, len(sample))
     print(f"  --> NEW object present — constant-inject: {new_const}/{len(sample)} ({new_const/n:.2f}) | "
-          f"answer-span-inject: {new_ans}/{len(sample)} ({new_ans/n:.2f}); base TRUE-recall {true_off}/{len(sample)}",
+          f"answer-span-inject: {new_ans}/{len(sample)} ({new_ans/n:.2f}) | "
+          f"UNGATED answer-span: {new_ans_ug}/{len(sample)} ({new_ans_ug/n:.2f}); "
+          f"gate-open {gate_open}/{len(sample)}; base TRUE-recall {true_off}/{len(sample)}",
           flush=True)
     print(f"  (constant-inject = repetition/degenerate; answer-span-inject should read FLUENT with the edit)",
           flush=True)
