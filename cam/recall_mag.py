@@ -1664,9 +1664,9 @@ def eval_persistent_router(base, adapter, injector, tok, kept, args):
     split and evaluated on a HELD-OUT split. Tests the ceiling claim: does a learned gate GENERALISE to
     unseen facts, and does it recover the self-dosing (high gain where the base is unsure)?"""
     try:
-        from .gate_router import fit_router, signal_features
+        from .gate_router import fit_router, fit_router_regress, oracle_gain, signal_features, _inj_base
     except ImportError:                                          # run as a file: _HERE already on sys.path
-        from gate_router import fit_router, signal_features
+        from gate_router import fit_router, fit_router_regress, oracle_gain, signal_features, _inj_base
     injector.eval()
     pooled = os.environ.get("CAM_POOLED_SUBJ_KEY") == "1"
     N = len(kept)
@@ -1686,45 +1686,56 @@ def eval_persistent_router(base, adapter, injector, tok, kept, args):
     topk = int(os.environ.get("CAM_MULTIGATE_TOPK", "16"))
     kl_w = float(os.environ.get("CAM_ROUTER_KL", "0.3"))
     steps = int(os.environ.get("CAM_ROUTER_STEPS", "400"))
-    router = fit_router(off[tr], raw[tr], true_tid[tr], None if conf is None else conf[tr],
-                        alpha_ref, kl_weight=kl_w, steps=steps, topk=topk, device=str(DEV))
-    # evaluate on HELD-OUT facts
     o, r_, t = off[ho], raw[ho], true_tid[ho]
     c = None if conf is None else conf[ho]
     idx = torch.arange(len(ho), device=DEV)
-    with torch.no_grad():
-        sig = signal_features(o, r_, c)
-        g = router.gain(sig)                                          # learned per-fact gain
-        inj = alpha_ref * r_
-        if 0 < topk < inj.shape[-1]:
-            keep = r_.topk(topk, -1).indices
-            m = torch.zeros_like(inj); m.scatter_(1, keep, 1.0); inj = inj * m
-        on = o + g.unsqueeze(-1) * inj
-        p_off = torch.softmax(o, -1); p_on = torch.softmax(on, -1)
-        lp_off = torch.log_softmax(o, -1); lp_on = torch.log_softmax(on, -1)
-        kl = (p_off * (lp_off - lp_on)).sum(-1)
-        pofft, pont = p_off[idx, t], p_on[idx, t]
-    print(f"\n[mag][persistent] === Track 5 (#99): LEARNED GATE ROUTER — {len(tr)} train / {len(ho)} HELD-OUT "
-          f"(alpha_ref={alpha_ref}, kl_w={kl_w}, k={topk}) ===", flush=True)
-    print("  generalisation to UNSEEN facts + learned dose, bucketed by the base's pre-edit P(true):", flush=True)
-    print("  P(true)_off bucket    N   dP(true)   meanKL   mean_gain", flush=True)
-    for lo, hi in [(0.0, 0.1), (0.1, 0.3), (0.3, 0.6), (0.6, 1.01)]:
-        sel = [(pofft[i], pont[i], kl[i], g[i]) for i in range(len(ho)) if lo <= float(pofft[i]) < hi]
-        if not sel:
-            continue
-        n = len(sel)
-        dP = sum(float(b - a) for a, b, _, _ in sel) / n
-        mkl = sum(float(k) for _, _, k, _ in sel) / n
-        mg = sum(float(gg) for _, _, _, gg in sel) / n
-        print(f"  [{lo:.2f}, {hi:.2f})       {n:4d}   {dP:+.4f}   {mkl:6.3f}    {mg:.3f}", flush=True)
-    dP_all = float((pont - pofft).mean())
-    print(f"  ALL                   {len(ho):4d}   {dP_all:+.4f}   {float(kl.mean()):6.3f}    {float(g.mean()):.3f}",
+    p_off = torch.softmax(o, -1); lp_off = torch.log_softmax(o, -1)
+    pofft = p_off[idx, t]
+    inj_ho = _inj_base(r_, alpha_ref, topk)
+    # held-out ORACLE gain (best-possible per-fact dose) = the calibration reference + the achievable ceiling
+    g_star_ho, _ = oracle_gain(o, r_, t, alpha_ref, kl_weight=kl_w, topk=topk, device=str(DEV))
+
+    def _eval(router, name):
+        with torch.no_grad():
+            g = router.gain(signal_features(o, r_, c))
+            on = o + g.unsqueeze(-1) * inj_ho
+            lp_on = torch.log_softmax(on, -1)
+            pont = lp_on.exp()[idx, t]
+            kl = (p_off * (lp_off - lp_on)).sum(-1)
+        dP_all = float((pont - pofft).mean())
+        corr = float(torch.corrcoef(torch.stack([g, 1.0 - pofft]))[0, 1]) if len(ho) > 2 else float("nan")
+        mae = float((g - g_star_ho).abs().mean())                # calibration: how close to the oracle dose
+        gcorr = float(torch.corrcoef(torch.stack([g, g_star_ho]))[0, 1]) if len(ho) > 2 else float("nan")
+        print(f"  [{name:7s}] ALL dP {dP_all:+.4f} | meanKL {float(kl.mean()):.3f} | mean_gain {float(g.mean()):.3f}"
+              f" | corr(gain,uncert) {corr:+.3f} | vs-oracle: MAE {mae:.3f} corr {gcorr:+.3f}", flush=True)
+        for lo, hi in [(0.0, 0.1), (0.1, 0.3), (0.3, 0.6), (0.6, 1.01)]:
+            m = (pofft >= lo) & (pofft < hi)
+            if int(m.sum()) == 0:
+                continue
+            dpb = float((pont[m] - pofft[m]).mean()); klb = float(kl[m].mean()); gb = float(g[m].mean())
+            print(f"      P(true)_off [{lo:.2f},{hi:.2f})  N={int(m.sum()):3d}  dP {dpb:+.4f}  KL {klb:6.3f}  gain {gb:.3f}",
+                  flush=True)
+        return {"name": name, "dP": dP_all, "gain_uncert_corr": corr, "oracle_mae": mae, "oracle_corr": gcorr}
+
+    print(f"\n[mag][persistent] === Track 5 (#99): LEARNED GATE ROUTER (iter) — {len(tr)} train / {len(ho)} HELD-OUT "
+          f"(alpha_ref={alpha_ref}, kl_w={kl_w}, k={topk}, N_SIG=8) ===", flush=True)
+    # oracle ceiling on held-out (best achievable with the same signals+injection)
+    on_star = o + g_star_ho.unsqueeze(-1) * inj_ho
+    dP_star = float((torch.softmax(on_star, -1)[idx, t] - pofft).mean())
+    print(f"  ORACLE ceiling (per-fact best gain): ALL dP {dP_star:+.4f}  mean_gain {float(g_star_ho.mean()):.3f}",
           flush=True)
-    corr = float(torch.corrcoef(torch.stack([g, 1.0 - pofft]))[0, 1]) if len(ho) > 2 else float("nan")
-    print(f"  learned dose: corr(gain, base-uncertainty 1-P(true)) = {corr:+.3f}  "
-          f"(positive = the router learned to push HARDER where the base is less sure)", flush=True)
+    res = []
+    r_diff = fit_router(off[tr], raw[tr], true_tid[tr], None if conf is None else conf[tr],
+                        alpha_ref, kl_weight=kl_w, steps=steps, topk=topk, device=str(DEV))
+    res.append(_eval(r_diff, "diff"))
+    r_reg = fit_router_regress(off[tr], raw[tr], true_tid[tr], None if conf is None else conf[tr],
+                               alpha_ref, kl_weight=kl_w, steps=steps, topk=topk, device=str(DEV))
+    res.append(_eval(r_reg, "regress"))
+    best = max(res, key=lambda d: d["dP"])
+    print(f"  BEST held-out: {best['name']} (dP {best['dP']:+.4f}, oracle dP {dP_star:+.4f} = "
+          f"{100*best['dP']/max(1e-6,dP_star):.0f}% of ceiling); lower vs-oracle MAE = better-calibrated dose", flush=True)
     print("=" * 64, flush=True)
-    return {"dP": dP_all, "gain_uncertainty_corr": corr}
+    return {"results": res, "oracle_dP": dP_star}
 
 
 @torch.no_grad()
