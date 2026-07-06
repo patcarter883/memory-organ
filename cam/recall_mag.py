@@ -1680,6 +1680,42 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
     print(f"  (constant-inject = repetition/degenerate; answer-span-inject should read FLUENT with the edit)",
           flush=True)
 
+    # ---- MULTI-TOKEN PER-POSITION DECODE DIAG (CAM_MT_DECODE_DIAG=1) --------------------------------
+    # Isolates WHERE later-position drift comes from. For each multi-token edit, per object position t
+    # print (true token, PURE store retrieval argmax with NO base competition, conf). If pure-retrieval
+    # is right at every t but delivery still drifts -> the base's continuation logits overpower the
+    # injection (injection-strength problem). If pure-retrieval itself is wrong at t>=1 -> the store's
+    # per-position addressing/decode is the problem (position codebooks not separable / value collision).
+    if os.environ.get("CAM_MT_DECODE_DIAG") == "1":
+        pos_ok = {}
+        print(f"[mag][mtdecode] per-position  true / PURE-retrieved / conf  (store in isolation):", flush=True)
+        for r in sample:
+            if not (_is_multi(r) and hasattr(adapter, "_pos_key")):
+                continue
+            obj = _obj_tids(r)
+            Lt = min(len(obj), _mt_cap(adapter))
+            tids = torch.tensor([r.subject_tids], dtype=torch.long, device=DEV)
+            if gte:
+                bq = adapter._gte_key(tids).unsqueeze(1)
+            else:
+                bq = adapter._e(tids)
+                if learned_pool:
+                    bq = adapter._pool_subject(bq, keepdim=True)
+            Vb = V[_subject_bank(r.subject_tids, len(V))]
+            cells = []
+            for t in range(Lt):
+                read = adapter.persistent_bank(Vb, adapter._pos_key(bq, t))
+                cc = float(adapter._last_conf.max().item())
+                # decode in the unembed's native dtype — do NOT materialize lm.float() (2.4GB OOM)
+                rt = int((adapter.out_proj(read).mean(1).to(lm.dtype) @ lm.t()).argmax(-1).item())
+                ok = (rt == int(obj[t]))
+                pos_ok[t] = pos_ok.get(t, [0, 0]); pos_ok[t][1] += 1; pos_ok[t][0] += int(ok)
+                cells.append(f"t{t}:{tok.decode([int(obj[t])])!r}/{tok.decode([rt])!r}/{cc:.2f}{'ok' if ok else 'XX'}")
+            print(f"   {r.new_str!r:14} " + "  ".join(cells), flush=True)
+        if pos_ok:
+            summ = "  ".join(f"t{t}:{v[0]}/{v[1]}" for t, v in sorted(pos_ok.items()))
+            print(f"[mag][mtdecode] pure-retrieval exact by position: {summ}", flush=True)
+
     # ---- CONF-GATE CALIBRATION (CAM_GATE_CALIB=1) --------------------------------------------------
     # The hard gate g=(conf>c0) zeros delivery when c0 is mis-set above the in-store conf. Measure the
     # in-store conf (edited subjects, gate SHOULD open) vs out-of-store conf (novel subjects, gate MUST
