@@ -1664,11 +1664,11 @@ def eval_persistent_router(base, adapter, injector, tok, kept, args):
     split and evaluated on a HELD-OUT split. Tests the ceiling claim: does a learned gate GENERALISE to
     unseen facts, and does it recover the self-dosing (high gain where the base is unsure)?"""
     try:
-        from .gate_router import (fit_router, fit_router_regress, fit_router_hybrid, oracle_gain,
-                                  signal_features, _inj_base)
+        from .gate_router import (fit_router, fit_router_regress, fit_router_hybrid, fit_router_pertoken,
+                                  oracle_gain, signal_features, _inj_base, _inj_pertoken)
     except ImportError:                                          # run as a file: _HERE already on sys.path
-        from gate_router import (fit_router, fit_router_regress, fit_router_hybrid, oracle_gain,
-                                 signal_features, _inj_base)
+        from gate_router import (fit_router, fit_router_regress, fit_router_hybrid, fit_router_pertoken,
+                                 oracle_gain, signal_features, _inj_base, _inj_pertoken)
     injector.eval()
     pooled = os.environ.get("CAM_POOLED_SUBJ_KEY") == "1"
     N = len(kept)
@@ -1701,8 +1701,13 @@ def eval_persistent_router(base, adapter, injector, tok, kept, args):
 
     def _eval(router, name):
         with torch.no_grad():
-            g = router.gain(signal_features(o, r_, c))
-            on = o + g.unsqueeze(-1) * inj_ho
+            g_out = router.gain(signal_features(o, r_, c))
+            if g_out.dim() == 2:                                  # per-token (g_top, g_rest)
+                on = o + _inj_pertoken(r_, g_out, alpha_ref, topk)
+                g = g_out.mean(-1)                                # summarise for corr/mean-gain reporting
+            else:
+                g = g_out
+                on = o + g.unsqueeze(-1) * inj_ho
             lp_on = torch.log_softmax(on, -1)
             pont = lp_on.exp()[idx, t]
             kl = (p_off * (lp_off - lp_on)).sum(-1)
@@ -1739,6 +1744,9 @@ def eval_persistent_router(base, adapter, injector, tok, kept, args):
     r_hyb = fit_router_hybrid(off[tr], raw[tr], true_tid[tr], None if conf is None else conf[tr],
                               alpha_ref, kl_weight=kl_w, beta=beta, steps=steps, topk=topk, device=str(DEV))
     res.append(_eval(r_hyb, "hybrid"))
+    r_pt = fit_router_pertoken(off[tr], raw[tr], true_tid[tr], None if conf is None else conf[tr],
+                               alpha_ref, kl_weight=kl_w, beta=beta, steps=steps, topk=topk, device=str(DEV))
+    res.append(_eval(r_pt, "pertoken"))
     best = max(res, key=lambda d: d["dP"])
     print(f"  BEST held-out: {best['name']} (dP {best['dP']:+.4f}, oracle dP {dP_star:+.4f} = "
           f"{100*best['dP']/max(1e-6,dP_star):.0f}% of ceiling); lower vs-oracle MAE = better-calibrated dose", flush=True)

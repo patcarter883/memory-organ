@@ -46,14 +46,16 @@ def signal_features(off, raw, conf):
 
 
 class GateRouter(nn.Module):
-    def __init__(self, hidden=32):
+    def __init__(self, hidden=32, n_out=1):
         super().__init__()
+        self.n_out = n_out
         self.net = nn.Sequential(nn.Linear(N_SIG, hidden), nn.GELU(),
                                  nn.Linear(hidden, hidden), nn.GELU(),
-                                 nn.Linear(hidden, 1))
+                                 nn.Linear(hidden, n_out))
 
     def gain(self, sig):
-        return torch.sigmoid(self.net(sig)).squeeze(-1)      # [B] in (0,1)
+        g = torch.sigmoid(self.net(sig))                     # [B,n_out] in (0,1)
+        return g.squeeze(-1) if self.n_out == 1 else g       # [B] when scalar
 
 
 def _inj_base(raw, alpha_ref, topk):
@@ -130,6 +132,44 @@ def fit_router_hybrid(off, raw, true_tid, conf, alpha_ref, *, kl_weight=0.3, bet
         push = -lp_on[idx, tgt]
         kl = (p_off * (lp_off - lp_on)).sum(-1)
         loss = (push + kl_weight * kl).mean() + beta * F.mse_loss(g, g_star)
+        opt.zero_grad(); loss.backward(); opt.step()
+    return router
+
+
+def _inj_pertoken(raw, g2, alpha_ref, topk):
+    """Per-token injection: g2 [B,2] = (g_top, g_rest). Apply g_top to the store's argmax token (the target)
+    and g_rest to the other top-k tokens — a 2nd degree of freedom that lets the router push the target
+    HARDER per unit KL (raises the achievable ΔP ceiling above a single scalar gain)."""
+    B, V = raw.shape
+    _, keep = raw.topk(topk, -1)                              # sorted desc -> keep[:,0] is the target
+    w = torch.zeros_like(raw)
+    w.scatter_(1, keep, g2[:, 1:2].expand(-1, topk))         # all top-k get g_rest
+    w.scatter_(1, keep[:, :1], g2[:, 0:1])                   # target overridden to g_top
+    return alpha_ref * w * raw
+
+
+def fit_router_pertoken(off, raw, true_tid, conf, alpha_ref, *, kl_weight=0.3, beta=0.5, steps=400, lr=3e-3,
+                        topk=16, grid=41, device="cuda"):
+    """2-DOF router: predicts (g_top, g_rest) per fact and injects per-token (target vs rest of the support).
+    Diff objective + β*MSE(mean gain, scalar-oracle) to keep the magnitude sane. Raises the ceiling by
+    letting the target token be pushed independently of its neighbours."""
+    off = off.detach().float(); raw = raw.detach().float()
+    B = off.shape[0]
+    idx = torch.arange(B, device=off.device)
+    sig = signal_features(off, raw, conf).detach()
+    lp_off = torch.log_softmax(off, -1); p_off = lp_off.exp()
+    g_star, _ = oracle_gain(off, raw, true_tid, alpha_ref, kl_weight=kl_weight, topk=topk, grid=grid, device=device)
+    g_star = g_star.detach()
+    router = GateRouter(n_out=2).to(device)
+    opt = torch.optim.Adam(router.parameters(), lr=lr)
+    tgt = true_tid.to(off.device)
+    for _ in range(steps):
+        g2 = router.gain(sig)                                # [B,2]
+        on = off + _inj_pertoken(raw, g2, alpha_ref, topk)
+        lp_on = torch.log_softmax(on, -1)
+        push = -lp_on[idx, tgt]
+        kl = (p_off * (lp_off - lp_on)).sum(-1)
+        loss = (push + kl_weight * kl).mean() + beta * F.mse_loss(g2.mean(-1), g_star)
         opt.zero_grad(); loss.backward(); opt.step()
     return router
 
