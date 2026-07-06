@@ -1755,6 +1755,80 @@ def eval_persistent_router(base, adapter, injector, tok, kept, args):
 
 
 @torch.no_grad()
+def eval_persistent_rescue(base, adapter, injector, tok, kept, args):
+    """Track 5 (#99) — PROVENANCE vs CONFIDENCE (the separability-wall experiment). Bind TRUE into the store
+    for all facts, classify each by the BASE's own state, and compare two label-free gating policies on the
+    graded rescue ΔP(true):
+      - CONFIDENCE gate: fire where the base looks UNSURE (p_base(top) < tau). Blind to confident-WRONG.
+      - PRESENCE gate:   fire where a memory was WRITTEN for this subject (store conf > C0). Provenance.
+    Claim: on CONFIDENT-WRONG facts (base sure of a wrong token) the confidence gate is at chance (stays
+    inert — the base looks confident) while the presence gate rescues, because the write-event carries the
+    label the base-side signal cannot. Both gates fixed alpha = CAM_RESCUE_ALPHA; injection top-k masked."""
+    injector.eval()
+    pooled = os.environ.get("CAM_POOLED_SUBJ_KEY") == "1"
+    N = len(kept)
+    B = _n_disjoint_banks()
+    V = _init_banks(adapter, B)
+    for r in kept:
+        V = _persistent_write_one(adapter, V, r, pooled)
+    off, raw, conf, _tt = _collect_router_data(base, adapter, injector, tok, V, kept)
+    off, raw = off.to(DEV), raw.to(DEV)
+    conf = conf.to(DEV) if conf is not None else None
+    # TARGET = the object the store was WRITTEN to deliver (true if CAM_BIND_TRUE else the counterfactual).
+    # Binding the counterfactual turns base-confident-in-true facts into the CONFIDENT-WRONG class (base is
+    # confidently wrong w.r.t. the target the store holds) — the regime where base-confidence is blind.
+    bind_true = os.environ.get("CAM_BIND_TRUE") == "1"
+    target = torch.tensor([(r.true_tid if bind_true else r.new_tid) for r in kept], device=DEV)
+    idx = torch.arange(N, device=DEV)
+    p_off = torch.softmax(off, -1)
+    base_top = off.argmax(-1); p_top = p_off[idx, base_top]
+    pofft = p_off[idx, target]
+    is_right = (base_top == target)                              # base already agrees with the store's target
+    alpha = float(os.environ.get("CAM_RESCUE_ALPHA", "0.5"))
+    tau = float(os.environ.get("CAM_RESCUE_TAU", "0.5"))          # "confident" threshold on base top prob
+    c0 = float(os.environ.get("CAM_LOGIT_GATE_C0", "1"))
+    topk = int(os.environ.get("CAM_MULTIGATE_TOPK", "16"))
+    inj = alpha * raw
+    if 0 < topk < inj.shape[-1]:
+        keep = raw.topk(topk, -1).indices
+        m = torch.zeros_like(inj); m.scatter_(1, keep, 1.0); inj = inj * m
+    # label-free gates (per-fact scalar in {0,1})
+    g_conf = (p_top < tau).float()                               # base-side confidence gate: fire where UNSURE
+    g_pres = torch.ones(N, device=DEV) if conf is None else (conf.float() > c0).float()  # provenance: subject in store
+
+    def dP(gate):
+        on = off + gate.unsqueeze(-1) * inj
+        return (torch.softmax(on, -1)[idx, target] - pofft)   # [N] per-fact ΔP(true)
+
+    dP_conf, dP_pres = dP(g_conf), dP(g_pres)
+    classes = [("confident-RIGHT", is_right & (p_top >= tau)),
+               ("confident-WRONG", (~is_right) & (p_top >= tau)),
+               ("uncertain      ", p_top < tau)]
+    print(f"\n[mag][persistent] === Track 5 (#99): PROVENANCE vs CONFIDENCE rescue over {N} facts "
+          f"(alpha={alpha}, tau={tau}) ===", flush=True)
+    print("  ΔP(true) under a base-CONFIDENCE gate vs a store-PRESENCE gate, by the base's own state:", flush=True)
+    print("  class              N    fires:conf/pres    dP_confidence   dP_presence", flush=True)
+    for name, mask in classes:
+        n = int(mask.sum())
+        if n == 0:
+            print(f"  {name}  {n:4d}    (none)", flush=True); continue
+        fc = float(g_conf[mask].mean()); fp = float(g_pres[mask].mean())
+        dc = float(dP_conf[mask].mean()); dpr = float(dP_pres[mask].mean())
+        print(f"  {name}  {n:4d}      {fc:.2f} / {fp:.2f}       {dc:+.4f}        {dpr:+.4f}", flush=True)
+    cw = (~is_right) & (p_top >= tau)
+    if int(cw.sum()) > 0:
+        print(f"  >>> CONFIDENT-WRONG rescue: presence {float(dP_pres[cw].mean()):+.4f} vs confidence "
+              f"{float(dP_conf[cw].mean()):+.4f}  — provenance rescues where base-confidence is blind "
+              f"(the write-event IS the label)", flush=True)
+    else:
+        print("  >>> no confident-wrong facts in this set — relax the base-known filter to construct them "
+              "(CAM_RESCUE_TAU lower, or include base-wrong facts).", flush=True)
+    print("=" * 64, flush=True)
+    return {"cw_n": int(cw.sum()), "cw_dP_presence": float(dP_pres[cw].mean()) if int(cw.sum()) else 0.0,
+            "cw_dP_confidence": float(dP_conf[cw].mean()) if int(cw.sum()) else 0.0}
+
+
+@torch.no_grad()
 def eval_persistent_generate(base, adapter, injector, tok, kept, args):
     """GENERATION-COHERENCE check (the reality test): does the edited memory produce FLUENT text carrying
     the edit, or only flip the next-token argmax? All prior metrics are single-token. Here we write all
@@ -2318,6 +2392,11 @@ def main():
                          "a TRAIN split, evaluated on a HELD-OUT split. Tests whether a learned gate generalises "
                          "to unseen facts and recovers the self-dosing. Implies --persistent-sweep. Knobs: "
                          "CAM_ROUTER_ALPHA, CAM_ROUTER_KL, CAM_ROUTER_STEPS, CAM_MULTIGATE_TOPK.")
+    ap.add_argument("--persistent-rescue", action="store_true", dest="persistent_rescue",
+                    help="PROVENANCE vs CONFIDENCE (Track 5, #99): classify facts by the base's state and "
+                         "compare a base-confidence gate vs a store-presence gate on ΔP(true) — does provenance "
+                         "rescue CONFIDENT-WRONG facts where base-confidence is blind? Implies --persistent-sweep. "
+                         "Knobs: CAM_RESCUE_ALPHA, CAM_RESCUE_TAU.")
     ap.add_argument("--query-rel", type=str, default="", dest="query_rel",
                     help="ADVERSARIAL paraphrase probe (issue #10, natural phrasing only): bind and "
                          "train exactly as normal (bindings + training queries use ' lives in'), then "
@@ -2495,7 +2574,8 @@ def main():
     # ---- stage 2: MAG delivery ----
     if (getattr(args, "persistent_overwrite", False) or getattr(args, "persistent_solo", False)
             or getattr(args, "persistent_locality", False) or getattr(args, "persistent_generate", False)
-            or getattr(args, "persistent_graded", False) or getattr(args, "persistent_router", False)):
+            or getattr(args, "persistent_graded", False) or getattr(args, "persistent_router", False)
+            or getattr(args, "persistent_rescue", False)):
         args.persistent_sweep = True         # the online-update / solo / locality tests run after the sweep
     if getattr(args, "persistent_sweep", False):
         args.persistent_eval = True          # the sweep is a superset of the persistent eval
@@ -2543,6 +2623,9 @@ def main():
                 if getattr(args, "persistent_router", False):
                     with StageCost(f"persistent learned gate-router L={tag}"):
                         eval_persistent_router(base, adapter, injector, tok, cf_records, args)
+                if getattr(args, "persistent_rescue", False):
+                    with StageCost(f"persistent provenance-vs-confidence rescue L={tag}"):
+                        eval_persistent_rescue(base, adapter, injector, tok, cf_records, args)
             injector.detach()
             continue
         with StageCost(f"delivery eval L={tag}"):
