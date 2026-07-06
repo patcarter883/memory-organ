@@ -112,6 +112,19 @@ phrasing — prose, varied relations, multi-token — is validated in §5.)
 > generalizing (0.65). Full arc + numbers in
 > [RESULTS.md §7](RESULTS.md) ([#16](https://github.com/patcarter883/memory-organ/issues/16)).
 
+**4. Soft steering — a graded lean, not only a replace** ([#99](https://github.com/patcarter883/memory-organ/issues/99)).
+The same delivery machinery is an *additive gated bias*, so overwriting is only its hardest special case. Bound
+to the object the base already weakly holds, the memory *reinforces* it — lifting P(true) monotonically in the
+base's uncertainty (**+0.53** where the base is unsure, inert where it's confident), gentle at a low injection
+gain. A **learned per-token gate router** over label-free signals (retrieval confidence, base uncertainty,
+headroom, agreement, scope) reaches **98 % of the per-fact oracle ceiling on held-out facts** and rediscovers
+the dosing law on its own (corr(gain, uncertainty) **+0.94**). And it exposes *why* an external memory is
+load-bearing: on facts the base is **confidently wrong** about, any base-side confidence gate is structurally
+blind (ΔP **+0.000** — confident-wrong is indistinguishable from confident-right), while a **store-presence
+gate rescues them (+0.464)** — the deliberate write is an external label no base-side signal carries. Full arc
+in [docs/research/multi-gate-steering.md](docs/research/multi-gate-steering.md), the honest prior-art/novelty
+map in [docs/research/novelty-positioning.md](docs/research/novelty-positioning.md).
+
 See **[RESULTS.md](RESULTS.md)** for every number with its baseline and the full story including the
 [three corrections](DISCLOSURES.md#corrections-we-were-wrong-three-times), and **[METHOD.md](METHOD.md)** for
 how the mechanism works.

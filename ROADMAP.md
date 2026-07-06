@@ -26,6 +26,19 @@ across applications.
 - ✅ **Knowledge editing**: the memory *overwrites* what a frozen model already believes — it makes the
   base emit a counterfactual (France→Tokyo, 0.996) while suppressing the true prior (1.000 → 0.004),
   validated by a prior-probe gate — **same-base (Qwen) *and* cross-family (Gemma)**.
+- ✅ **Soft steering — a graded LEAN, not only a replace (Track 5, [#99](https://github.com/patcarter883/memory-organ/issues/99))**:
+  the delivery primitive is an additive gated bias, so the memory can *reinforce* a fact the base already
+  weakly holds instead of overwriting it. Bound to the true object it lifts P(true) monotonically in the
+  base's uncertainty (+0.53 where unsure → inert where confident); the gentle operating point is a low
+  injection gain (dose-response peaks α≈0.25–0.5), and a **learned per-token gate router** over label-free
+  signals reaches **98 % of the per-fact oracle ceiling on held-out facts** and rediscovers the dosing law
+  (corr +0.94). See [docs/research/multi-gate-steering.md](docs/research/multi-gate-steering.md) and
+  RESEARCH §3.24–3.25.
+- ✅ **Provenance beats the confidence-separability wall (Track 5)**: on facts the base is *confidently
+  wrong* about, any base-side confidence gate is structurally blind (ΔP +0.000 — confident-wrong is
+  indistinguishable from confident-right), while a **store-presence gate rescues them (+0.464)** — the
+  deliberate write-event is an external label no base-side signal carries. Novelty/prior-art map in
+  [docs/research/novelty-positioning.md](docs/research/novelty-positioning.md).
 
 ...all on a **synthetic recall probe** (curated/random facts, single- and 2-token answers), on AMD ROCm.
 
