@@ -1485,23 +1485,53 @@ def _persistent_graded(base, adapter, injector, tok, V, cohort, bank_ids=None):
         idx = torch.arange(B, device=ld)
         last = torch.tensor([lens[b] - 1 for b in range(B)], device=ld)
         off = logits_off[idx, last].float()                              # [B,vocab]
-        # ON pass: residual tap (+ optional conf-gated logit injection, same block as _persistent_preds)
-        injector.set_bank(bank, conf=conf, relidx=0)
-        on = base(inputs_embeds=emb).logits[idx, last].float()
         alpha = float(os.environ.get("CAM_LOGIT_INJECT", "0"))
+        soft = os.environ.get("CAM_SOFT_STEER") == "1"                   # surgical path: NO residual tap,
+        if soft:                                                          # deliver ONLY via a gated logit bias
+            on = off.clone()                                              # -> ON = pure base + inj (one forward,
+        else:                                                             # gentle: KL small; base argmax below is
+            injector.set_bank(bank, conf=conf, relidx=0)                 # the TRUE base uncertainty signal)
+            on = base(inputs_embeds=emb).logits[idx, last].float()
+        grow = torch.ones(B, device=ld)                                  # per-row composite gain (diagnostic)
         if alpha > 0:
             bh = adapter.out_proj(bank).mean(1)
             lm = base.get_output_embeddings().weight
-            inj = alpha * (bh.to(lm.device, lm.dtype) @ lm.t()).to(ld).float()
+            raw = (bh.to(lm.device, lm.dtype) @ lm.t()).to(ld).float()   # [B,vocab] UNSCALED store logits
+            inj = alpha * raw                                            # the store's push
+            store_prob = torch.softmax(raw, -1)                         # store's own delivered distribution
+            store_tok = raw.argmax(-1)                                  # token the memory most wants to deliver
+            # GATE A (store retrieval conf, §3.15): fire only on the addressed subject -> protects locality.
             c0 = os.environ.get("CAM_LOGIT_GATE_C0")
             if c0 is not None and conf is not None:
                 cc = conf.to(ld).float()
                 if os.environ.get("CAM_LOGIT_GATE_HARD") == "1":
-                    g = (cc > float(c0)).float()
+                    gA = (cc > float(c0)).float()
                 else:
-                    k = float(os.environ.get("CAM_LOGIT_GATE_K", "1"))
-                    g = torch.sigmoid(k * (cc - float(c0)))
-                inj = inj * g.view(-1, 1)
+                    gA = torch.sigmoid(float(os.environ.get("CAM_LOGIT_GATE_K", "1")) * (cc - float(c0)))
+                grow = grow * gA
+            multigate = os.environ.get("CAM_MULTIGATE") == "1"
+            if multigate or os.environ.get("CAM_MARGIN_GATE") == "1":
+                # STRENGTH gate — self-dosing HEADROOM: push ∝ (1 - base P(target)). base already certain
+                # -> ~0 (inert, no confident-fact harm §3.24); base gives target nothing -> ~1 (full push).
+                p_target = torch.softmax(off, -1)[idx, store_tok]
+                grow = grow * (1.0 - p_target).clamp(0, 1)
+            elif os.environ.get("CAM_AGREE_GATE") == "1":               # crude hard form (kept for ablation)
+                grow = grow * (store_tok != off.argmax(-1)).float()
+            if multigate:
+                # SCOPE veto (§3.23): a novel/garbage value decodes DIFFUSE through out_proj -> low peak;
+                # stay inert rather than deliver corruption. Label-free (store's own decode confidence).
+                scope_min = float(os.environ.get("CAM_MULTIGATE_SCOPE_MIN", "0.10"))
+                grow = grow * (store_prob.max(-1).values >= scope_min).float()
+            inj = inj * grow.view(-1, 1)
+            if multigate:
+                # SUPPORT gate — SPARSE: keep only the store's top-k token logits, zero the rest. Confines
+                # collateral to a few tokens -> collapses the blunt KL (§3.24, dense tap KL 24-38). "where".
+                topk = int(os.environ.get("CAM_MULTIGATE_TOPK", "16"))
+                if 0 < topk < inj.shape[-1]:
+                    keep = raw.topk(topk, dim=-1).indices
+                    m = torch.zeros_like(inj)
+                    m.scatter_(1, keep, 1.0)
+                    inj = inj * m
             on = on + inj
         lp_off = torch.log_softmax(off, -1)
         lp_on = torch.log_softmax(on, -1)
@@ -1516,6 +1546,7 @@ def _persistent_graded(base, adapter, injector, tok, V, cohort, bank_ids=None):
                 "dlogp": float(lp_on[b, t] - lp_off[b, t]),
                 "kl": float(kl[b]),
                 "conf": float(conf[b]) if conf is not None else None,
+                "gain": float(grow[b]),                                   # composite gate gain (A*margin*scope)
                 "rid": getattr(cohort[j], "relation_id", None),
             }
     injector.set_bank(None)
@@ -1538,8 +1569,15 @@ def eval_persistent_graded(base, adapter, injector, tok, kept, args):
     stats = [s for s in _persistent_graded(base, adapter, injector, tok, V, kept) if s is not None]
     bind_true = os.environ.get("CAM_BIND_TRUE") == "1"
     alpha = os.environ.get("CAM_LOGIT_INJECT", "0")
+    mode = "soft(logit-only)" if os.environ.get("CAM_SOFT_STEER") == "1" else "tap"
+    mg = os.environ.get("CAM_MULTIGATE") == "1"
+    gates = ("storeconf+margin+scope+sparse(k=%s)" % os.environ.get("CAM_MULTIGATE_TOPK", "16")) if mg else \
+        ("+".join([g for g, on in [("storeconf", os.environ.get("CAM_LOGIT_GATE_C0") is not None),
+                                   ("agree", os.environ.get("CAM_AGREE_GATE") == "1"),
+                                   ("margin", os.environ.get("CAM_MARGIN_GATE") == "1")] if on]) or "none")
     print(f"\n[mag][persistent] === Track 5 (#99): SOFT-STEERING graded lean over {N} edits "
-          f"(bind={'TRUE' if bind_true else 'counterfactual'}, alpha={alpha}) ===", flush=True)
+          f"(bind={'TRUE' if bind_true else 'counterfactual'}, alpha={alpha}, path={mode}, gates={gates}) ===",
+          flush=True)
     print("  the LEAN toward the true object, memory OFF vs ON, bucketed by the base's pre-edit P(true):",
           flush=True)
     print("  P(true)_off bucket    N    dP(true)   d_logp   d_rank  %rank_up   meanKL", flush=True)
@@ -1560,6 +1598,10 @@ def eval_persistent_graded(base, adapter, injector, tok, kept, args):
     dlp = sum(s["dlogp"] for s in stats) / n
     rup = sum(1 for s in stats if s["rank_on"] < s["rank_off"]) / n
     print(f"  ALL                   {len(stats):4d}   {dP:+.4f}  {dlp:+.3f}    (%rank_up {rup:.2f})", flush=True)
+    gains = [s.get("gain", 1.0) for s in stats]
+    inert = sum(1 for gv in gains if gv <= 1e-6) / max(1, len(gains))
+    print(f"  gate: mean composite gain {sum(gains)/max(1,len(gains)):.3f} | fully-inert rows {inert:.2f} "
+          f"(gain->0 = base already certain, or scope-vetoed)", flush=True)
     print(f"  positive dP(true)/d_logp = the memory LEANS the frozen base toward the true object it already "
           f"holds\n  (a soft push, not a replace — {'TRUE-bound' if bind_true else 'NOTE: counterfactual-bound, expect NEGATIVE'})",
           flush=True)

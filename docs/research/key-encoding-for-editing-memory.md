@@ -501,6 +501,55 @@ means, with the structural wins reproducing exactly in every run):
 no residual self-addressing failure to retrain away; below-gate = 0 in all 3 reps). Shipped:
 `CAM_WRITE_AT_READ` (K1), `CAM_WRITE_REDUNDANT` (K2), `CAM_READ_SUB_TOPK` (K3, unneeded).
 
+## 3.25 MULTIGATE — composed gates + the dose-response: gentleness is α, not sparsity (2026-07-06)
+
+Track 5 (#99), building on §3.24. Question: can we COMPOSE gates so the lean is local, non-disruptive,
+OOD-safe, AND gentle at once? Built a single injection-site multigate, all label-free signals:
+`δ = g_storeconf · g_headroom(1−p_base(target)) · g_scope(store-decode peak) · sparse_topk · α·out_proj(value)`
+(`CAM_MULTIGATE=1`). Store-conf = locality (§3.15); headroom = self-dosing strength (kills the §3.24
+confident-fact harm); scope = §3.23 corruption guard (inert on in-distribution here, as it should be);
+sparse top-k = "where". Gate arc first established the right forms:
+
+- **Hard argmax agreement gate FAILS** (killed the lean, +0.353→−0.066): base already argmaxes true at LOW
+  prob, so "top==target" misreads unsure-but-top as satisfied. Fix = **SOFT margin** `1−p_base(target)`
+  (push ∝ headroom), exactly as CD/CAD predict (contrast hurts where base already right).
+- **Surgical logit path (tap off) removes the harm**: confident bucket −0.41 (blunt tap) → +0.014 (logit-
+  only) by aiming the delta along the target direction, not the tap's broad perturbation.
+
+**FALSIFIED: sparse support does NOT reduce collateral KL.** Full multigate ≈ ungated on KL (~15/15/9/4 at
+α=1). `KL(off‖on)` is set by the softmax CONCENTRATION MAGNITUDE (α), not the number of perturbed logits —
+masking to 16 tokens still lets the target grab the mass after renormalisation. Sparsity governs
+where/locality/interpretability, NOT gentleness.
+
+**The gentleness knob is α — full multigate dose-response (137 edits, bind=TRUE):**
+
+| α | ALL ΔP(true) | ALL d_logp | low-bucket ΔP (P<0.1) | confident-bucket ΔP (P>0.6) | confident KL |
+|---|---|---|---|---|---|
+| 0.1  | +0.232 | +0.540 | +0.350 | +0.086 | 0.05 |
+| 0.25 | **+0.414** | **+0.740** | +0.773 | +0.115 | 0.30 |
+| 0.5  | +0.386 | +0.203 | +0.886 | +0.066 | 0.79 |
+| 1    | +0.341 | −2.820 | +0.866 | −0.035 | 3.97 |
+| 2    | +0.264 | −9.074 | +0.870 | −0.180 | 10.5 |
+| 4    | +0.182 | −20.196 | +0.431 | −0.405 | 30.0 |
+
+Clean sweet spot at **α≈0.25–0.5**: it MAXIMISES the mean lean (+0.41), keeps d_logp POSITIVE (no tail
+catastrophes), holds low collateral KL (0.3–0.8), preserves strong rescue in the uncertain buckets
+(+0.77–0.89), and stays near-inert on confident facts. Below it (α=0.1) the push UNDER-delivers (rescue
+falls to +0.35, KL ~0.05 — too gentle); above it (α≥1) the "override" region buries true on a subset
+(d_logp → −20) and drags the mean down. Matches the feature-steering
+"sweet spot" (Anthropic 2024). **Net: gates shape WHERE/WHEN/WHETHER/HOW-MUCH-per-fact; α sets magnitude,
+and gentle magnitude dominates.** The gentle lean is real, and it is BETTER than the hard override, not a
+weaker version of it.
+
+**Ceiling & wall (2024–26 lit, full map in `docs/research/multi-gate-steering.md`):** the concept pushes all
+the way to a single calibrated, conformal, value-function-driven, closed-loop, feature-interpretable
+memory-router — but it can NEVER separate confidently-wrong from confidently-right without an external
+label-bearing signal (`I(signal;correctness)≈0` there; high-certainty hallucinations are signature-identical
+to correct ones). The store's own PRESENCE (Gate A) IS that external signal — it was written because the fact
+needed changing — which is why store-conf gating is load-bearing in a way no base-side signal can be.
+Shipped `CAM_MULTIGATE`/`_TOPK`/`_SCOPE_MIN`, `CAM_MARGIN_GATE`, `CAM_SOFT_STEER`, the multigate injection +
+composite-gain diagnostic, `tools/multigate*.sh`.
+
 ## 3.24 SOFT-STEERING — the mechanism does a graded LEAN, not only a hard replace (2026-07-06)
 
 Track 5 (#99). Every prior editing result is counterfactual OVERWRITE scored by argmax FLIP. But the
