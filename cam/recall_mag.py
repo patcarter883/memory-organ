@@ -210,7 +210,7 @@ def _mt_recon_loss(adapter, unembed, rng, batch, K, weight, pool=None):
     V = adapter.store.init_state(batch, dev, dtype=torch.float32)
     for t in range(K):
         key_t = adapter._pos_key(name_key, t)                                           # [B,H,mem]
-        val_t = adapter._e(objs[:, t:t + 1])                                            # [B,1,mem]
+        val_t = adapter._e_val(objs[:, t:t + 1])                                        # [B,1,mem] value branch
         if key_t.shape[1] > 1:                                                           # multi-vector keys
             val_t = val_t.expand(-1, key_t.shape[1], -1)
         V = adapter.persistent_write(V, key_t, val_t)
@@ -1286,10 +1286,10 @@ def _persistent_write_val(adapter, V, r, val_tid, pooled):
     else:
         subj_emb = adapter._e(tids)                                                        # [1,S,mem_dim]
         key = adapter._pool_subject(subj_emb, keepdim=True) if pooled else subj_emb[:, -1:]  # [1,H,mem] or [1,1,mem]
-    val = adapter._e(torch.tensor([[val_tid]], dtype=torch.long, device=DEV))              # [1,1,mem_dim]
+    val = adapter._e_val(torch.tensor([[val_tid]], dtype=torch.long, device=DEV))          # [1,1,mem_dim] value branch
     lam = float(os.environ.get("CAM_VALUE_SUPPRESS", "0"))    # R1-prior-v2: promote new, SUPPRESS original
     if lam > 0 and getattr(r, "true_tid", -1) >= 0:           # value = new - lam*original (damps the base's
-        val = val - lam * adapter._e(torch.tensor([[r.true_tid]], dtype=torch.long, device=DEV))  # confident prior)
+        val = val - lam * adapter._e_val(torch.tensor([[r.true_tid]], dtype=torch.long, device=DEV))  # confident prior)
     if os.environ.get("CAM_VALUE_UNIT_NORM") == "1":         # store a UNIT value so retrieval conf reflects
         val = torch.nn.functional.normalize(val, dim=-1)    # ADDRESSING quality, not the object token's
                                                             # embedding norm (weak-edit diagnostic §3.15)
@@ -1317,7 +1317,7 @@ def _persistent_write_seq(adapter, V, r, obj_tids, pooled):
     b = _subject_bank(r.subject_tids, len(V))
     for t in range(L):
         key_t = adapter._pos_key(base_key, t)                                         # [1,H,mem] name+pos_tag[t]
-        val_t = adapter._e(torch.tensor([[int(obj_tids[t])]], dtype=torch.long, device=DEV))  # [1,1,mem]
+        val_t = adapter._e_val(torch.tensor([[int(obj_tids[t])]], dtype=torch.long, device=DEV))  # [1,1,mem] value branch
         if key_t.shape[1] > 1:                                                        # multi-vector keys
             val_t = val_t.expand(-1, key_t.shape[1], -1)
         V[b] = adapter.persistent_write(V[b], key_t, val_t)

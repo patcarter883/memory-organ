@@ -231,6 +231,20 @@ class PKStoreAdapter(nn.Module):
                              f"multi-token object (new_tid=-1); resolve to new_ids[0] before writing.")
         return self.norm(self.in_proj(self.embed(ids).float()))
 
+    def _e_val(self, ids):
+        """VALUE-path embed. Values are the object tokens the store must ROUND-TRIP (mt-recon delivery),
+        NOT addressing keys. CAM_MT_VALUE_NO_NORM=1 drops the shared LayerNorm on the value branch so the
+        stored code keeps its per-token magnitude/direction spread instead of being flattened onto the
+        mem_dim unit sphere — the value-capacity lever for distinguishing ~100k token identities. Applied
+        IDENTICALLY at train (mt-recon) and delivery (persistent write) so the round-trip stays consistent.
+        Default (env unset) is byte-identical to _e (keeps the norm)."""
+        if os.environ.get("CAM_MT_VALUE_NO_NORM") != "1":
+            return self._e(ids)
+        if ids.numel() and (int(ids.min()) < 0 or int(ids.max()) >= int(self.embed.weight.shape[0])):
+            raise ValueError(f"PKStoreAdapter._e_val: token id out of range "
+                             f"[0,{self.embed.weight.shape[0]}) (min={int(ids.min())}, max={int(ids.max())}).")
+        return self.in_proj(self.embed(ids).float())
+
     def _pool_subject(self, span, keepdim=False):
         """Pool a subject-span embed [B,L,mem_dim] -> subject key/query vector(s). Returns [B,mem_dim]
         (or [B,1,mem_dim] if keepdim) for the single-key path, OR [B,H,mem_dim] when CAM_KEY_HEADS=H>1
