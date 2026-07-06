@@ -1237,8 +1237,12 @@ def _subject_bank(subject_tids, B):
 
 
 def _init_banks(adapter, B):
-    """B disjoint persistent value banks (list); B=1 -> a single bank (byte-identical to the pre-Phase-C path)."""
-    return [adapter.store.init_state(1, DEV, dtype=torch.float32) for _ in range(B)]
+    """B disjoint persistent value banks (list); B=1 -> a single bank (byte-identical to the pre-Phase-C path).
+    CAM_BANK_DTYPE=bf16 halves each bank's VRAM (2MB->1MB at N=1024,d=512) so B can go higher on a 16GB
+    card before the fixed per-bank [1,N,d] allocation OOMs — the read/write path already casts to fp32."""
+    _bd = {"fp32": torch.float32, "bf16": torch.bfloat16, "fp16": torch.float16}.get(
+        os.environ.get("CAM_BANK_DTYPE", "fp32"), torch.float32)
+    return [adapter.store.init_state(1, DEV, dtype=_bd) for _ in range(B)]
 
 
 # ---- MULTI-TOKEN object support (Track 4) --------------------------------------------------------
@@ -1739,8 +1743,9 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
         real = {tuple(r.subject_tids) for r in kept}
         subj_toks = sorted({int(t) for r in kept for t in r.subject_tids})
         rng2 = _np.random.default_rng(12345)
+        _outn = int(os.environ.get("CAM_CALIB_OUT_N", "24"))
         out_conf, tries = [], 0
-        while len(out_conf) < 24 and tries < 400:            # novel names: real subject-token pool, unseen combo
+        while len(out_conf) < _outn and tries < _outn * 20:  # novel names: real subject-token pool, unseen combo
             tries += 1
             slen = int(rng2.integers(2, 5))
             cand = [int(subj_toks[i]) for i in rng2.integers(0, len(subj_toks), size=slen)]
