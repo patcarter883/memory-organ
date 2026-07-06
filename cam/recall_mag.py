@@ -1220,8 +1220,12 @@ def _persistent_write_val(adapter, V, r, val_tid, pooled):
 
 
 def _persistent_write_one(adapter, V, r, pooled):
-    """One incremental write of edit `r` (value = its own new_tid) into the standing bank(s) V."""
-    return _persistent_write_val(adapter, V, r, r.new_tid, pooled)
+    """One incremental write of edit `r` into the standing bank(s) V. Value = its own new_tid
+    (counterfactual overwrite, default), OR its true_tid when CAM_BIND_TRUE=1 — soft-steering (#99):
+    reinforce the object the base already (weakly) holds instead of overwriting it. Default is
+    byte-identical to the counterfactual path."""
+    val_tid = r.true_tid if os.environ.get("CAM_BIND_TRUE") == "1" else r.new_tid
+    return _persistent_write_val(adapter, V, r, val_tid, pooled)
 
 
 def _persistent_preds(base, adapter, injector, tok, V, cohort, bank_ids=None):
@@ -1431,6 +1435,136 @@ def eval_persistent_solo(base, adapter, injector, tok, kept, args):
           f"possible; gap to 1.0 = the retrieval-fidelity lever)", flush=True)
     print("=" * 64, flush=True)
     return {"solo": solo, "prior": prior}
+
+
+@torch.no_grad()
+def _persistent_graded(base, adapter, injector, tok, V, cohort, bank_ids=None):
+    """Soft-steering (#99): per-fact GRADED effect of the memory on the TRUE object — the lean that
+    argmax-flip scoring is blind to. For each edit, forward the base twice at the prompt's last position:
+    memory OFF (no tap, no logit inject) vs ON (residual tap + optional conf-gated logit inject), and record
+      p_off / p_on   softmax P(true object)          rank_off / rank_on   0-based rank of the true object
+      dlogp          logP_on(true) - logP_off(true)  kl                   KL(off || on) over the vocab
+      conf           store retrieval strength (addressing)
+    Non-mutating. Batched exactly like _persistent_preds (same store reads); the OFF pass is one extra
+    forward per batch. Returns a list of per-edit dicts aligned to `cohort`."""
+    bos = [tok.bos_token_id] if tok.bos_token_id is not None else []
+    base_embed = base.get_input_embeddings()
+    bs = max(1, int(os.environ.get("CAM_PERSISTENT_EVAL_BATCH", "1")))
+    pad_id = tok.pad_token_id if tok.pad_token_id is not None else 0
+    banks, confs, id_lists = [], [], []
+    learned_pool = os.environ.get("CAM_LEARNED_KEY_POOL") == "1"
+    gte = getattr(adapter, "_gte_keys", None) is not None
+    for i, r in enumerate(cohort):
+        tids = torch.tensor([r.subject_tids], dtype=torch.long, device=DEV)
+        if gte:
+            q = adapter._gte_key(tids).unsqueeze(1)
+        else:
+            q = adapter._e(tids)
+            if learned_pool:
+                q = adapter._pool_subject(q, keepdim=True)
+        b = bank_ids[i] if bank_ids is not None else _subject_bank(r.subject_tids, len(V))
+        banks.append(adapter.persistent_bank(V[b], q))
+        confs.append(getattr(adapter, "_last_conf", None))
+        id_lists.append(bos + tok(r.prompt_text, add_special_tokens=False).input_ids)
+    out = [None] * len(cohort)
+    for i in range(0, len(cohort), bs):
+        rows = list(range(i, min(i + bs, len(cohort))))
+        B = len(rows)
+        lens = [len(id_lists[j]) for j in rows]
+        Tmax = max(lens)
+        ids = torch.full((B, Tmax), pad_id, dtype=torch.long, device=DEV)
+        for b, j in enumerate(rows):
+            ids[b, :lens[b]] = torch.tensor(id_lists[j], dtype=torch.long, device=DEV)
+        emb = base_embed(ids)
+        bank = torch.cat([banks[j] for j in rows], dim=0)
+        conf = None if any(confs[j] is None for j in rows) else torch.cat([confs[j] for j in rows], dim=0)
+        # OFF pass: no memory at all (matches the CAM_PRIORCONF_LOG no-tap base logits)
+        injector.set_bank(None)
+        logits_off = base(inputs_embeds=emb).logits
+        ld = logits_off.device
+        idx = torch.arange(B, device=ld)
+        last = torch.tensor([lens[b] - 1 for b in range(B)], device=ld)
+        off = logits_off[idx, last].float()                              # [B,vocab]
+        # ON pass: residual tap (+ optional conf-gated logit injection, same block as _persistent_preds)
+        injector.set_bank(bank, conf=conf, relidx=0)
+        on = base(inputs_embeds=emb).logits[idx, last].float()
+        alpha = float(os.environ.get("CAM_LOGIT_INJECT", "0"))
+        if alpha > 0:
+            bh = adapter.out_proj(bank).mean(1)
+            lm = base.get_output_embeddings().weight
+            inj = alpha * (bh.to(lm.device, lm.dtype) @ lm.t()).to(ld).float()
+            c0 = os.environ.get("CAM_LOGIT_GATE_C0")
+            if c0 is not None and conf is not None:
+                cc = conf.to(ld).float()
+                if os.environ.get("CAM_LOGIT_GATE_HARD") == "1":
+                    g = (cc > float(c0)).float()
+                else:
+                    k = float(os.environ.get("CAM_LOGIT_GATE_K", "1"))
+                    g = torch.sigmoid(k * (cc - float(c0)))
+                inj = inj * g.view(-1, 1)
+            on = on + inj
+        lp_off = torch.log_softmax(off, -1)
+        lp_on = torch.log_softmax(on, -1)
+        p_off, p_on = lp_off.exp(), lp_on.exp()
+        kl = (p_off * (lp_off - lp_on)).sum(-1)                          # KL(off || on)
+        for b, j in enumerate(rows):
+            t = cohort[j].true_tid
+            out[j] = {
+                "p_off": float(p_off[b, t]), "p_on": float(p_on[b, t]),
+                "rank_off": int((off[b] > off[b, t]).sum().item()),
+                "rank_on": int((on[b] > on[b, t]).sum().item()),
+                "dlogp": float(lp_on[b, t] - lp_off[b, t]),
+                "kl": float(kl[b]),
+                "conf": float(conf[b]) if conf is not None else None,
+                "rid": getattr(cohort[j], "relation_id", None),
+            }
+    injector.set_bank(None)
+    return out
+
+
+def eval_persistent_graded(base, adapter, injector, tok, kept, args):
+    """Track 5 (#99) — SOFT-STEERING. Write ALL edits into ONE standing store, then measure the GRADED
+    lean on the TRUE object (P(true)/rank/logprob/KL, memory OFF vs ON) rather than the argmax flip.
+    Bucket by the base's PRE-EDIT P(true): §3.12 predicts the largest lift where the base is UNCERTAIN,
+    because a lean there does not fight the residual wall. Pair with CAM_BIND_TRUE=1 (reinforce the true
+    object) and a low CAM_LOGIT_INJECT on CAM_LOGIT_GATE_HARD=1 (fires only on the addressed subject)."""
+    injector.eval()
+    pooled = os.environ.get("CAM_POOLED_SUBJ_KEY") == "1"
+    N = len(kept)
+    B = _n_disjoint_banks()
+    V = _init_banks(adapter, B)
+    for r in kept:
+        V = _persistent_write_one(adapter, V, r, pooled)
+    stats = [s for s in _persistent_graded(base, adapter, injector, tok, V, kept) if s is not None]
+    bind_true = os.environ.get("CAM_BIND_TRUE") == "1"
+    alpha = os.environ.get("CAM_LOGIT_INJECT", "0")
+    print(f"\n[mag][persistent] === Track 5 (#99): SOFT-STEERING graded lean over {N} edits "
+          f"(bind={'TRUE' if bind_true else 'counterfactual'}, alpha={alpha}) ===", flush=True)
+    print("  the LEAN toward the true object, memory OFF vs ON, bucketed by the base's pre-edit P(true):",
+          flush=True)
+    print("  P(true)_off bucket    N    dP(true)   d_logp   d_rank  %rank_up   meanKL", flush=True)
+    for lo, hi in [(0.0, 0.1), (0.1, 0.3), (0.3, 0.6), (0.6, 1.01)]:
+        sel = [s for s in stats if lo <= s["p_off"] < hi]
+        if not sel:
+            continue
+        n = len(sel)
+        dP = sum(s["p_on"] - s["p_off"] for s in sel) / n
+        dlp = sum(s["dlogp"] for s in sel) / n
+        drank = sum(s["rank_on"] - s["rank_off"] for s in sel) / n       # negative = true object ROSE
+        rup = sum(1 for s in sel if s["rank_on"] < s["rank_off"]) / n
+        mkl = sum(s["kl"] for s in sel) / n
+        print(f"  [{lo:.2f}, {hi:.2f})       {n:4d}   {dP:+.4f}  {dlp:+.3f}  {drank:+6.1f}   {rup:.2f}"
+              f"     {mkl:.3f}", flush=True)
+    n = max(1, len(stats))
+    dP = sum(s["p_on"] - s["p_off"] for s in stats) / n
+    dlp = sum(s["dlogp"] for s in stats) / n
+    rup = sum(1 for s in stats if s["rank_on"] < s["rank_off"]) / n
+    print(f"  ALL                   {len(stats):4d}   {dP:+.4f}  {dlp:+.3f}    (%rank_up {rup:.2f})", flush=True)
+    print(f"  positive dP(true)/d_logp = the memory LEANS the frozen base toward the true object it already "
+          f"holds\n  (a soft push, not a replace — {'TRUE-bound' if bind_true else 'NOTE: counterfactual-bound, expect NEGATIVE'})",
+          flush=True)
+    print("=" * 64, flush=True)
+    return {"stats": stats}
 
 
 @torch.no_grad()
@@ -1983,6 +2117,13 @@ def main():
                          "(tap + hard-conf-gated logit injection) so a human can eyeball fluency + whether "
                          "the edit takes in free generation, not just next-token argmax. Implies "
                          "--persistent-sweep.")
+    ap.add_argument("--persistent-graded", action="store_true", dest="persistent_graded",
+                    help="SOFT-STEERING / lean (Track 5, #99): after writing all edits, measure the GRADED "
+                         "effect on the TRUE object (P(true)/rank/logprob/KL, memory OFF vs ON) instead of "
+                         "the argmax flip — the lean that flip-scoring is blind to. Bucketed by the base's "
+                         "PRE-EDIT P(true) (§3.12: biggest lift where the base is UNCERTAIN). Pair with "
+                         "CAM_BIND_TRUE=1 (reinforce the true object, not overwrite) and a LOW "
+                         "CAM_LOGIT_INJECT on CAM_LOGIT_GATE_HARD=1. Implies --persistent-sweep.")
     ap.add_argument("--query-rel", type=str, default="", dest="query_rel",
                     help="ADVERSARIAL paraphrase probe (issue #10, natural phrasing only): bind and "
                          "train exactly as normal (bindings + training queries use ' lives in'), then "
@@ -2159,7 +2300,8 @@ def main():
 
     # ---- stage 2: MAG delivery ----
     if (getattr(args, "persistent_overwrite", False) or getattr(args, "persistent_solo", False)
-            or getattr(args, "persistent_locality", False) or getattr(args, "persistent_generate", False)):
+            or getattr(args, "persistent_locality", False) or getattr(args, "persistent_generate", False)
+            or getattr(args, "persistent_graded", False)):
         args.persistent_sweep = True         # the online-update / solo / locality tests run after the sweep
     if getattr(args, "persistent_sweep", False):
         args.persistent_eval = True          # the sweep is a superset of the persistent eval
@@ -2201,6 +2343,9 @@ def main():
                 if getattr(args, "persistent_generate", False):
                     with StageCost(f"persistent generation-coherence L={tag}"):
                         eval_persistent_generate(base, adapter, injector, tok, cf_records, args)
+                if getattr(args, "persistent_graded", False):
+                    with StageCost(f"persistent soft-steering graded lean L={tag}"):
+                        eval_persistent_graded(base, adapter, injector, tok, cf_records, args)
             injector.detach()
             continue
         with StageCost(f"delivery eval L={tag}"):

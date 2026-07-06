@@ -501,6 +501,53 @@ means, with the structural wins reproducing exactly in every run):
 no residual self-addressing failure to retrain away; below-gate = 0 in all 3 reps). Shipped:
 `CAM_WRITE_AT_READ` (K1), `CAM_WRITE_REDUNDANT` (K2), `CAM_READ_SUB_TOPK` (K3, unneeded).
 
+## 3.24 SOFT-STEERING — the mechanism does a graded LEAN, not only a hard replace (2026-07-06)
+
+Track 5 (#99). Every prior editing result is counterfactual OVERWRITE scored by argmax FLIP. But the
+delivery primitive — `logit_delta = gate(conf)·α·out_proj(retrieved_value)` — is an *additive, gated,
+gain-scaled* bias on the output distribution; overwrite is its hardest special case. Two changes, neither
+touching the mechanism, expose the softer mode: (1) `CAM_BIND_TRUE=1` binds the store to each fact's TRUE
+object instead of the counterfactual (reinforce what the base holds, don't overwrite it); (2) a new
+`--persistent-graded` eval (`_persistent_graded`) forwards the base OFF vs ON and logs the GRADED effect on
+the true object — ΔP(true), rank, Δlog-prob, KL — bucketed by the base's pre-edit P(true). Same 137-edit /
+6-relation / K1 config as §3.15, α=0 (pure trained-tap lean, no logit injection).
+
+**Counterfactual bind (metric sanity): ΔP(true) NEGATIVE in every bucket** (−0.04 → −0.58 as base
+confidence rises), ALL = **−0.289**. The graded metric reads direction correctly — the memory pushes the
+distribution AWAY from the true object it was told to overwrite.
+
+**True bind (the lean): ΔP(true) is POSITIVE and MONOTONIC in base uncertainty** — a textbook §3.12 result:
+
+| base P(true)_off | N | ΔP(true) | Δlog-p | meanKL |
+|---|---|---|---|---|
+| [0.00, 0.10)  most uncertain | 4  | **+0.526** | +1.94 | 3.0 |
+| [0.10, 0.30) | 57 | **+0.372** | +0.11 | 3.6 |
+| [0.30, 0.60) | 55 | **+0.174** | −0.77 | 3.1 |
+| [0.60, 1.01)  confident | 21 | **−0.407** | −2.62 | 3.3 |
+| ALL | 137 | **+0.177** | −0.61 | — |
+
+Independently corroborated by the retention sweep: prior-recall (argmax==true) = **0.63–1.0** under true-bind
+vs 0.14 under counterfactual-bind. So binding the true object leans the frozen base toward it — a soft push,
+not a replace — **and the push is largest exactly where the base is unsure and REVERSES where it is already
+confident** (the tap only disrupts a fact the base already nails). This is the §3.12 wall seen from the
+other side: soft steering has room precisely in the base's uncertainty.
+
+**Two honest reads, both pointing at the next lever:**
+- **`%rank_up = 0.00` is the eval set, not a null.** These are *base-known* facts (the probe keeps only the
+  ~2936 the base already answers), so the true object is usually already argmax OFF — rank cannot improve
+  below 0. The lean shows in ΔP(true); to see rank *rescue* the eval must include facts the base gets WRONG
+  (low-P(true) / zsRE). Next increment.
+- **At α=0 the residual tap is BLUNT (meanKL 3–5 nats).** It nets +0.177 on P(true) but scrambles the rest
+  of the distribution (Δlog-p can go negative; confident facts drop −0.41). A *gentle* lean wants the
+  surgical low-α logit path (adds only along the object direction) and/or a **base-uncertainty gate** (fire
+  the lean only where P(true) is low), not the trained hard-delivery tap. That gate is the concrete Track-5
+  follow-up: it would turn "helps-where-unsure / hurts-where-sure" into "helps-where-unsure / inert-elsewhere."
+
+**Net: memory-organ is NOT bound to counterfactual injection.** The same store + tap, bound to the true
+object, produces a measurable graded lean toward facts the base already (weakly) holds, concentrated in the
+uncertain regime — the "push, don't replace" mode. Shipped `CAM_BIND_TRUE`, `--persistent-graded`,
+`_persistent_graded`, `tools/soft_steer.sh`.
+
 ## 3.23 NOVEL-RELATION held-out — editing FAILS for relation shapes the bind never saw (2026-07-05)
 
 The last generalisation axis, and the decisive one for the private/codebase-facts niche: held-out SUBJECT
