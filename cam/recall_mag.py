@@ -1594,19 +1594,21 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
             return banks, conf
         return [adapter.persistent_bank(Vb, base_q)], getattr(adapter, "_last_conf", None)
 
-    def _inj_for(bank_t, conf, gate=True):
+    def _inj_for(bank_t, conf, gate=True, c0=None):
         """Logit contribution of a retrieved value bank (conf-gated), or None when off/alpha<=0.
         gate=False bypasses the conf-gate (delivery diagnostic: isolates whether the hard gate,
-        not the injection magnitude, is what zeros ON==OFF)."""
+        not the injection magnitude, is what zeros ON==OFF). c0 overrides the env threshold (gate
+        calibration sweep); when c0 is given the gate is active regardless of c0env."""
         if bank_t is None or alpha <= 0:
             return None
         v = alpha * (adapter.out_proj(bank_t).mean(1).to(lm.device, lm.dtype) @ lm.t())   # [1,vocab]
-        if gate and c0env is not None and conf is not None:
+        c0eff = c0 if c0 is not None else (float(c0env) if c0env is not None else None)
+        if gate and c0eff is not None and conf is not None:
             cc = conf.to(v.device)
             if hard:
-                g = (cc > float(c0env)).to(v.dtype)
+                g = (cc > c0eff).to(v.dtype)
             else:
-                g = torch.sigmoid(float(os.environ.get("CAM_LOGIT_GATE_K", "1")) * (cc - float(c0env)))
+                g = torch.sigmoid(float(os.environ.get("CAM_LOGIT_GATE_K", "1")) * (cc - c0eff))
             v = v * g.view(-1, 1)
         return v
 
@@ -1615,7 +1617,7 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
     # base continues fluently AFTER the whole object is delivered). For a multi-token object span=L walks
     # the object token-by-token; for a single-token object span=k_ans injects the one value k_ans times
     # (byte-identical to the legacy answer-span path).
-    def _gen(prompt_ids, banks, conf, mode, span=None, gate=True):
+    def _gen(prompt_ids, banks, conf, mode, span=None, gate=True, c0=None):
         L = 0 if not banks else len(banks)
         if span is None:
             span = L
@@ -1625,11 +1627,11 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
             if mode == "off" or not banks:
                 injector.set_bank(None); inj = None
             elif mode == "const":
-                injector.set_bank(banks[0], conf=conf, relidx=0); inj = _inj_for(banks[0], conf, gate=gate)
+                injector.set_bank(banks[0], conf=conf, relidx=0); inj = _inj_for(banks[0], conf, gate=gate, c0=c0)
             else:                                                             # 'answer' — walk positions then release
                 if t < span:
                     bt = banks[min(t, L - 1)]                                # multi: banks[t]; single: banks[0] x span
-                    injector.set_bank(bt, conf=conf, relidx=0); inj = _inj_for(bt, conf, gate=gate)
+                    injector.set_bank(bt, conf=conf, relidx=0); inj = _inj_for(bt, conf, gate=gate, c0=c0)
                 else:
                     injector.set_bank(None); inj = None
             logits = base(inputs_embeds=base_embed(cur)).logits[:, -1]        # [1,vocab] (no KV cache; small)
@@ -1677,8 +1679,65 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
           flush=True)
     print(f"  (constant-inject = repetition/degenerate; answer-span-inject should read FLUENT with the edit)",
           flush=True)
+
+    # ---- CONF-GATE CALIBRATION (CAM_GATE_CALIB=1) --------------------------------------------------
+    # The hard gate g=(conf>c0) zeros delivery when c0 is mis-set above the in-store conf. Measure the
+    # in-store conf (edited subjects, gate SHOULD open) vs out-of-store conf (novel subjects, gate MUST
+    # stay shut), then pick c0* in the gap and VALIDATE gated delivery at c0* matches the ungated result.
+    calib = None
+    if os.environ.get("CAM_GATE_CALIB") == "1":
+        import numpy as _np
+        def _conf_of(stids):
+            tids = torch.tensor([stids], dtype=torch.long, device=DEV)
+            if gte:
+                bq = adapter._gte_key(tids).unsqueeze(1)
+            else:
+                bq = adapter._e(tids)
+                if learned_pool:
+                    bq = adapter._pool_subject(bq, keepdim=True)
+            Vb = V[_subject_bank(list(stids), len(V))]
+            q0 = adapter._pos_key(bq, 0) if hasattr(adapter, "_pos_key") else bq
+            adapter.persistent_bank(Vb, q0)
+            return float(adapter._last_conf.max().item())
+        in_conf = [_conf_of(r.subject_tids) for r in kept]
+        real = {tuple(r.subject_tids) for r in kept}
+        subj_toks = sorted({int(t) for r in kept for t in r.subject_tids})
+        rng2 = _np.random.default_rng(12345)
+        out_conf, tries = [], 0
+        while len(out_conf) < 24 and tries < 400:            # novel names: real subject-token pool, unseen combo
+            tries += 1
+            slen = int(rng2.integers(2, 5))
+            cand = [int(subj_toks[i]) for i in rng2.integers(0, len(subj_toks), size=slen)]
+            if tuple(cand) not in real:
+                out_conf.append(_conf_of(cand))
+        ic, oc = _np.array(in_conf), _np.array(out_conf)
+        print(f"\n[mag][calib] conf IN-store  (n={len(ic)}): min {ic.min():.3f} mean {ic.mean():.3f} max {ic.max():.3f}", flush=True)
+        print(f"[mag][calib] conf OUT-store (n={len(oc)}): min {oc.min():.3f} mean {oc.mean():.3f} max {oc.max():.3f}", flush=True)
+        # sweep candidate thresholds: in-open (want high) vs out-open=false-fire (want 0)
+        grid = [round(float(x), 2) for x in _np.linspace(0.5, max(3.0, float(ic.max())), 11)]
+        print(f"[mag][calib] c0 sweep (in-open / out-fire):", flush=True)
+        best_c0, best_score = None, -1.0
+        for c0t in grid:
+            inop = float((ic > c0t).mean()); outf = float((oc > c0t).mean())
+            score = inop - outf                                   # separation objective
+            if score > best_score:
+                best_score, best_c0 = score, c0t
+            print(f"    c0={c0t:5.2f}:  in-open {inop:.2f}  out-fire {outf:.2f}  sep {score:+.2f}", flush=True)
+        # validate: gated delivery on the sample at c0* should recover the ungated new-object rate
+        deliver = 0
+        for r in sample:
+            pid = bos + tok(r.prompt_text, add_special_tokens=False).input_ids
+            banks, conf = _banks_seq(r)
+            span = len(banks) if _is_multi(r) else k_ans
+            g = _gen(pid, banks, conf, "answer", span, gate=True, c0=best_c0)
+            deliver += int(r.new_str.strip().lower() in g.lower())
+        print(f"[mag][calib] chosen c0*={best_c0} (sep {best_score:+.2f}) -> GATED answer-span delivery "
+              f"{deliver}/{len(sample)} ({deliver/n:.2f}) (was {new_ans}/{len(sample)} at c0={c0env})", flush=True)
+        calib = {"c0_star": best_c0, "in_conf_mean": float(ic.mean()), "out_conf_mean": float(oc.mean()),
+                 "gated_deliver": deliver / n}
     print("=" * 64, flush=True)
-    return {"n": len(sample), "new_constant": new_const / n, "new_answer": new_ans / n, "true_in_base": true_off / n}
+    return {"n": len(sample), "new_constant": new_const / n, "new_answer": new_ans / n,
+            "true_in_base": true_off / n, "calib": calib}
 
 
 class _NbrRec:
