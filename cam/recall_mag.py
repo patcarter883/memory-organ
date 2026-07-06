@@ -1664,9 +1664,11 @@ def eval_persistent_router(base, adapter, injector, tok, kept, args):
     split and evaluated on a HELD-OUT split. Tests the ceiling claim: does a learned gate GENERALISE to
     unseen facts, and does it recover the self-dosing (high gain where the base is unsure)?"""
     try:
-        from .gate_router import fit_router, fit_router_regress, oracle_gain, signal_features, _inj_base
+        from .gate_router import (fit_router, fit_router_regress, fit_router_hybrid, oracle_gain,
+                                  signal_features, _inj_base)
     except ImportError:                                          # run as a file: _HERE already on sys.path
-        from gate_router import fit_router, fit_router_regress, oracle_gain, signal_features, _inj_base
+        from gate_router import (fit_router, fit_router_regress, fit_router_hybrid, oracle_gain,
+                                 signal_features, _inj_base)
     injector.eval()
     pooled = os.environ.get("CAM_POOLED_SUBJ_KEY") == "1"
     N = len(kept)
@@ -1678,8 +1680,10 @@ def eval_persistent_router(base, adapter, injector, tok, kept, args):
     off, raw = off.to(DEV), raw.to(DEV)
     true_tid = true_tid.to(DEV)
     conf = conf.to(DEV) if conf is not None else None
-    # deterministic stride split spanning relations (no rng): every 3rd fact held out
-    ho_mask = torch.tensor([(i % 3 == 0) for i in range(N)], device=DEV)
+    # deterministic stride split spanning relations (no rng): every 3rd fact held out.
+    # CAM_ROUTER_SPLIT in {0,1,2} shifts WHICH third is held out — a robustness check (result stable across splits?).
+    soff = int(os.environ.get("CAM_ROUTER_SPLIT", "0")) % 3
+    ho_mask = torch.tensor([(i % 3 == soff) for i in range(N)], device=DEV)
     tr = (~ho_mask).nonzero(as_tuple=True)[0]
     ho = ho_mask.nonzero(as_tuple=True)[0]
     alpha_ref = float(os.environ.get("CAM_ROUTER_ALPHA", "1.5"))
@@ -1731,6 +1735,10 @@ def eval_persistent_router(base, adapter, injector, tok, kept, args):
     r_reg = fit_router_regress(off[tr], raw[tr], true_tid[tr], None if conf is None else conf[tr],
                                alpha_ref, kl_weight=kl_w, steps=steps, topk=topk, device=str(DEV))
     res.append(_eval(r_reg, "regress"))
+    beta = float(os.environ.get("CAM_ROUTER_BETA", "0.5"))
+    r_hyb = fit_router_hybrid(off[tr], raw[tr], true_tid[tr], None if conf is None else conf[tr],
+                              alpha_ref, kl_weight=kl_w, beta=beta, steps=steps, topk=topk, device=str(DEV))
+    res.append(_eval(r_hyb, "hybrid"))
     best = max(res, key=lambda d: d["dP"])
     print(f"  BEST held-out: {best['name']} (dP {best['dP']:+.4f}, oracle dP {dP_star:+.4f} = "
           f"{100*best['dP']/max(1e-6,dP_star):.0f}% of ceiling); lower vs-oracle MAE = better-calibrated dose", flush=True)

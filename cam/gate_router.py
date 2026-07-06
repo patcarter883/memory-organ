@@ -106,6 +106,34 @@ def fit_router_regress(off, raw, true_tid, conf, alpha_ref, *, kl_weight=0.3, st
     return router
 
 
+def fit_router_hybrid(off, raw, true_tid, conf, alpha_ref, *, kl_weight=0.3, beta=0.5, steps=400, lr=3e-3,
+                      topk=0, grid=41, device="cuda"):
+    """Hybrid: the end-to-end differentiable objective (-logP_on(true) + kl_weight*KL) PLUS an oracle-dose
+    MSE regulariser (beta * (gain - g*)^2). Chases the diff router's ΔP while inheriting the regress router's
+    calibration/robustness — fixes the diff router's degeneration (dose-corr goes negative) at aggressive
+    kl_weight by anchoring the gain to the per-fact utility-optimal dose."""
+    off = off.detach().float(); raw = raw.detach().float()
+    B = off.shape[0]
+    idx = torch.arange(B, device=off.device)
+    sig = signal_features(off, raw, conf).detach()
+    inj = _inj_base(raw, alpha_ref, topk)
+    lp_off = torch.log_softmax(off, -1); p_off = lp_off.exp()
+    g_star, _ = oracle_gain(off, raw, true_tid, alpha_ref, kl_weight=kl_weight, topk=topk, grid=grid, device=device)
+    g_star = g_star.detach()
+    router = GateRouter().to(device)
+    opt = torch.optim.Adam(router.parameters(), lr=lr)
+    tgt = true_tid.to(off.device)
+    for _ in range(steps):
+        g = router.gain(sig)
+        on = off + g.unsqueeze(-1) * inj
+        lp_on = torch.log_softmax(on, -1)
+        push = -lp_on[idx, tgt]
+        kl = (p_off * (lp_off - lp_on)).sum(-1)
+        loss = (push + kl_weight * kl).mean() + beta * F.mse_loss(g, g_star)
+        opt.zero_grad(); loss.backward(); opt.step()
+    return router
+
+
 def fit_router(off, raw, true_tid, conf, alpha_ref, *, kl_weight=0.3, steps=300, lr=3e-3, topk=0, device="cuda"):
     """Train a GateRouter on (off,raw,true_tid,conf). Returns the fitted router. off/raw are DETACHED constants;
     gradient flows only through the router. Loss = -logP_on(true) + kl_weight*KL(off||on), so the router learns
