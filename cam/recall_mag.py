@@ -210,7 +210,7 @@ def _mt_recon_loss(adapter, unembed, rng, batch, K, weight, pool=None):
     V = adapter.store.init_state(batch, dev, dtype=torch.float32)
     for t in range(K):
         key_t = adapter._pos_key(name_key, t)                                           # [B,H,mem]
-        val_t = adapter._e(objs[:, t:t + 1])                                            # [B,1,mem]
+        val_t = adapter._e_val(objs[:, t:t + 1])                                        # [B,1,mem] value branch
         if key_t.shape[1] > 1:                                                           # multi-vector keys
             val_t = val_t.expand(-1, key_t.shape[1], -1)
         V = adapter.persistent_write(V, key_t, val_t)
@@ -1286,10 +1286,10 @@ def _persistent_write_val(adapter, V, r, val_tid, pooled):
     else:
         subj_emb = adapter._e(tids)                                                        # [1,S,mem_dim]
         key = adapter._pool_subject(subj_emb, keepdim=True) if pooled else subj_emb[:, -1:]  # [1,H,mem] or [1,1,mem]
-    val = adapter._e(torch.tensor([[val_tid]], dtype=torch.long, device=DEV))              # [1,1,mem_dim]
+    val = adapter._e_val(torch.tensor([[val_tid]], dtype=torch.long, device=DEV))          # [1,1,mem_dim] value branch
     lam = float(os.environ.get("CAM_VALUE_SUPPRESS", "0"))    # R1-prior-v2: promote new, SUPPRESS original
     if lam > 0 and getattr(r, "true_tid", -1) >= 0:           # value = new - lam*original (damps the base's
-        val = val - lam * adapter._e(torch.tensor([[r.true_tid]], dtype=torch.long, device=DEV))  # confident prior)
+        val = val - lam * adapter._e_val(torch.tensor([[r.true_tid]], dtype=torch.long, device=DEV))  # confident prior)
     if os.environ.get("CAM_VALUE_UNIT_NORM") == "1":         # store a UNIT value so retrieval conf reflects
         val = torch.nn.functional.normalize(val, dim=-1)    # ADDRESSING quality, not the object token's
                                                             # embedding norm (weak-edit diagnostic §3.15)
@@ -1317,7 +1317,7 @@ def _persistent_write_seq(adapter, V, r, obj_tids, pooled):
     b = _subject_bank(r.subject_tids, len(V))
     for t in range(L):
         key_t = adapter._pos_key(base_key, t)                                         # [1,H,mem] name+pos_tag[t]
-        val_t = adapter._e(torch.tensor([[int(obj_tids[t])]], dtype=torch.long, device=DEV))  # [1,1,mem]
+        val_t = adapter._e_val(torch.tensor([[int(obj_tids[t])]], dtype=torch.long, device=DEV))  # [1,1,mem] value branch
         if key_t.shape[1] > 1:                                                        # multi-vector keys
             val_t = val_t.expand(-1, key_t.shape[1], -1)
         V[b] = adapter.persistent_write(V[b], key_t, val_t)
@@ -1594,17 +1594,21 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
             return banks, conf
         return [adapter.persistent_bank(Vb, base_q)], getattr(adapter, "_last_conf", None)
 
-    def _inj_for(bank_t, conf):
-        """Logit contribution of a retrieved value bank (conf-gated), or None when off/alpha<=0."""
+    def _inj_for(bank_t, conf, gate=True, c0=None):
+        """Logit contribution of a retrieved value bank (conf-gated), or None when off/alpha<=0.
+        gate=False bypasses the conf-gate (delivery diagnostic: isolates whether the hard gate,
+        not the injection magnitude, is what zeros ON==OFF). c0 overrides the env threshold (gate
+        calibration sweep); when c0 is given the gate is active regardless of c0env."""
         if bank_t is None or alpha <= 0:
             return None
         v = alpha * (adapter.out_proj(bank_t).mean(1).to(lm.device, lm.dtype) @ lm.t())   # [1,vocab]
-        if c0env is not None and conf is not None:
+        c0eff = c0 if c0 is not None else (float(c0env) if c0env is not None else None)
+        if gate and c0eff is not None and conf is not None:
             cc = conf.to(v.device)
             if hard:
-                g = (cc > float(c0env)).to(v.dtype)
+                g = (cc > c0eff).to(v.dtype)
             else:
-                g = torch.sigmoid(float(os.environ.get("CAM_LOGIT_GATE_K", "1")) * (cc - float(c0env)))
+                g = torch.sigmoid(float(os.environ.get("CAM_LOGIT_GATE_K", "1")) * (cc - c0eff))
             v = v * g.view(-1, 1)
         return v
 
@@ -1613,7 +1617,7 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
     # base continues fluently AFTER the whole object is delivered). For a multi-token object span=L walks
     # the object token-by-token; for a single-token object span=k_ans injects the one value k_ans times
     # (byte-identical to the legacy answer-span path).
-    def _gen(prompt_ids, banks, conf, mode, span=None):
+    def _gen(prompt_ids, banks, conf, mode, span=None, gate=True, c0=None):
         L = 0 if not banks else len(banks)
         if span is None:
             span = L
@@ -1623,11 +1627,11 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
             if mode == "off" or not banks:
                 injector.set_bank(None); inj = None
             elif mode == "const":
-                injector.set_bank(banks[0], conf=conf, relidx=0); inj = _inj_for(banks[0], conf)
+                injector.set_bank(banks[0], conf=conf, relidx=0); inj = _inj_for(banks[0], conf, gate=gate, c0=c0)
             else:                                                             # 'answer' — walk positions then release
                 if t < span:
                     bt = banks[min(t, L - 1)]                                # multi: banks[t]; single: banks[0] x span
-                    injector.set_bank(bt, conf=conf, relidx=0); inj = _inj_for(bt, conf)
+                    injector.set_bank(bt, conf=conf, relidx=0); inj = _inj_for(bt, conf, gate=gate, c0=c0)
                 else:
                     injector.set_bank(None); inj = None
             logits = base(inputs_embeds=base_embed(cur)).logits[:, -1]        # [1,vocab] (no KV cache; small)
@@ -1642,7 +1646,8 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
     k_ans = int(os.environ.get("CAM_GEN_INJECT_STEPS", "2"))                  # single-token answer-span width
     print(f"\n[mag][persistent] === GENERATION COHERENCE ({len(sample)} edits, {gen_len} tok, α={alpha}, "
           f"answer-span=object-length, single-tok k_ans={k_ans}) ===", flush=True)
-    new_const = new_ans = true_off = 0
+    new_const = new_ans = new_ans_ug = true_off = 0
+    gate_open = 0
     for r in sample:
         pid = bos + tok(r.prompt_text, add_special_tokens=False).input_ids
         banks, conf = _banks_seq(r)
@@ -1650,21 +1655,89 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
         g_off = _gen(pid, None, None, "off")
         g_const = _gen(pid, banks, conf, "const")                            # inject pos-0 EVERY step (naive)
         g_ans = _gen(pid, banks, conf, "answer", span)                       # walk the object then release
+        g_ans_ug = _gen(pid, banks, conf, "answer", span, gate=False)        # DIAGNOSTIC: gate bypassed
         nl = r.new_str.strip().lower()
         new_const += int(nl in g_const.lower()); new_ans += int(nl in g_ans.lower())
+        new_ans_ug += int(nl in g_ans_ug.lower())
         true_off += int(r.true_str.strip().lower() in g_off.lower())
-        print(f"  [{r.relation_id}] {r.prompt_text!r}  edit {r.true_str!r}->{r.new_str!r} ({len(_obj_tids(r))} tok)", flush=True)
-        print(f"     OFF        : {g_off!r}", flush=True)
-        print(f"     ON constant: {g_const!r}", flush=True)
-        print(f"     ON answer  : {g_ans!r}   [new: {nl in g_ans.lower()}]", flush=True)
+        # DIAGNOSTIC: is the hard conf-gate open at generation query time?  cc = _last_conf vs c0.
+        cc = float(conf.max().item()) if conf is not None else float("nan")
+        _c0 = float(c0env) if c0env is not None else float("nan")
+        _open = (c0env is None) or (cc > _c0)
+        gate_open += int(_open)
+        print(f"  [{r.relation_id}] {r.prompt_text!r}  edit {r.true_str!r}->{r.new_str!r} ({len(_obj_tids(r))} tok)"
+              f"  | conf={cc:.3f} c0={_c0:.3f} gate={'OPEN' if _open else 'CLOSED'}", flush=True)
+        print(f"     OFF          : {g_off!r}", flush=True)
+        print(f"     ON constant  : {g_const!r}", flush=True)
+        print(f"     ON answer    : {g_ans!r}   [new: {nl in g_ans.lower()}]", flush=True)
+        print(f"     ON ans UNGATED: {g_ans_ug!r}   [new: {nl in g_ans_ug.lower()}]", flush=True)
     n = max(1, len(sample))
     print(f"  --> NEW object present — constant-inject: {new_const}/{len(sample)} ({new_const/n:.2f}) | "
-          f"answer-span-inject: {new_ans}/{len(sample)} ({new_ans/n:.2f}); base TRUE-recall {true_off}/{len(sample)}",
+          f"answer-span-inject: {new_ans}/{len(sample)} ({new_ans/n:.2f}) | "
+          f"UNGATED answer-span: {new_ans_ug}/{len(sample)} ({new_ans_ug/n:.2f}); "
+          f"gate-open {gate_open}/{len(sample)}; base TRUE-recall {true_off}/{len(sample)}",
           flush=True)
     print(f"  (constant-inject = repetition/degenerate; answer-span-inject should read FLUENT with the edit)",
           flush=True)
+
+    # ---- CONF-GATE CALIBRATION (CAM_GATE_CALIB=1) --------------------------------------------------
+    # The hard gate g=(conf>c0) zeros delivery when c0 is mis-set above the in-store conf. Measure the
+    # in-store conf (edited subjects, gate SHOULD open) vs out-of-store conf (novel subjects, gate MUST
+    # stay shut), then pick c0* in the gap and VALIDATE gated delivery at c0* matches the ungated result.
+    calib = None
+    if os.environ.get("CAM_GATE_CALIB") == "1":
+        import numpy as _np
+        def _conf_of(stids):
+            tids = torch.tensor([stids], dtype=torch.long, device=DEV)
+            if gte:
+                bq = adapter._gte_key(tids).unsqueeze(1)
+            else:
+                bq = adapter._e(tids)
+                if learned_pool:
+                    bq = adapter._pool_subject(bq, keepdim=True)
+            Vb = V[_subject_bank(list(stids), len(V))]
+            q0 = adapter._pos_key(bq, 0) if hasattr(adapter, "_pos_key") else bq
+            adapter.persistent_bank(Vb, q0)
+            return float(adapter._last_conf.max().item())
+        in_conf = [_conf_of(r.subject_tids) for r in kept]
+        real = {tuple(r.subject_tids) for r in kept}
+        subj_toks = sorted({int(t) for r in kept for t in r.subject_tids})
+        rng2 = _np.random.default_rng(12345)
+        out_conf, tries = [], 0
+        while len(out_conf) < 24 and tries < 400:            # novel names: real subject-token pool, unseen combo
+            tries += 1
+            slen = int(rng2.integers(2, 5))
+            cand = [int(subj_toks[i]) for i in rng2.integers(0, len(subj_toks), size=slen)]
+            if tuple(cand) not in real:
+                out_conf.append(_conf_of(cand))
+        ic, oc = _np.array(in_conf), _np.array(out_conf)
+        print(f"\n[mag][calib] conf IN-store  (n={len(ic)}): min {ic.min():.3f} mean {ic.mean():.3f} max {ic.max():.3f}", flush=True)
+        print(f"[mag][calib] conf OUT-store (n={len(oc)}): min {oc.min():.3f} mean {oc.mean():.3f} max {oc.max():.3f}", flush=True)
+        # sweep candidate thresholds: in-open (want high) vs out-open=false-fire (want 0)
+        grid = [round(float(x), 2) for x in _np.linspace(0.5, max(3.0, float(ic.max())), 11)]
+        print(f"[mag][calib] c0 sweep (in-open / out-fire):", flush=True)
+        best_c0, best_score = None, -1.0
+        for c0t in grid:
+            inop = float((ic > c0t).mean()); outf = float((oc > c0t).mean())
+            score = inop - outf                                   # separation objective
+            if score > best_score:
+                best_score, best_c0 = score, c0t
+            print(f"    c0={c0t:5.2f}:  in-open {inop:.2f}  out-fire {outf:.2f}  sep {score:+.2f}", flush=True)
+        # validate: gated delivery on the sample at c0* should recover the ungated new-object rate
+        deliver = 0
+        for r in sample:
+            pid = bos + tok(r.prompt_text, add_special_tokens=False).input_ids
+            banks, conf = _banks_seq(r)
+            span = len(banks) if _is_multi(r) else k_ans
+            g = _gen(pid, banks, conf, "answer", span, gate=True, c0=best_c0)
+            deliver += int(r.new_str.strip().lower() in g.lower())
+        print(f"[mag][calib] chosen c0*={best_c0} (sep {best_score:+.2f}) -> GATED answer-span delivery "
+              f"{deliver}/{len(sample)} ({deliver/n:.2f}) (was {new_ans}/{len(sample)} at c0={c0env})", flush=True)
+        calib = {"c0_star": best_c0, "in_conf_mean": float(ic.mean()), "out_conf_mean": float(oc.mean()),
+                 "gated_deliver": deliver / n}
     print("=" * 64, flush=True)
-    return {"n": len(sample), "new_constant": new_const / n, "new_answer": new_ans / n, "true_in_base": true_off / n}
+    return {"n": len(sample), "new_constant": new_const / n, "new_answer": new_ans / n,
+            "true_in_base": true_off / n, "calib": calib}
 
 
 class _NbrRec:
