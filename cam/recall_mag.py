@@ -182,8 +182,39 @@ def build_adapter(args, embed_weight, H, builder=None):
                        args.expansion, args.k).to(DEV)
 
 
+def _real_word_seqs(tok, K, exclude=()):
+    """Real MULTI-TOKEN word sequences for training the DECODER readout (#100). The linear readout trains
+    on RANDOM subword tuples — which have no sequential structure, so an AR decoder learns nothing beyond
+    the per-position copy the linear head already does. The decoder's whole advantage (condition position
+    t on position <t) needs training data with real subword-CONTINUATION structure ('Elv'->'ish'). The
+    eval objects are invented FANTASY-language names, so we synthesize an in-distribution corpus from
+    fantasy morphology (prefix -> root -> suffix) and keep those that tokenize to 2..K tokens under the
+    SAME ' <word>' space-prefixed encoding delivery uses. Returns a list of token-id tuples; `exclude`
+    drops the held-out eval objects to keep the metric leak-free."""
+    pre = ["", "un", "el", "sil", "val", "dov", "sin", "quel", "mor", "gal", "tor", "kel", "vor", "thal",
+           "aer", "bel", "cor", "dra", "fen", "gor", "hal", "ith", "jor", "kai", "lor", "myr", "nor", "orl"]
+    root = ["ling", "dovah", "quen", "aria", "mith", "andor", "grim", "fell", "storm", "gorn", "wen",
+            "dain", "loth", "rath", "thas", "wyn", "brand", "hollow", "vale", "mere", "spire", "gale",
+            "fenn", "quill", "darin", "vish", "thraki", "gon", "rian", "wood", "shad", "flame", "frost"]
+    suf = ["", "ish", "ian", "ese", "arin", "on", "ki", "eth", "wen", "dor", "ic", "orn", "iel", "wyn",
+           "and", "as", "yr", "oth", "ael", "ir"]
+    seen, out = set(), []
+    exset = {tuple(e) for e in exclude}
+    for p in pre:
+        for r in root:
+            for s in suf:
+                w = (p + r + s)
+                if len(w) < 3:
+                    continue
+                w = w[0].upper() + w[1:]                                   # capitalized proper-noun form
+                ids = tuple(tok(" " + w, add_special_tokens=False).input_ids)
+                if 2 <= len(ids) <= K and ids not in seen and ids not in exset:
+                    seen.add(ids); out.append(ids)
+    return out
+
+
 # ---- stage 1: bind (direct tied-unembed; no base in the loop) ----------------------------------
-def _mt_recon_loss(adapter, unembed, rng, batch, K, weight, pool=None):
+def _mt_recon_loss(adapter, unembed, rng, batch, K, weight, pool=None, words=None):
     """Perpos MULTI-TOKEN reconstruction (autoencoder) loss — the Track-4 delivery path made trainable.
     For a batch of "names" (keys) and K-token "objects" (values): write embed(obj_t) at _pos_key(name, t)
     into a FRESH per-row store, then read each position back and score CE(out_proj(read_t) @ unembed^T,
@@ -206,23 +237,41 @@ def _mt_recon_loss(adapter, unembed, rng, batch, K, weight, pool=None):
     # learned pos_tag/codebook addressing sees realistic multi-token keys. Default 1 = legacy behaviour.
     nt = max(1, int(os.environ.get("CAM_MT_RECON_NAME_TOKENS", "1")))
     S = 1 + int(rng.integers(0, nt)) if nt > 1 else 1
+    # DECODER readout (#100): the object must be a REAL multi-token WORD (sequential subword structure)
+    # so the AR decoder learns continuation ('Elv'->'ish'); a random subword tuple teaches it nothing. Use
+    # length-bucketing (one answer length Keff per step) so the batch is rectangular with NO padding.
+    dec = words is not None and len(words) > 0 and getattr(adapter, "readout", "linear") == "decoder"
+    if dec:
+        Keff = 2 + int(rng.integers(0, K - 1)) if K > 2 else 2                            # answer length in [2,K]
+        cand = [w for w in words if len(w) >= Keff] or words
+        Keff = min(Keff, min(len(w) for w in cand))
+        pick = rng.integers(0, len(cand), size=batch)
+        objs = torch.tensor([list(cand[i][:Keff]) for i in pick], dtype=torch.long, device=dev)  # [B,Keff] REAL
+    else:
+        Keff = K
     if pool is not None and len(pool) > 0:
         P = len(pool)
         names = pool[torch.from_numpy(rng.integers(0, P, size=(batch, S))).long()].to(dev)   # [B,S]
-        objs = pool[torch.from_numpy(rng.integers(0, P, size=(batch, K))).long()].to(dev)     # [B,K]
+        if not dec:
+            objs = pool[torch.from_numpy(rng.integers(0, P, size=(batch, K))).long()].to(dev)  # [B,K] random
     else:
         Vsz = int(adapter.embed.weight.shape[0])
         names = torch.from_numpy(rng.integers(0, Vsz, size=(batch, S))).long().to(dev)
-        objs = torch.from_numpy(rng.integers(0, Vsz, size=(batch, K))).long().to(dev)
+        if not dec:
+            objs = torch.from_numpy(rng.integers(0, Vsz, size=(batch, K))).long().to(dev)
     name_key = adapter._pool_subject(adapter._e(names), keepdim=True)                    # [B,H,mem]
     # DISJOINT (perpos-key=disjoint): train each answer position's OWN store (self.stores[t]) with the
     # DIRECT readout, so the disjoint stores actually learn the reconstruction the persistent delivery
     # reads back — otherwise mt-recon only trains self.store and the disjoint delivery stores stay
     # untrained (per-token delivery 0.00). Mirrors _write_episode's disjoint branch + persistent_bank_direct.
     disjoint = _is_disjoint_mt(adapter)
+    # write each object token at its per-position address, then read it back — shared by both readouts.
+    def _read_t(t):
+        return (adapter.persistent_bank_direct(Vt[t], adapter._pos_key(name_key, t), store=adapter.stores[t])
+                if disjoint else adapter.persistent_bank(V, adapter._pos_key(name_key, t)))
     if disjoint:
-        Vt = [adapter.stores[t].init_state(batch, dev, dtype=torch.float32) for t in range(K)]
-        for t in range(K):
+        Vt = [adapter.stores[t].init_state(batch, dev, dtype=torch.float32) for t in range(Keff)]
+        for t in range(Keff):
             key_t = adapter._pos_key(name_key, t)                                        # [B,H,mem]
             val_t = adapter._e_val(objs[:, t:t + 1])                                     # [B,1,mem] value branch
             if key_t.shape[1] > 1:                                                       # multi-vector keys
@@ -230,31 +279,37 @@ def _mt_recon_loss(adapter, unembed, rng, batch, K, weight, pool=None):
             Vt[t] = adapter.persistent_write(Vt[t], key_t, val_t, store=adapter.stores[t])
     else:
         V = adapter.store.init_state(batch, dev, dtype=torch.float32)
-        for t in range(K):
+        for t in range(Keff):
             key_t = adapter._pos_key(name_key, t)                                        # [B,H,mem]
             val_t = adapter._e_val(objs[:, t:t + 1])                                     # [B,1,mem] value branch
             if key_t.shape[1] > 1:                                                       # multi-vector keys
                 val_t = val_t.expand(-1, key_t.shape[1], -1)
             V = adapter.persistent_write(V, key_t, val_t)
-    # DISJOINT holds K separate per-position store write-graphs live here (vs one for codebook), so the
-    # extra ~GiB tips the fp32 unembed cast into OOM. In disjoint mode do the logit matmul in the unembed's
-    # NATIVE dtype and cast only the small [B,vocab] result — no 2.37 GiB fp32 [vocab,hidden] copy. Codebook
-    # keeps the fp32 unembed (byte-identical).
+    if dec:
+        # DECODER readout: build the K-slot prefix (out_proj of each position's retrieved value) and score
+        # the answer SEQUENCE teacher-forced through the AR decoder — position t conditions on positions
+        # <t + all slots (cross-attn), the lever the independent per-position linear readout lacks.
+        prefix = torch.stack([adapter.out_proj(_read_t(t)).mean(1) for t in range(Keff)], dim=1)  # [B,Keff,base_hidden]
+        dlog = adapter._decoder_logits(prefix, objs, Keff)                               # [B,Keff,vocab]
+        loss = sum(F.cross_entropy(dlog[:, t].float(), objs[:, t]) for t in range(Keff))
+        return weight * loss / max(1, Keff)
+    # LINEAR readout (default): per-position independent CE. DISJOINT holds K store write-graphs live, so
+    # the extra ~GiB tips the fp32 unembed cast into OOM — do the matmul in native dtype there and cast only
+    # the small [B,vocab] result; codebook keeps the fp32 unembed (byte-identical).
     ue = unembed.to(dev)
     ue_f = ue if disjoint else ue.float()                                               # [vocab, hidden]
     loss = 0.0
-    for t in range(K):
-        if disjoint:                                                                     # own store + direct read
-            read = adapter.persistent_bank_direct(Vt[t], adapter._pos_key(name_key, t), store=adapter.stores[t])
+    for t in range(Keff):
+        read = _read_t(t)
+        if disjoint:
             logits = (adapter.out_proj(read).mean(1).to(ue_f.dtype) @ ue_f.t()).float()  # [B,vocab] native matmul
         else:
-            read = adapter.persistent_bank(V, adapter._pos_key(name_key, t))             # [B,K',mem]
             logits = adapter.out_proj(read).mean(1).float() @ ue_f.t()                   # [B,vocab]
         loss = loss + F.cross_entropy(logits, objs[:, t])
-    return weight * loss / max(1, K)
+    return weight * loss / max(1, Keff)
 
 
-def bind_adapter(adapter, builder, rng, args, unembed=None, mt_pool=None):
+def bind_adapter(adapter, builder, rng, args, unembed=None, mt_pool=None, mt_words=None):
     train_params = [p for p in adapter.parameters() if p.requires_grad]
     opt = torch.optim.AdamW(train_params, lr=args.lr)
     mt_w = float(getattr(args, "mt_recon_weight", 0.0))
@@ -274,7 +329,7 @@ def bind_adapter(adapter, builder, rng, args, unembed=None, mt_pool=None):
         aux_fn = getattr(adapter, "aux_loss", None)
         aux = aux_fn() if aux_fn is not None else None
         loss = lm + aux if aux is not None else lm
-        mt = _mt_recon_loss(adapter, unembed, rng, args.batch, mt_k, mt_w, pool=mt_pool) if mt_on else None
+        mt = _mt_recon_loss(adapter, unembed, rng, args.batch, mt_k, mt_w, pool=mt_pool, words=mt_words) if mt_on else None
         if mt is not None:
             loss = loss + mt
         loss.backward()
@@ -1814,23 +1869,31 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
         gold = _obj_tids(r)
         L = min(len(gold), _mt_cap(adapter))
         hits = hits_cos = 0
+        prefs = []
         for t in range(L):
             if disjoint:
                 bt = adapter.persistent_bank_direct(Vppb[t], adapter._pos_key(bq, t), store=adapter.stores[t])
             else:
                 bt = adapter.persistent_bank(Vb, adapter._pos_key(bq, t))
             pref = adapter.out_proj(bt).mean(1)                                 # [1, base_hidden]
+            prefs.append(pref)
             pred = int((pref @ adapter.unembed).argmax(-1).item())              # DOT-product decode (current)
             pref_n = pref / pref.norm(dim=-1, keepdim=True).clamp_min(1e-6)
-            pred_cos = int(((pref_n @ adapter.unembed) / enorm).argmax(-1).item())  # COSINE-NN decode (#100 lever)
+            pred_cos = int(((pref_n @ adapter.unembed) / enorm).argmax(-1).item())  # COSINE-NN decode (falsified)
             hits += int(pred == int(gold[t]))
             hits_cos += int(pred_cos == int(gold[t]))
-        return (hits == L), (hits / max(1, L)), (hits_cos / max(1, L))   # (span-exact, per-token, per-token-cos)
+        # DECODER readout (#100): AR free-run over the K retrieved slots as cross-memory — position t
+        # conditions on positions <t + all slots, the lever the independent per-position decodes lack.
+        hits_dec = 0
+        if getattr(adapter, "readout", "linear") == "decoder":
+            dpred = adapter.decoder_generate(torch.stack(prefs, dim=1), L)[0]   # [L] free-run token ids
+            hits_dec = sum(int(int(dpred[t]) == int(gold[t])) for t in range(L))
+        return (hits == L), (hits / max(1, L)), (hits_cos / max(1, L)), (hits_dec / max(1, L))
 
     k_ans = int(os.environ.get("CAM_GEN_INJECT_STEPS", "2"))                  # single-token answer-span width
     print(f"\n[mag][persistent] === GENERATION COHERENCE ({len(sample)} edits, {gen_len} tok, α={alpha}, "
           f"answer-span=object-length, single-tok k_ans={k_ans}) ===", flush=True)
-    new_const = new_ans = true_off = tf_hit = store_hit = iso_hit = 0; iso_pt = iso_pt_cos = 0.0
+    new_const = new_ans = true_off = tf_hit = store_hit = iso_hit = 0; iso_pt = iso_pt_cos = iso_pt_dec = 0.0
     for r in sample:
         pid = bos + tok(r.prompt_text, add_special_tokens=False).input_ids
         banks, conf = _banks_seq(r)
@@ -1844,7 +1907,8 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
         new_const += int(nl in g_const.lower()); new_ans += int(nl in g_ans.lower())
         true_off += int(r.true_str.strip().lower() in g_off.lower()); tf_hit += int(tf_ok)
         store_hit += int(store_ok)
-        _iso_ex, _iso_pt, _iso_pt_cos = _iso_store_ok(r); iso_hit += int(_iso_ex); iso_pt += _iso_pt; iso_pt_cos += _iso_pt_cos
+        _iso_ex, _iso_pt, _iso_pt_cos, _iso_pt_dec = _iso_store_ok(r)
+        iso_hit += int(_iso_ex); iso_pt += _iso_pt; iso_pt_cos += _iso_pt_cos; iso_pt_dec += _iso_pt_dec
         print(f"  [{r.relation_id}] {r.prompt_text!r}  edit {r.true_str!r}->{r.new_str!r} ({len(_obj_tids(r))} tok)", flush=True)
         print(f"     OFF        : {g_off!r}", flush=True)
         print(f"     ON constant: {g_const!r}", flush=True)
@@ -1863,6 +1927,10 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
           f"capacity per position; per-tok~0 => addressing/key]", flush=True)
     print(f"  --> #100 ISOLATED cosine-NN decode (row-norm debiased): per-token {iso_pt_cos/n:.2f}  "
           f"[cos>>argmax {iso_pt/n:.2f} => the wall is unembed-norm decode bias, not store retrieval]", flush=True)
+    if getattr(adapter, "readout", "linear") == "decoder":
+        print(f"  --> #100 ISOLATED decoder AR-readout (cross-attn over K slots + AR): per-token {iso_pt_dec/n:.2f}  "
+              f"[dec>>linear {iso_pt/n:.2f} => the sequence decoder recovers t>=1 the per-position readout can't]",
+              flush=True)
     print(f"  (constant-inject = repetition/degenerate; answer-span-inject should read FLUENT with the edit)",
           flush=True)
     print("=" * 64, flush=True)
@@ -2539,9 +2607,23 @@ def main():
         mt_pool = torch.tensor(sorted(set(_ids)), dtype=torch.long, device=DEV)
         print(f"[mag] mt-recon realistic subword pool: {len(mt_pool)} ASCII word-piece tokens "
               f"(of {len(tok.get_vocab())} vocab)", flush=True)
+    # DECODER readout (#100): a corpus of REAL multi-token fantasy-morphology words to train the AR decoder
+    # on genuine subword continuation. Hold out the eval objects (private-facts new_str) to keep the metric
+    # leak-free. Only built when --readout decoder (the linear path uses random subwords).
+    mt_words = None
+    if getattr(args, "readout", "linear") == "decoder":
+        _excl = []
+        for _r in (cf_records or []):
+            _nid = getattr(_r, "new_ids", None)
+            if _nid and len(_nid) > 1:
+                _excl.append(tuple(_nid))
+        mt_words = _real_word_seqs(tok, int(getattr(adapter, "mt_positions", 4) or 4), exclude=_excl)
+        print(f"[mag] decoder mt-recon: {len(mt_words)} real multi-token words "
+              f"({len(_excl)} eval objects held out)", flush=True)
     with StageCost(f"stage-1 bind (M={args.M}, {args.bind_steps} steps, batch {args.batch})"):
         d_carry = bind_adapter(adapter, builder, rng, args,
-                               unembed=base.get_output_embeddings().weight.detach(), mt_pool=mt_pool)
+                               unembed=base.get_output_embeddings().weight.detach(),
+                               mt_pool=mt_pool, mt_words=mt_words)
     # free stage-1's AdamW state + autograd fragments before stage-2 — on a single 16GB card the leftover
     # fragmentation (bind runs many steps) is what pushed stage-2's first backward over the wall + wedged.
     import gc as _gc0

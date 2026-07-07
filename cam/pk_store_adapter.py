@@ -733,3 +733,24 @@ class PKStoreAdapter(nn.Module):
         out = self.dec(tgt, mem, tgt_mask=cmask)                     # [B,Kc,dec_dim]
         out = self.dec_out_norm(out)
         return self.dec_logit(out)                                   # [B,Kc,vocab]
+
+    @torch.no_grad()
+    def decoder_generate(self, prefix, Kc):
+        """FREE-RUN greedy AR decode of a Kc-token sequence from the K store-slot prefix (cross memory).
+        The free-run analog of the teacher-forced _decoder_logits: at step t the decoder attends over ALL
+        K retrieved value-slots (cross) + its OWN previously-generated tokens (self), so position t≥1 can
+        condition on position 0's token and every slot — unlike the per-position linear readout that
+        decodes each slot independently (the #100 t≥1 wall). Returns [B,Kc] predicted token ids."""
+        B, dev = prefix.shape[0], prefix.device
+        mem = self.dec_mem_norm(self.dec_mem_proj(prefix))           # [B,K,dec_dim] cross memory
+        tgt = self.dec_bos.view(1, 1, -1).expand(B, 1, -1)           # [B,1,dec_dim] start = learned BOS
+        toks = []
+        for t in range(Kc):
+            tin = tgt + self.dec_pos[:t + 1].unsqueeze(0)            # [B,t+1,dec_dim] + answer-pos codes
+            cmask = torch.triu(torch.ones(t + 1, t + 1, device=dev, dtype=torch.bool), diagonal=1)
+            out = self.dec_out_norm(self.dec(tin, mem, tgt_mask=cmask))   # [B,t+1,dec_dim]
+            nxt = self.dec_logit(out[:, -1]).argmax(-1)             # [B] greedy next token
+            toks.append(nxt)
+            nxt_emb = self.dec_tok_proj(self.embed(nxt).float()).unsqueeze(1)   # [B,1,dec_dim]
+            tgt = torch.cat([tgt, nxt_emb], dim=1)                  # feed OWN prediction
+        return torch.stack(toks, dim=1)                            # [B,Kc]
