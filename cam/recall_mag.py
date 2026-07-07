@@ -198,13 +198,21 @@ def _mt_recon_loss(adapter, unembed, rng, batch, K, weight, pool=None):
     the invented objects' subwords. Falls back to uniform when pool is None."""
     import torch.nn.functional as F
     dev = DEV
+    # #100 fix: train the KEY distribution to match delivery. The store is addressed by _pool_subject of
+    # the subject span; real subjects are MULTI-token ("Zephyrina Quillsworth") but mt-recon historically
+    # keyed on a SINGLE random token, so the store learned to separate single-token-pooled keys, not the
+    # multi-token-pooled keys delivery actually queries (isolated round-trip of a real subject = 0/4
+    # despite held-out 0.81). CAM_MT_RECON_NAME_TOKENS=N samples S in [1,N] name tokens per batch so the
+    # learned pos_tag/codebook addressing sees realistic multi-token keys. Default 1 = legacy behaviour.
+    nt = max(1, int(os.environ.get("CAM_MT_RECON_NAME_TOKENS", "1")))
+    S = 1 + int(rng.integers(0, nt)) if nt > 1 else 1
     if pool is not None and len(pool) > 0:
         P = len(pool)
-        names = pool[torch.from_numpy(rng.integers(0, P, size=(batch, 1))).long()].to(dev)   # [B,1]
+        names = pool[torch.from_numpy(rng.integers(0, P, size=(batch, S))).long()].to(dev)   # [B,S]
         objs = pool[torch.from_numpy(rng.integers(0, P, size=(batch, K))).long()].to(dev)     # [B,K]
     else:
         Vsz = int(adapter.embed.weight.shape[0])
-        names = torch.from_numpy(rng.integers(0, Vsz, size=(batch, 1))).long().to(dev)
+        names = torch.from_numpy(rng.integers(0, Vsz, size=(batch, S))).long().to(dev)
         objs = torch.from_numpy(rng.integers(0, Vsz, size=(batch, K))).long().to(dev)
     name_key = adapter._pool_subject(adapter._e(names), keepdim=True)                    # [B,H,mem]
     V = adapter.store.init_state(batch, dev, dtype=torch.float32)
