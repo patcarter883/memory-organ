@@ -1639,10 +1639,85 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
         injector.set_bank(None)
         return tok.decode(out).replace("\n", " ").strip()
 
+    def _gen_tf(prompt_ids, banks, conf, span, gold):
+        """TEACHER-FORCED delivery (#100 diagnostic): at answer position t inject banks[t] via the tap
+        (+ optional logit inject), forward on (prompt + GOLD[:t]), check argmax == gold[t], then feed
+        GOLD (not argmax) so position t+1 sees the correct prefix. Exact-match over the object. Isolates
+        delivery-STRENGTH (can the tap override the base per-position at all?) from the free-running
+        exposure bias that _gen 'answer' suffers. If TF delivery >> free-running, the wall is exposure
+        bias (fix: scheduled sampling); if TF is also ~0, the tap cannot override the prior."""
+        cur = torch.tensor([prompt_ids], dtype=torch.long, device=DEV)
+        L = len(banks) if banks else 0
+        ok = True
+        for t in range(len(gold)):
+            if banks and t < span:
+                bt = banks[min(t, L - 1)]
+                injector.set_bank(bt, conf=conf, relidx=0); inj = _inj_for(bt, conf)
+            else:
+                injector.set_bank(None); inj = None
+            logits = base(inputs_embeds=base_embed(cur)).logits[:, -1]
+            if inj is not None:
+                logits = logits + inj.to(logits.device)
+            ok = ok and (int(logits.argmax(-1).item()) == int(gold[t]))
+            cur = torch.cat([cur, torch.tensor([[int(gold[t])]], device=DEV)], dim=1)   # feed GOLD
+        injector.set_bank(None)
+        return ok
+
+    def _store_pred(bank_t):
+        """The STORE's OWN per-position token prediction via its tied unembed (the 0.84 store-side
+        readout) — vs the imprecise base-argmax-on-injected-latent that lands on adjacent tokens. This
+        IS 'emit value_t from memory'."""
+        pref = adapter.out_proj(bank_t).mean(1)                              # [1, base_hidden]
+        return int((pref @ adapter.unembed).argmax(-1).item())              # [1,vocab] store-space -> token
+
+    def _gen_store(prompt_ids, banks, span, gold):
+        """#100 sequential latent delivery: emit the STORE's per-position prediction for `span` steps
+        (the object straight from memory, ~store accuracy), THEN release to base fluency. Returns
+        (text, span_exact_match vs gold). Decouples delivery from the base's argmax imprecision on rare
+        subwords — the store already reconstructs the object; just USE its prediction."""
+        cur = torch.tensor([prompt_ids], dtype=torch.long, device=DEV)
+        out, L = [], (len(banks) if banks else 0)
+        for t in range(gen_len):
+            if banks and t < span:
+                nxt = _store_pred(banks[min(t, L - 1)])                      # from memory
+            else:
+                injector.set_bank(None)
+                nxt = int(base(inputs_embeds=base_embed(cur)).logits[:, -1].argmax(-1).item())
+            out.append(nxt)
+            cur = torch.cat([cur, torch.tensor([[nxt]], device=DEV)], dim=1)
+        txt = tok.decode(out).replace("\n", " ").strip()
+        m = min(span, len(gold))
+        span_ok = m > 0 and all(out[t] == int(gold[t]) for t in range(m))
+        return txt, span_ok
+
+    def _iso_store_ok(r):
+        """#100 decisive isolation: write edit r ALONE into a FRESH standing store, read each position
+        back (the exact _banks_seq path), decode via the store's unembed. Splits standing-store
+        interference (iso OK but standing 0/4) from a broken persistent write/read or subword-coverage
+        gap (iso ALSO fails). Reuses _persistent_write_one so it exercises the real seq write."""
+        Viso = _init_banks(adapter, _n_disjoint_banks())
+        Viso = _persistent_write_one(adapter, Viso, r, pooled)
+        tids = torch.tensor([r.subject_tids], dtype=torch.long, device=DEV)
+        if gte:
+            bq = adapter._gte_key(tids).unsqueeze(1)
+        else:
+            bq = adapter._e(tids)
+            if learned_pool:
+                bq = adapter._pool_subject(bq, keepdim=True)
+        Vb = Viso[_subject_bank(r.subject_tids, len(Viso))]
+        gold = _obj_tids(r)
+        L = min(len(gold), _mt_cap(adapter))
+        ok = True
+        for t in range(L):
+            bt = adapter.persistent_bank(Vb, adapter._pos_key(bq, t))
+            pred = int((adapter.out_proj(bt).mean(1) @ adapter.unembed).argmax(-1).item())
+            ok = ok and (pred == int(gold[t]))
+        return ok
+
     k_ans = int(os.environ.get("CAM_GEN_INJECT_STEPS", "2"))                  # single-token answer-span width
     print(f"\n[mag][persistent] === GENERATION COHERENCE ({len(sample)} edits, {gen_len} tok, α={alpha}, "
           f"answer-span=object-length, single-tok k_ans={k_ans}) ===", flush=True)
-    new_const = new_ans = true_off = 0
+    new_const = new_ans = true_off = tf_hit = store_hit = iso_hit = 0
     for r in sample:
         pid = bos + tok(r.prompt_text, add_special_tokens=False).input_ids
         banks, conf = _banks_seq(r)
@@ -1650,17 +1725,28 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
         g_off = _gen(pid, None, None, "off")
         g_const = _gen(pid, banks, conf, "const")                            # inject pos-0 EVERY step (naive)
         g_ans = _gen(pid, banks, conf, "answer", span)                       # walk the object then release
+        tf_ok = _gen_tf(pid, banks, conf, span, _obj_tids(r))                # #100: teacher-forced delivery
+        g_store, store_ok = _gen_store(pid, banks, span, _obj_tids(r))       # #100: store-forced delivery
         nl = r.new_str.strip().lower()
         new_const += int(nl in g_const.lower()); new_ans += int(nl in g_ans.lower())
-        true_off += int(r.true_str.strip().lower() in g_off.lower())
+        true_off += int(r.true_str.strip().lower() in g_off.lower()); tf_hit += int(tf_ok)
+        store_hit += int(store_ok)
+        iso_hit += int(_iso_store_ok(r))
         print(f"  [{r.relation_id}] {r.prompt_text!r}  edit {r.true_str!r}->{r.new_str!r} ({len(_obj_tids(r))} tok)", flush=True)
         print(f"     OFF        : {g_off!r}", flush=True)
         print(f"     ON constant: {g_const!r}", flush=True)
-        print(f"     ON answer  : {g_ans!r}   [new: {nl in g_ans.lower()}]", flush=True)
+        print(f"     ON answer  : {g_ans!r}   [new: {nl in g_ans.lower()}]  [TF-deliver: {tf_ok}]", flush=True)
+        print(f"     STORE-force: {g_store!r}   [span-exact: {store_ok}]", flush=True)
     n = max(1, len(sample))
     print(f"  --> NEW object present — constant-inject: {new_const}/{len(sample)} ({new_const/n:.2f}) | "
           f"answer-span-inject: {new_ans}/{len(sample)} ({new_ans/n:.2f}); base TRUE-recall {true_off}/{len(sample)}",
           flush=True)
+    print(f"  --> #100 TEACHER-FORCED delivery (exposure-bias isolation): {tf_hit}/{len(sample)} "
+          f"({tf_hit/n:.2f})  [TF>>free-run => exposure bias; TF~0 => can't override prior]", flush=True)
+    print(f"  --> #100 STORE-FORCED delivery (emit value_t from memory): {store_hit}/{len(sample)} "
+          f"({store_hit/n:.2f})  [~store-side acc if the readout drives output directly]", flush=True)
+    print(f"  --> #100 ISOLATED persistent round-trip (write r ALONE, read back): {iso_hit}/{len(sample)} "
+          f"({iso_hit/n:.2f})  [iso OK+standing 0 => interference; iso 0 => broken write/read or subword]", flush=True)
     print(f"  (constant-inject = repetition/degenerate; answer-span-inject should read FLUENT with the edit)",
           flush=True)
     print("=" * 64, flush=True)
