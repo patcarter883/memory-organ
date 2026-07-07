@@ -78,21 +78,53 @@ DIRECTION is genuinely closest to a wrong token. **The wall is not the decode �
 per-position value RETRIEVAL fidelity at t≥1.** (Diagnostic committed; `iso cosine-NN` line in
 `private_demo.out`.)
 
-## Where that leaves #100 — remaining levers are store-side (heavier, need retraining)
-Both cheap, readout-only levers are now exhausted (disjoint addressing: no lift; cosine decode: worse).
-The retrieved position-1 value vector is itself a poor reconstruction of `_e_val(obj_token_1)`. The
-remaining candidates all touch the store/value training, not the readout:
+## Lever 3 (AR decoder readout) — FALSIFIED, and it clarifies WHY #100 is hard
+Wired the prototyped AR transformer-decoder readout into the #100 path (it was only plumbed to the
+episodic `builder.multitoken` path, which `counterfactual_multi` doesn't enable, so it had never been
+trained/used here): trained it via mt-recon on 17,183 REAL multi-token fantasy-morphology words
+(`_real_word_seqs`, eval objects held out), built the K-slot prefix from the per-position reads, and
+added a free-run greedy `decoder_generate`. The decoder decodes position t conditioned on positions <t
++ all K retrieved slots (cross-attention) — the joint/sequential lever the independent per-position
+linear readout lacks.
+
+| readout (each in its own training regime) | ISOLATED per-token |
+|---|---|
+| linear (baseline) | **0.50** |
+| decoder AR (cross-attn + AR) | **0.25** (WORSE) |
+
+The decoder is WORSE, and its `STORE-force` decodings ("Latvia Belarusian", "Italian Judaism
+Frankfurt") show why: it generates PLAUSIBLE multi-token sequences from its learned prior, OVERRIDING
+the imprecise retrieved value. This is structural, not a training artifact: **#100 objects are
+novel/unpredictable BY DESIGN (private phrases the base can't continue). A generative sequence prior —
+exactly what the decoder adds — cannot deliver what it cannot predict.** Its ceiling for novel-object
+delivery is "faithfully copy the retrieved value" = the linear readout; the extra sequence prior is not
+just useless but actively harmful (it hallucinates plausible-but-wrong continuations). Delivery MUST
+come from faithful per-position RETRIEVAL — and that retrieval's fidelity is the wall.
+
+(Caveat: 1000 steps / a synthetic corpus — but the structural argument caps the decoder at the linear
+readout regardless of training budget, so more training cannot make it the unlock.)
+
+## Where that leaves #100 — the wall is store per-position value-reconstruction FIDELITY
+THREE levers now falsified — all three ways of RE-READING or RE-DECODING the same store:
+- **disjoint addressing** (per-position separate codebooks): no lift (0.50 = codebook)
+- **cosine-NN decode** (row-norm debiased): worse (0.33 < 0.42)
+- **AR decoder readout** (cross-attn + sequence prior): worse (0.25 < 0.50), and structurally can't help
+  a NOVEL object
+
+The isolated round-trip writes ONE object into a FRESH store and still loses position 1 — so the query
+addresses the only written slot, yet `out_proj(read)` doesn't reconstruct `_e_val(obj_token_1)`. The
+bottleneck is the store's per-position VALUE-RECONSTRUCTION fidelity, upstream of every readout. The
+remaining candidates all touch the store/value TRAINING (not how it's read):
 1. **Value capacity / precision**: `VALNONORM` dropped the value LayerNorm but pos1 still loses the
    continuation-subword; probe a higher-capacity or residual-VQ value code, or more store slots (n_sub).
+   This is now the single most-supported direction.
 2. **Per-position-1 supervision**: mt-recon weights all positions equally, but position-1 continuation
    subwords ("ish","arin") are rarer/harder than position-0 prefixes — weight the CE by position, or
    oversample continuation subwords.
-3. **The exported decoder/perpos readout** (issue #100 notes it was prototyped but the serving export
-   only ships the linear readout) — an autoregressive decoder over the retrieved latents may reconstruct
-   the sequence where the per-position linear readout cannot.
-4. **Realistic-value coverage**: confirm the invented objects' position-1 subwords are in the training
-   pool at all.
+3. **Realistic-value coverage**: confirm the invented objects' position-1 subwords are in the training
+   value pool at all (an out-of-pool continuation subword is never trained to round-trip).
 
-The disjoint implementation is correct and A/B-able (a clean building block mirroring the episodic
-disjoint path); the cosine-NN decode is a committed diagnostic. Neither is the #100 unlock. **The wall
-is store-side value-reconstruction fidelity at t≥1 — a training-side problem, not a readout one.**
+The disjoint implementation, the cosine-NN diagnostic, and the AR-decoder readout are all correct,
+committed, A/B-able building blocks — none is the #100 unlock. **The wall is store-side per-position
+value-reconstruction fidelity at t≥1: a value-capacity / training problem, provably NOT a readout one
+(three independent readouts all bottleneck at the same place).**
