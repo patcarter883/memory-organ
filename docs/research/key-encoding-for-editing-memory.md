@@ -501,6 +501,60 @@ means, with the structural wins reproducing exactly in every run):
 no residual self-addressing failure to retrain away; below-gate = 0 in all 3 reps). Shipped:
 `CAM_WRITE_AT_READ` (K1), `CAM_WRITE_REDUNDANT` (K2), `CAM_READ_SUB_TOPK` (K3, unneeded).
 
+## 3.27 PROVENANCE vs CONFIDENCE — store-presence beats the separability wall (2026-07-06)
+
+The money experiment for the one novel framing (Claim 4). Bind the store's target, classify facts by the
+BASE's own state, compare a base-CONFIDENCE gate (fire where `p_base(top)<τ`) vs a store-PRESENCE gate (fire
+where a memory was written). Confident-wrong facts don't exist in base-known data (a confident base is
+confident in TRUE), so bind the COUNTERFACTUAL → the 33 base-confident facts become CONFIDENT-WRONG w.r.t.
+the target. Result: on those 33 the confidence gate fires 0 % and delivers **ΔP = +0.000** (structurally
+blind — confident-wrong is indistinguishable from confident-right by any base-side signal), while the
+presence gate rescues **ΔP = +0.464**; on the 104 uncertain facts both fire (+0.688). The deliberate
+write-event is the external label no base-side confidence signal carries. `eval_persistent_rescue`,
+`--persistent-rescue`. Full novelty/prior-art map: [novelty-positioning.md](novelty-positioning.md) — the
+system is mostly recombination; this provenance framing is the least-trodden idea.
+
+## 3.28 REAL GENERATION — router-gated seed-once works; pooled-latent OBJECT hits the readout wall (2026-07-06)
+
+Wired the per-token router into the actual autoregressive DECODE (`CAM_GEN_ROUTER=1`): at each step the router
+gain is computed from the CURRENT base distribution and the object push is injected logit-only (tap off). The
+**SEED-ONCE** rule — inject until the object's first token lands, then hand off to base fluency — kills the
+headroom-driven repetition attractor (the naive per-step inject degenerates to "Dutch Dutch Dutch…").
+
+- **WIN**: router-gated + seed-once produces FLUENT text carrying the edit, **9/12 (0.75)** delivery, matching
+  the hand-tuned answer-span cutoff *without* its manual step count — the router decides per step. E.g.
+  `"Russian. The first step is to find a good place to live."` → `"English. The first step…"` (clean swap,
+  base continues). Multi-token SUBJECT works (pooled key addresses it).
+- **WALL**: multi-token OBJECT stored as a pooled latent (`mean(object_token_embeddings)`, `CAM_OBJ_LATENT=1`)
+  FAILS — `mean('Nor','mandy')` for "Normandy" decoded to **"Moscow"** through the single-token-trained
+  `out_proj → lm_head` readout; it doesn't even seed the first token. **The pooled-latent shortcut is a dead
+  end.** Multi-token objects need either (a) first-token-seed + base fluency (base-known phrases; no latent),
+  or (b) SEQUENTIAL latent delivery — per-step value emission via the perpos/AR-decoder readout
+  ([#100](https://github.com/patcarter883/memory-organ/issues/100)), now the *required* path, not parked.
+- Aside: the base-known editing filter yields ~1 multi-token-object fact of 137 — testing multi-token objects
+  needs facts bound OUTSIDE that filter (ties to the write-policy / base-uncertainty gate).
+`eval_persistent_generate` (CAM_GEN_ROUTER / CAM_OBJ_LATENT / CAM_GEN_MULTITOK), `tools/gen_latent.sh`.
+
+## 3.26 LEARNED GATE ROUTER — one MLP replaces the hand gates, generalises, rediscovers the dose (2026-07-06)
+
+Collapse the hand-composed multigate into ONE small MLP over label-free signals (retrieval conf, base
+entropy, headroom, store peak, agreement margin, base conf, + base decisiveness, store diffuseness = 8),
+→ per-fact gain, trained OUTCOME-supervised by backprop through the logit injection (frozen base logits
+detached → no base backward), fit on 2/3 of facts, evaluated on the held-out 1/3. Iterated
+(`cam/gate_router.py`, `--persistent-router`, `tools/router*.sh`):
+
+- **diff baseline** generalises: held-out ΔP +0.325 (89 % of the per-fact ORACLE ceiling), corr(gain,
+  uncertainty) +0.62 — it rediscovered "push harder where the base is unsure" from label-free signals.
+- **richer signals** → corr +0.76–0.83.
+- **hybrid** (diff obj + β·oracle-dose MSE) beats both pure variants: diff degenerates at aggressive kl_w
+  (dose-corr → −0.15, over-doses), regress alone is unstable (collapsed to −0.02 in a run); hybrid gets
+  diff's ΔP + regress's calibration. Cross-split (3 held-out thirds): 93–97 % of ceiling, stable dosing.
+- **per-token** (2-DOF: gain the target token vs the rest of the support) WINS: best ΔP both splits
+  (98 % of ceiling), highest dose-corr ever (**+0.94**), at the LOWEST mean_gain — same lean, less
+  collateral, because it pushes the true token precisely instead of scaling the whole support.
+The scalar router is near-maxed against its own ceiling; raising it further needs per-token (done) or a
+learned per-token oracle.
+
 ## 3.25 MULTIGATE — composed gates + the dose-response: gentleness is α, not sparsity (2026-07-06)
 
 Track 5 (#99), building on §3.24. Question: can we COMPOSE gates so the lean is local, non-disruptive,
