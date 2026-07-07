@@ -14,6 +14,7 @@ docker run --rm ${CNAME:+--name "$CNAME"} --device /dev/kfd --device /dev/dri --
   -e CAM_NATIVE_GDN=1 -e CAM_SKIP_CEILING=1 -e GDN_HIP_NATIVE_BWD=1 -e CAM_PERSISTENT_EVAL_BATCH=4 -e CAM_PROBE_CACHE_DIR=/probe_cache \
   -e CAM_POOLED_SUBJ_KEY=1 -e CAM_SUBJ_ONLY_QUERY=1 -e CAM_LEARNED_KEY_POOL=1 -e CAM_DISJOINT_BANKS=512 \
   -e CAM_WRITE_AT_READ=1 -e CAM_LOGIT_INJECT="${ALPHA:-8}" -e CAM_LOGIT_GATE_C0=10 -e CAM_LOGIT_GATE_HARD=1 \
+  -e CAM_MT_RECON_NAME_TOKENS="${MT_NAME:-1}" -e CAM_MT_VALUE_NO_NORM="${VALNONORM:-0}" \
   -e CAM_GEN_INJECT_STEPS="${INJ_STEPS:-2}" -e CAM_GEN_LEN="${GEN_LEN:-8}" -e CAM_GEN_SAMPLE="${GEN_SAMPLE:-4}" -e CAM_GEN_INJECT_STEPS=1 \
   -v "$MINISGL":/minisgl:ro -v "$ENGINE":/engine:ro -v "$DATA":/data:ro -v "$CACHE":/probe_cache \
   -v /home/pat/.cache/huggingface:/root/.cache/huggingface --entrypoint bash titans:dev -lc \
