@@ -186,6 +186,14 @@ def export_serving_checkpoint(injector, adapter, router, meta, out_dir):
         "k": int(adapter.k),
         "conf_gate": bool(getattr(tap, "conf_gate", False)),
         "n_rel": int(getattr(tap, "n_rel", 1)),
+        # behaviour knobs WS-A's loader BAKES from meta (must match the training env, not read at serve time)
+        "pooled_subj_key": os.environ.get("CAM_POOLED_SUBJ_KEY") == "1",
+        "learned_key_pool": os.environ.get("CAM_LEARNED_KEY_POOL") == "1",
+        "write_at_read": os.environ.get("CAM_WRITE_AT_READ") == "1",
+        "key_maxsim": os.environ.get("CAM_KEY_MAXSIM") == "1",
+        "norm_gate": os.environ.get("CAM_NORM_GATE") == "1",
+        "twosided": os.environ.get("CAM_TWOSIDED") == "1",
+        "obj_latent": os.environ.get("CAM_OBJ_LATENT") == "1",
     }
     resolved = dict(meta)
     resolved.update(derived)

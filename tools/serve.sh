@@ -26,6 +26,6 @@ docker run --rm --device /dev/kfd --device /dev/dri --group-add video \
      --batch 4 --bind-steps 1000 --steps 150 --phrasing counterfactual_multi \
      --multi-relations ${MULTI_REL:-6} --cf-probe-cap 21500 --dataset counterfact --data-dir /data --tap-layers 24 \
      --seg-len 48 --qa-seg 3 --save-anyway --conf-gate --locality-weight 0.1 \
-     --serve --persistent-cohort 10 2>&1" | tee -a "$LOG" \
-  | grep -E 'SERVING STATE|router calibrated|write-gate=|ask |base knew|kept NOVEL|served:|EVICTED|delivery on KEPT|evicted|Traceback|Error'
+     --serve --export-serving /engine/cam_ckpt --persistent-cohort 10 2>&1" | tee -a "$LOG" \
+  | grep -E 'SERVING STATE|router calibrated|write-gate=|delivery on KEPT|export]|checkpoint|Traceback|Error'
 echo "[serve] done $(date -u +%H:%M:%S)" | tee -a "$LOG"
