@@ -1249,6 +1249,26 @@ def _init_banks(adapter, B):
     return [adapter.store.init_state(1, DEV, dtype=torch.float32) for _ in range(B)]
 
 
+def _init_pp_banks():
+    """PER-POSITION disjoint persistent banks for perpos-key=disjoint (#100 t>=1 wall): a LAZY dict
+    {subject-bucket b -> [bank_t0 .. bank_t(K-1)]} where bank_t is the standing value bank at answer
+    position t over adapter.stores[t]'s OWN codebook — so position 0 and position 1 address disjoint slot
+    spaces (no shared-codebook cross-position contamination). Allocated on first multi-token write to a
+    bucket (only a handful of invented multi-token objects exist), NOT pre-allocated B*K full store states
+    (each ~20 MiB -> tens of GB OOM). Parallel to _init_banks' V (self.store), which single-token +
+    non-disjoint records still use. Bucket space = _n_disjoint_banks()."""
+    return {}
+
+
+def _pp_bucket(adapter, Vpp, b):
+    """Get-or-create the per-position bank list for subject-bucket b (K = mt_positions empty store states,
+    one per answer position). Lazy so we only pay VRAM for buckets that actually hold a multi-token object."""
+    if b not in Vpp:
+        K = _mt_cap(adapter)
+        Vpp[b] = [adapter.stores[t].init_state(1, DEV, dtype=torch.float32) for t in range(K)]
+    return Vpp[b]
+
+
 # ---- MULTI-TOKEN object support (Track 4) --------------------------------------------------------
 # The single-token store value/inject/score pipeline can only carry a 1-token object. A multi-token
 # object (e.g. an invented "Klingon" -> several BPE tokens) is stored/delivered as a per-position
@@ -1332,11 +1352,49 @@ def _persistent_write_seq(adapter, V, r, obj_tids, pooled):
     return V
 
 
-def _persistent_write_one(adapter, V, r, pooled):
-    """One incremental write of edit `r` into the standing bank(s) V. A MULTI-token object is written
+@torch.no_grad()
+def _persistent_write_seq_disjoint(adapter, Vpp, r, obj_tids, pooled):
+    """Multi-token DISJOINT write: object token t -> its OWN per-position store adapter.stores[t], standing
+    bank Vpp[b][t]. Key = _pos_key(subject_key, t), value = embed(token_t). Mirrors the episodic disjoint
+    branch of _write_episode: each answer position addresses a SEPARATE codebook, removing the shared-
+    codebook cross-position contamination that pinned the persistent per-token round-trip at 0.50 (t>=1
+    never delivered). Writes into Vpp only; the shared V (self.store) is untouched for multi in this mode."""
+    cap = _mt_cap(adapter)
+    L = min(len(obj_tids), cap)
+    tids = torch.tensor([r.subject_tids], dtype=torch.long, device=DEV)
+    if getattr(adapter, "_gte_keys", None) is not None:
+        base_key = adapter._gte_key(tids).unsqueeze(1)                                # [1,1,mem]
+    else:
+        subj_emb = adapter._e(tids)                                                   # [1,S,mem]
+        base_key = adapter._pool_subject(subj_emb, keepdim=True) if pooled else subj_emb[:, -1:]
+    b = _subject_bank(r.subject_tids, _n_disjoint_banks())
+    banks_b = _pp_bucket(adapter, Vpp, b)
+    for t in range(L):
+        store_t = adapter.stores[t]                                                   # position t's own codebook
+        key_t = adapter._pos_key(base_key, t)                                         # [1,H,mem] name+pos_tag[t]
+        val_t = adapter._e_val(torch.tensor([[int(obj_tids[t])]], dtype=torch.long, device=DEV))  # [1,1,mem]
+        if key_t.shape[1] > 1:                                                        # multi-vector keys
+            val_t = val_t.expand(-1, key_t.shape[1], -1)
+        banks_b[t] = adapter.persistent_write(banks_b[t], key_t, val_t, store=store_t)
+    return Vpp
+
+
+def _is_disjoint_mt(adapter):
+    """perpos-key=disjoint AND the per-position stores exist -> route multi-token writes/reads through the
+    per-position disjoint banks (Vpp) instead of the shared self.store bank (V)."""
+    return getattr(adapter, "perpos_key", None) == "disjoint" and hasattr(adapter, "stores")
+
+
+def _persistent_write_one(adapter, V, r, pooled, Vpp=None):
+    """One incremental write of edit `r` into the standing bank(s). A MULTI-token object is written
     as a per-position sequence (name+pos_tag[t] -> object token t) so generation can deliver the whole
-    object; a single-token object takes the byte-identical single-value path."""
+    object; a single-token object takes the byte-identical single-value path. When perpos-key=disjoint and
+    a per-position bank set Vpp is supplied, the multi-token sequence routes into the disjoint per-position
+    stores (Vpp) and leaves the shared V unchanged; single-token still writes V (byte-identical)."""
     if _is_multi(r) and hasattr(adapter, "_pos_key"):
+        if Vpp is not None and _is_disjoint_mt(adapter):
+            _persistent_write_seq_disjoint(adapter, Vpp, r, _obj_tids(r), pooled)
+            return V
         return _persistent_write_seq(adapter, V, r, _obj_tids(r), pooled)
     return _persistent_write_val(adapter, V, r, _target_tid(r), pooled)
 
@@ -1566,9 +1624,11 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
     finding about the blunt mechanism."""
     injector.eval()
     pooled = os.environ.get("CAM_POOLED_SUBJ_KEY") == "1"
+    disjoint = _is_disjoint_mt(adapter)                      # perpos-key=disjoint: route multi-token via Vpp
     V = _init_banks(adapter, _n_disjoint_banks())
+    Vpp = _init_pp_banks() if disjoint else None
     for r in kept:
-        V = _persistent_write_one(adapter, V, r, pooled)
+        V = _persistent_write_one(adapter, V, r, pooled, Vpp=Vpp)
     base_embed = base.get_input_embeddings()
     lm = base.get_output_embeddings().weight
     bos = [tok.bos_token_id] if tok.bos_token_id is not None else []
@@ -1594,8 +1654,12 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
         if _is_multi(r) and hasattr(adapter, "_pos_key"):
             L = min(len(_obj_tids(r)), _mt_cap(adapter))
             banks, conf = [], None
+            Vppb = _pp_bucket(adapter, Vpp, _subject_bank(r.subject_tids, _n_disjoint_banks())) if disjoint else None
             for t in range(L):
-                bt = adapter.persistent_bank(Vb, adapter._pos_key(base_q, t))
+                if disjoint:                                 # read position t from its OWN store/bank
+                    bt = adapter.persistent_bank(Vppb[t], adapter._pos_key(base_q, t), store=adapter.stores[t])
+                else:
+                    bt = adapter.persistent_bank(Vb, adapter._pos_key(base_q, t))
                 if t == 0:
                     conf = getattr(adapter, "_last_conf", None)
                 banks.append(bt)
@@ -1704,7 +1768,8 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
         interference (iso OK but standing 0/4) from a broken persistent write/read or subword-coverage
         gap (iso ALSO fails). Reuses _persistent_write_one so it exercises the real seq write."""
         Viso = _init_banks(adapter, _n_disjoint_banks())
-        Viso = _persistent_write_one(adapter, Viso, r, pooled)
+        Vpp_iso = _init_pp_banks() if disjoint else None
+        Viso = _persistent_write_one(adapter, Viso, r, pooled, Vpp=Vpp_iso)
         tids = torch.tensor([r.subject_tids], dtype=torch.long, device=DEV)
         if gte:
             bq = adapter._gte_key(tids).unsqueeze(1)
@@ -1713,11 +1778,15 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
             if learned_pool:
                 bq = adapter._pool_subject(bq, keepdim=True)
         Vb = Viso[_subject_bank(r.subject_tids, len(Viso))]
+        Vppb = _pp_bucket(adapter, Vpp_iso, _subject_bank(r.subject_tids, _n_disjoint_banks())) if disjoint else None
         gold = _obj_tids(r)
         L = min(len(gold), _mt_cap(adapter))
         hits = 0
         for t in range(L):
-            bt = adapter.persistent_bank(Vb, adapter._pos_key(bq, t))
+            if disjoint:
+                bt = adapter.persistent_bank(Vppb[t], adapter._pos_key(bq, t), store=adapter.stores[t])
+            else:
+                bt = adapter.persistent_bank(Vb, adapter._pos_key(bq, t))
             pred = int((adapter.out_proj(bt).mean(1) @ adapter.unembed).argmax(-1).item())
             hits += int(pred == int(gold[t]))
         return (hits == L), (hits / max(1, L))   # (span-exact, per-token)

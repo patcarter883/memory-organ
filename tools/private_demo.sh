@@ -23,7 +23,7 @@ docker run --rm ${CNAME:+--name "$CNAME"} --device /dev/kfd --device /dev/dri --
      --batch 4 --bind-steps 1000 --steps 150 --phrasing counterfactual_multi \
      --multi-relations 6 --cf-probe-cap 21500 --dataset counterfact --data-dir /data --tap-layers 24 \
      --seg-len 48 --qa-seg 3 --save-anyway --conf-gate --locality-weight 0 \
-     --perpos-key codebook --mt-positions 4 --mt-recon-weight 1.0 \
+     --perpos-key ${PERPOS_KEY:-codebook} --mt-positions 4 --mt-recon-weight 1.0 \
      --private-facts /data/private_facts.json --persistent-generate --persistent-cohort 10 2>&1" | tee -a "$LOG" \
   | grep -E 'edits across|binding held-out|mt-recon|GENERATION COHERENCE|OFF:|ON :|edit |NEW object|Traceback|Error'
 echo "[priv] done $(date -u +%H:%M:%S)" | tee -a "$LOG"

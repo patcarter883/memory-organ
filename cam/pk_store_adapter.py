@@ -525,10 +525,14 @@ class PKStoreAdapter(nn.Module):
         return attn @ read                              # [B,K,mem_dim] pooled (PRE out_proj)
 
     # ---- Track 4: PERSISTENT / online store (doc-independent) --------------------------------------
-    def persistent_write(self, V, keys, vals):
+    def persistent_write(self, V, keys, vals, store=None):
         """Write A associations (keys/vals [B,A,mem_dim]) into a PERSISTENT value bank V (error-correcting
         delta write). Track 4 online binding: call once per edit on the SAME V to accumulate a standing
         memory — no episodic doc, no reset. Returns the updated V.
+
+        `store` selects WHICH ProductKeyStore to write through (default self.store). The perpos-key=disjoint
+        persistent path passes self.stores[t] so answer position t writes into its OWN per-position codebook
+        (mirrors _write_episode's disjoint branch); byte-identical to before when store is None.
 
         Phase K1 (write-where-you-read, now the DEFAULT — CAM_WRITE_AT_READ=0 to disable): address the
         write with the READ query head_query(key)=read_q[0](key)+head_bias[0] instead of to_wkey(key), so
@@ -540,19 +544,23 @@ class PKStoreAdapter(nn.Module):
         slots (two delta writes into the SAME V) — a softer K1 that keeps the trained write-address too, so
         a boundary subject is covered whichever cell the read lands in. Fallback if K1's pure relocation
         regresses anything."""
+        store = store if store is not None else self.store
         if os.environ.get("CAM_WRITE_REDUNDANT") == "1":      # K2: to_wkey slots AND read-query slots
-            V = self.store.write(V, keys, vals)               # (a) the trained write-address
-            return self.store.write(V, keys, vals, addr=self.store.head_query(keys, 0))  # (b) the read-address
+            V = store.write(V, keys, vals)                    # (a) the trained write-address
+            return store.write(V, keys, vals, addr=store.head_query(keys, 0))  # (b) the read-address
         addr = None
         if os.environ.get("CAM_WRITE_AT_READ", "1") != "0":   # K1 DEFAULT-ON (opt out with =0)
-            addr = self.store.head_query(keys, 0)             # read-space write address (K1)
-        return self.store.write(V, keys, vals, addr=addr)
+            addr = store.head_query(keys, 0)                  # read-space write address (K1)
+        return store.write(V, keys, vals, addr=addr)
 
-    def persistent_bank(self, V, q):
+    def persistent_bank(self, V, q, store=None):
         """Read a PERSISTENT bank V with a subject query q [B,Lq,mem_dim] -> pooled [B,K,mem_dim] bank +
         the store-confidence scalar (self._last_conf). A doc-independent mirror of memory_bank's
-        read+readout — the query is just the subject, the bank is the standing store."""
-        read, _hn, self._last_conf = self.store.read(V, q, return_conf=True)
+        read+readout — the query is just the subject, the bank is the standing store. `store` selects the
+        ProductKeyStore (default self.store); the perpos-key=disjoint path reads position t from
+        self.stores[t] (its own codebook). The readout (maxsim/readout_q/out_proj) is store-agnostic."""
+        store = store if store is not None else self.store
+        read, _hn, self._last_conf = store.read(V, q, return_conf=True)
         read = self._maxsim_reduce(read)                # multi-vector MaxSim: best head, not pool (Phase B)
         B = q.shape[0]
         pq = self.readout_q.unsqueeze(0).expand(B, -1, -1)
