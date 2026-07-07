@@ -1650,6 +1650,11 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
     disjoint = _is_disjoint_mt(adapter)                      # perpos-key=disjoint: route multi-token via Vpp
     V = _init_banks(adapter, _n_disjoint_banks())
     Vpp = _init_pp_banks() if disjoint else None
+    # per-token embedding-row norms for the COSINE-NN value decode (#100 lever): the standard readout
+    # out_proj(value) @ unembed is a DOT-PRODUCT NN in the tied-embedding space, biased toward high-norm
+    # (frequent) token rows — so an approximate position-t value lands on a frequent NEIGHBOUR ("ish"->"ity").
+    # Dividing by the row norm turns it into a true cosine nearest-neighbour, removing that bias. [vocab].
+    enorm = adapter.unembed.norm(dim=0).clamp_min(1e-6)
     for r in kept:
         V = _persistent_write_one(adapter, V, r, pooled, Vpp=Vpp)
     base_embed = base.get_input_embeddings()
@@ -1808,20 +1813,24 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
         Vppb = _pp_bucket(adapter, Vpp_iso, _subject_bank(r.subject_tids, _n_disjoint_banks())) if disjoint else None
         gold = _obj_tids(r)
         L = min(len(gold), _mt_cap(adapter))
-        hits = 0
+        hits = hits_cos = 0
         for t in range(L):
             if disjoint:
                 bt = adapter.persistent_bank_direct(Vppb[t], adapter._pos_key(bq, t), store=adapter.stores[t])
             else:
                 bt = adapter.persistent_bank(Vb, adapter._pos_key(bq, t))
-            pred = int((adapter.out_proj(bt).mean(1) @ adapter.unembed).argmax(-1).item())
+            pref = adapter.out_proj(bt).mean(1)                                 # [1, base_hidden]
+            pred = int((pref @ adapter.unembed).argmax(-1).item())              # DOT-product decode (current)
+            pref_n = pref / pref.norm(dim=-1, keepdim=True).clamp_min(1e-6)
+            pred_cos = int(((pref_n @ adapter.unembed) / enorm).argmax(-1).item())  # COSINE-NN decode (#100 lever)
             hits += int(pred == int(gold[t]))
-        return (hits == L), (hits / max(1, L))   # (span-exact, per-token)
+            hits_cos += int(pred_cos == int(gold[t]))
+        return (hits == L), (hits / max(1, L)), (hits_cos / max(1, L))   # (span-exact, per-token, per-token-cos)
 
     k_ans = int(os.environ.get("CAM_GEN_INJECT_STEPS", "2"))                  # single-token answer-span width
     print(f"\n[mag][persistent] === GENERATION COHERENCE ({len(sample)} edits, {gen_len} tok, α={alpha}, "
           f"answer-span=object-length, single-tok k_ans={k_ans}) ===", flush=True)
-    new_const = new_ans = true_off = tf_hit = store_hit = iso_hit = 0; iso_pt = 0.0
+    new_const = new_ans = true_off = tf_hit = store_hit = iso_hit = 0; iso_pt = iso_pt_cos = 0.0
     for r in sample:
         pid = bos + tok(r.prompt_text, add_special_tokens=False).input_ids
         banks, conf = _banks_seq(r)
@@ -1835,7 +1844,7 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
         new_const += int(nl in g_const.lower()); new_ans += int(nl in g_ans.lower())
         true_off += int(r.true_str.strip().lower() in g_off.lower()); tf_hit += int(tf_ok)
         store_hit += int(store_ok)
-        _iso_ex, _iso_pt = _iso_store_ok(r); iso_hit += int(_iso_ex); iso_pt += _iso_pt
+        _iso_ex, _iso_pt, _iso_pt_cos = _iso_store_ok(r); iso_hit += int(_iso_ex); iso_pt += _iso_pt; iso_pt_cos += _iso_pt_cos
         print(f"  [{r.relation_id}] {r.prompt_text!r}  edit {r.true_str!r}->{r.new_str!r} ({len(_obj_tids(r))} tok)", flush=True)
         print(f"     OFF        : {g_off!r}", flush=True)
         print(f"     ON constant: {g_const!r}", flush=True)
@@ -1852,6 +1861,8 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
     print(f"  --> #100 ISOLATED persistent round-trip (write r ALONE, read back): {iso_hit}/{len(sample)} "
           f"exact ({iso_hit/n:.2f}) | per-token {iso_pt/n:.2f}  [per-tok>>0 w/ exact 0 => value/subword "
           f"capacity per position; per-tok~0 => addressing/key]", flush=True)
+    print(f"  --> #100 ISOLATED cosine-NN decode (row-norm debiased): per-token {iso_pt_cos/n:.2f}  "
+          f"[cos>>argmax {iso_pt/n:.2f} => the wall is unembed-norm decode bias, not store retrieval]", flush=True)
     print(f"  (constant-inject = repetition/degenerate; answer-span-inject should read FLUENT with the edit)",
           flush=True)
     print("=" * 64, flush=True)

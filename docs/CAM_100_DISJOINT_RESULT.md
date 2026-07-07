@@ -61,19 +61,38 @@ exactly the `mt-value-capacity-norm-is-bottleneck` finding, and why `VALNONORM=1
 qualitatively ("Sindarn≈Sindarin") but not to exact. The doc's contamination hypothesis is falsified:
 removing all cross-position codebook sharing leaves per-token at 0.50.
 
-## Recommended next levers (value-precision, NOT addressing)
-1. **Decode the retrieved value by nearest-neighbour in the (frozen) embedding table**, not argmax over
-   `out_proj(value) @ unembed` — the store reconstructs a value vector; snapping to the closest real
-   token embedding is far more robust to the small reconstruction error that currently lands on a
-   neighbour. This is the highest-leverage, lowest-risk change and directly targets the observed failure.
-2. **Value capacity / precision at t≥1**: the value path (LayerNorm dropped by `VALNONORM`) still loses
-   the continuation-subword detail. Probe a higher-capacity or residual-VQ value, or supervise the
-   position-1 reconstruction harder (per-position CE weighting) — mt-recon trains all positions equally
-   but position-1 continuation subwords ("ish","arin") are rarer/harder than position-0 prefixes.
-3. **Realistic-value coverage**: verify the invented objects' position-1 subwords are IN the
-   `CAM_MT_RECON_NAME_TOKENS`/realistic-subword pool the store trains to reproduce; if a continuation
-   subword is out-of-pool, its value branch is never trained to round-trip.
+## Lever 1 (cosine-NN decode) — ALSO FALSIFIED
+The standard readout `out_proj(value) @ unembed` (unembed = tied embed.t()) is a DOT-PRODUCT nearest-
+neighbour in embedding space, biased toward high-norm (frequent) token rows — the obvious suspect for
+"lands on a frequent neighbour". Added a **cosine-NN** decode (divide by the `[vocab]` embedding-row
+norms) as a diagnostic alongside the argmax, on the SAME retrieved value (`_iso_store_ok`, both
+codebook and disjoint). Result:
 
-The disjoint implementation is correct and now A/B-able (a clean, reusable building block that mirrors
-the episodic disjoint path), but it is **not** the #100 unlock and, in this config, does not even move
-the store-side objective. The unlock is value-side precision at t≥1.
+| decode | ISOLATED per-token |
+|---|---|
+| dot-product argmax (current) | **0.42** |
+| cosine-NN (row-norm debiased) | **0.33** (WORSE) |
+
+Debiasing the row norm makes it WORSE, so the norm carries useful signal and the retrieved value's
+DIRECTION is genuinely closest to a wrong token. **The wall is not the decode — it is the store's
+per-position value RETRIEVAL fidelity at t≥1.** (Diagnostic committed; `iso cosine-NN` line in
+`private_demo.out`.)
+
+## Where that leaves #100 — remaining levers are store-side (heavier, need retraining)
+Both cheap, readout-only levers are now exhausted (disjoint addressing: no lift; cosine decode: worse).
+The retrieved position-1 value vector is itself a poor reconstruction of `_e_val(obj_token_1)`. The
+remaining candidates all touch the store/value training, not the readout:
+1. **Value capacity / precision**: `VALNONORM` dropped the value LayerNorm but pos1 still loses the
+   continuation-subword; probe a higher-capacity or residual-VQ value code, or more store slots (n_sub).
+2. **Per-position-1 supervision**: mt-recon weights all positions equally, but position-1 continuation
+   subwords ("ish","arin") are rarer/harder than position-0 prefixes — weight the CE by position, or
+   oversample continuation subwords.
+3. **The exported decoder/perpos readout** (issue #100 notes it was prototyped but the serving export
+   only ships the linear readout) — an autoregressive decoder over the retrieved latents may reconstruct
+   the sequence where the per-position linear readout cannot.
+4. **Realistic-value coverage**: confirm the invented objects' position-1 subwords are in the training
+   pool at all.
+
+The disjoint implementation is correct and A/B-able (a clean building block mirroring the episodic
+disjoint path); the cosine-NN decode is a committed diagnostic. Neither is the #100 unlock. **The wall
+is store-side value-reconstruction fidelity at t≥1 — a training-side problem, not a readout one.**
