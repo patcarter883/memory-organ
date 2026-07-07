@@ -215,18 +215,41 @@ def _mt_recon_loss(adapter, unembed, rng, batch, K, weight, pool=None):
         names = torch.from_numpy(rng.integers(0, Vsz, size=(batch, S))).long().to(dev)
         objs = torch.from_numpy(rng.integers(0, Vsz, size=(batch, K))).long().to(dev)
     name_key = adapter._pool_subject(adapter._e(names), keepdim=True)                    # [B,H,mem]
-    V = adapter.store.init_state(batch, dev, dtype=torch.float32)
-    for t in range(K):
-        key_t = adapter._pos_key(name_key, t)                                           # [B,H,mem]
-        val_t = adapter._e_val(objs[:, t:t + 1])                                        # [B,1,mem] value branch
-        if key_t.shape[1] > 1:                                                           # multi-vector keys
-            val_t = val_t.expand(-1, key_t.shape[1], -1)
-        V = adapter.persistent_write(V, key_t, val_t)
-    ue = unembed.to(dev).float()                                                        # [vocab, hidden]
+    # DISJOINT (perpos-key=disjoint): train each answer position's OWN store (self.stores[t]) with the
+    # DIRECT readout, so the disjoint stores actually learn the reconstruction the persistent delivery
+    # reads back — otherwise mt-recon only trains self.store and the disjoint delivery stores stay
+    # untrained (per-token delivery 0.00). Mirrors _write_episode's disjoint branch + persistent_bank_direct.
+    disjoint = _is_disjoint_mt(adapter)
+    if disjoint:
+        Vt = [adapter.stores[t].init_state(batch, dev, dtype=torch.float32) for t in range(K)]
+        for t in range(K):
+            key_t = adapter._pos_key(name_key, t)                                        # [B,H,mem]
+            val_t = adapter._e_val(objs[:, t:t + 1])                                     # [B,1,mem] value branch
+            if key_t.shape[1] > 1:                                                       # multi-vector keys
+                val_t = val_t.expand(-1, key_t.shape[1], -1)
+            Vt[t] = adapter.persistent_write(Vt[t], key_t, val_t, store=adapter.stores[t])
+    else:
+        V = adapter.store.init_state(batch, dev, dtype=torch.float32)
+        for t in range(K):
+            key_t = adapter._pos_key(name_key, t)                                        # [B,H,mem]
+            val_t = adapter._e_val(objs[:, t:t + 1])                                     # [B,1,mem] value branch
+            if key_t.shape[1] > 1:                                                       # multi-vector keys
+                val_t = val_t.expand(-1, key_t.shape[1], -1)
+            V = adapter.persistent_write(V, key_t, val_t)
+    # DISJOINT holds K separate per-position store write-graphs live here (vs one for codebook), so the
+    # extra ~GiB tips the fp32 unembed cast into OOM. In disjoint mode do the logit matmul in the unembed's
+    # NATIVE dtype and cast only the small [B,vocab] result — no 2.37 GiB fp32 [vocab,hidden] copy. Codebook
+    # keeps the fp32 unembed (byte-identical).
+    ue = unembed.to(dev)
+    ue_f = ue if disjoint else ue.float()                                               # [vocab, hidden]
     loss = 0.0
     for t in range(K):
-        read = adapter.persistent_bank(V, adapter._pos_key(name_key, t))                 # [B,K',mem]
-        logits = adapter.out_proj(read).mean(1).float() @ ue.t()                         # [B,vocab]
+        if disjoint:                                                                     # own store + direct read
+            read = adapter.persistent_bank_direct(Vt[t], adapter._pos_key(name_key, t), store=adapter.stores[t])
+            logits = (adapter.out_proj(read).mean(1).to(ue_f.dtype) @ ue_f.t()).float()  # [B,vocab] native matmul
+        else:
+            read = adapter.persistent_bank(V, adapter._pos_key(name_key, t))             # [B,K',mem]
+            logits = adapter.out_proj(read).mean(1).float() @ ue_f.t()                   # [B,vocab]
         loss = loss + F.cross_entropy(logits, objs[:, t])
     return weight * loss / max(1, K)
 
@@ -1656,8 +1679,8 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
             banks, conf = [], None
             Vppb = _pp_bucket(adapter, Vpp, _subject_bank(r.subject_tids, _n_disjoint_banks())) if disjoint else None
             for t in range(L):
-                if disjoint:                                 # read position t from its OWN store/bank
-                    bt = adapter.persistent_bank(Vppb[t], adapter._pos_key(base_q, t), store=adapter.stores[t])
+                if disjoint:                                 # read position t from its OWN store/bank (direct)
+                    bt = adapter.persistent_bank_direct(Vppb[t], adapter._pos_key(base_q, t), store=adapter.stores[t])
                 else:
                     bt = adapter.persistent_bank(Vb, adapter._pos_key(base_q, t))
                 if t == 0:
@@ -1766,8 +1789,12 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
         """#100 decisive isolation: write edit r ALONE into a FRESH standing store, read each position
         back (the exact _banks_seq path), decode via the store's unembed. Splits standing-store
         interference (iso OK but standing 0/4) from a broken persistent write/read or subword-coverage
-        gap (iso ALSO fails). Reuses _persistent_write_one so it exercises the real seq write."""
-        Viso = _init_banks(adapter, _n_disjoint_banks())
+        gap (iso ALSO fails). Reuses _persistent_write_one so it exercises the real seq write.
+
+        A single record is written ALONE, so ONE bank (B=1) suffices — numerically identical to the
+        512-bucket version (only the one hashed bucket ever holds data) but ~10 GiB cheaper, which matters
+        because the full standing V (512 banks) is still resident during this per-record isolation."""
+        Viso = _init_banks(adapter, 1)
         Vpp_iso = _init_pp_banks() if disjoint else None
         Viso = _persistent_write_one(adapter, Viso, r, pooled, Vpp=Vpp_iso)
         tids = torch.tensor([r.subject_tids], dtype=torch.long, device=DEV)
@@ -1784,7 +1811,7 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
         hits = 0
         for t in range(L):
             if disjoint:
-                bt = adapter.persistent_bank(Vppb[t], adapter._pos_key(bq, t), store=adapter.stores[t])
+                bt = adapter.persistent_bank_direct(Vppb[t], adapter._pos_key(bq, t), store=adapter.stores[t])
             else:
                 bt = adapter.persistent_bank(Vb, adapter._pos_key(bq, t))
             pred = int((adapter.out_proj(bt).mean(1) @ adapter.unembed).argmax(-1).item())
