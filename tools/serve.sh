@@ -17,7 +17,7 @@ docker run --rm --device /dev/kfd --device /dev/dri --group-add video \
   -e CAM_NATIVE_GDN=1 -e CAM_SKIP_CEILING=1 -e GDN_HIP_NATIVE_BWD=1 -e CAM_PERSISTENT_EVAL_BATCH=4 -e CAM_PROBE_CACHE_DIR=/probe_cache \
   -e CAM_POOLED_SUBJ_KEY=1 -e CAM_SUBJ_ONLY_QUERY=1 -e CAM_LEARNED_KEY_POOL=1 -e CAM_DISJOINT_BANKS="${DISJOINT_BANKS:-32}" \
   -e CAM_WRITE_AT_READ=1 -e CAM_BIND_TRUE=0 \
-  -e CAM_REMEMBER_TAU="${REMEMBER_TAU:-0.5}" -e CAM_SERVE_STREAM="${SERVE_STREAM:-24}" -e CAM_GEN_LEN="${GEN_LEN:-12}" \
+  -e CAM_REMEMBER_TAU="${REMEMBER_TAU:-0.5}" -e CAM_REMEMBER_GATE="${REMEMBER_GATE:-rank}" -e CAM_REMEMBER_RANK="${REMEMBER_RANK:-1}" -e CAM_STORE_CAP="${STORE_CAP:-0}" -e CAM_EVICT="${EVICT:-fifo}" -e CAM_SERVE_STREAM="${SERVE_STREAM:-24}" -e CAM_GEN_LEN="${GEN_LEN:-12}" \
   -e CAM_ROUTER_ALPHA="${ROUTER_ALPHA:-1.5}" -e CAM_ROUTER_KL="${ROUTER_KL:-0.1}" -e CAM_ROUTER_STEPS="${ROUTER_STEPS:-400}" -e CAM_MULTIGATE_TOPK=16 \
   -v "$MINISGL":/minisgl:ro -v "$ENGINE":/engine:ro -v "$DATA":/data:ro -v "$CACHE":/probe_cache \
   -v /home/pat/.cache/huggingface:/root/.cache/huggingface --entrypoint bash titans:dev -lc \
@@ -27,5 +27,5 @@ docker run --rm --device /dev/kfd --device /dev/dri --group-add video \
      --multi-relations ${MULTI_REL:-6} --cf-probe-cap 21500 --dataset counterfact --data-dir /data --tap-layers 24 \
      --seg-len 48 --qa-seg 3 --save-anyway --conf-gate --locality-weight 0.1 \
      --serve --persistent-cohort 10 2>&1" | tee -a "$LOG" \
-  | grep -E 'SERVING STATE|router calibrated|streamed|ask |base knew|served:|delivery on remembered|Traceback|Error'
+  | grep -E 'SERVING STATE|router calibrated|write-gate=|ask |base knew|kept NOVEL|served:|EVICTED|delivery on KEPT|evicted|Traceback|Error'
 echo "[serve] done $(date -u +%H:%M:%S)" | tee -a "$LOG"

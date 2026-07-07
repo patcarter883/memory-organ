@@ -1874,23 +1874,80 @@ def eval_serve(base, adapter, injector, tok, kept, args):
     print(f"\n[mag][serve] === SERVING STATE (#99): warm memory service, base-uncertainty write-gate τ={tau} ===", flush=True)
     print(f"[mag][serve] router calibrated on {len(kept)} schema facts; serving store starts EMPTY", flush=True)
 
-    def base_p(r, tid):
-        ids = torch.tensor([bos + tok(r.prompt_text, add_special_tokens=False).input_ids], device=DEV)
-        return float(torch.softmax(base(inputs_embeds=base_embed(ids)).logits[0, -1].float(), -1)[tid])
+    # WS-B: export the serving checkpoint for the minisgl serve engine (additive, default-off). The
+    # trained tap (injector), store projections (adapter), and just-fit per-token router are all in
+    # scope here; the export derives all structural meta from them. See cam/export_serving.py.
+    if getattr(args, "export_serving", ""):
+        try:
+            from .export_serving import export_serving_checkpoint
+        except ImportError:
+            from export_serving import export_serving_checkpoint
+        _meta = {"base_model": getattr(args, "base1", ""), "router_alpha": a_ref, "topk": topk,
+                 "remember_tau": tau, "n_banks": Bn, "tap_layer": injector.tap_layers[0]}
+        _resolved = export_serving_checkpoint(injector, adapter, router, _meta, args.export_serving)
+        print(f"[mag][serve][export] wrote CAM serving checkpoint -> {args.export_serving} "
+              f"(base={_resolved['base_model']}, mem_dim={_resolved['mem_dim']}, tap_layer={_resolved['tap_layer']}, "
+              f"n_sub={_resolved['n_sub']}, n_banks={_resolved['n_banks']}, hidden={_resolved['hidden_size']})", flush=True)
 
-    # (2)+(3) empty serving store; stream facts through the write gate
+    # base-uncertainty WRITE GATE. Two modes (CAM_REMEMBER_GATE):
+    #   "prob" — remember iff p_base(object) < τ  (absolute, but base-known facts are only weakly held 0.24-0.48
+    #            so τ is hard to set); "rank" — remember iff the object is NOT in the base's top-`R` predictions
+    #            (scale-free: base already argmaxes what it knows -> rank 0 -> skip; novel -> high rank -> keep).
+    gate_mode = os.environ.get("CAM_REMEMBER_GATE", "rank")
+    rank_thr = int(os.environ.get("CAM_REMEMBER_RANK", "1"))
+
+    def base_last(r):
+        ids = torch.tensor([bos + tok(r.prompt_text, add_special_tokens=False).input_ids], device=DEV)
+        return base(inputs_embeds=base_embed(ids)).logits[0, -1].float()
+
+    def base_p(r, tid):
+        return float(torch.softmax(base_last(r), -1)[tid])
+
+    def base_knows(lg, tid):                                            # does the base already hold this object?
+        return int((lg > lg[tid]).sum()) < rank_thr if gate_mode == "rank" else float(torch.softmax(lg, -1)[tid]) >= tau
+
+    # (2)+(3) empty serving store; stream facts through the write gate; CAPACITY/EVICTION (#17): a per-bank fact
+    # budget (CAM_STORE_CAP, 0=unlimited) — on overflow evict (FIFO default / lowconf) and REBUILD the bank from
+    # survivors, so "what to remember" becomes "what to KEEP" as the store fills past its interference wall.
     V = _init_banks(adapter, Bn)
+    cap = int(os.environ.get("CAM_STORE_CAP", "0"))
+    evict_pol = os.environ.get("CAM_EVICT", "fifo")
+    bank_facts, n_evicted = {}, 0
+
+    def _lowconf_idx(b):                                                # evict the weakest-addressed fact in bank b
+        cs = []
+        for rr in bank_facts[b]:
+            adapter.persistent_bank(V[b], (adapter._pool_subject(adapter._e(torch.tensor([rr.subject_tids], device=DEV)), keepdim=True)
+                                           if os.environ.get("CAM_LEARNED_KEY_POOL") == "1" else adapter._e(torch.tensor([rr.subject_tids], device=DEV))))
+            c = getattr(adapter, "_last_conf", None)
+            cs.append(float(c[0]) if c is not None else 0.0)
+        return int(min(range(len(cs)), key=lambda i: cs[i]))
+
+    def serve_write(r):
+        nonlocal n_evicted, V
+        b = _subject_bank(r.subject_tids, len(V))
+        bank_facts.setdefault(b, []).append(r)
+        if cap and len(bank_facts[b]) > cap:                           # over budget -> evict + rebuild bank b
+            vi = 0 if evict_pol == "fifo" else _lowconf_idx(b)
+            bank_facts[b].pop(vi); n_evicted += 1
+            V[b] = adapter.store.init_state(1, DEV, dtype=torch.float32)
+            for rr in bank_facts[b]:
+                V = _persistent_write_one(adapter, V, rr, pooled)
+        else:
+            V = _persistent_write_one(adapter, V, r, pooled)
+
     stream = kept[:int(os.environ.get("CAM_SERVE_STREAM", "24"))]
     remembered, n_skip_known = [], 0
     for r in stream:
-        p_true = base_p(r, (r.true_ids or [r.true_tid])[0])              # offer the TRUE fact -> base knows it
-        n_skip_known += int(p_true >= tau)                              # gate SKIPS (redundant to store)
-        p_new = base_p(r, (r.new_ids or [r.new_tid])[0])               # offer a NOVEL fact -> base can't know it
-        if p_new < tau:
-            V = _persistent_write_one(adapter, V, r, pooled)           # gate REMEMBERS (the unknowable)
-            remembered.append((r, p_true, p_new))
-    print(f"[mag][serve] streamed {len(stream)} facts | wrote-nothing for the {n_skip_known} whose TRUE fact the "
-          f"base already knows | REMEMBERED {len(remembered)} NOVEL facts the base cannot recall", flush=True)
+        lg = base_last(r)
+        p_true = float(torch.softmax(lg, -1)[(r.true_ids or [r.true_tid])[0]])
+        n_skip_known += int(base_knows(lg, (r.true_ids or [r.true_tid])[0]))   # gate SKIPS what the base holds
+        p_new = base_p(r, (r.new_ids or [r.new_tid])[0])
+        if not base_knows(lg, (r.new_ids or [r.new_tid])[0]):          # gate REMEMBERS the base-unknowable
+            serve_write(r); remembered.append((r, p_true, p_new))
+    print(f"[mag][serve] write-gate={gate_mode}(R={rank_thr}) | streamed {len(stream)} | SKIPPED {n_skip_known} "
+          f"(base already knows) | REMEMBERED {len(remembered)}" + (f" | EVICTED {n_evicted} (cap {cap}/bank, {evict_pol})" if cap else ""),
+          flush=True)
 
     def serve_gen(r):                                                   # router-gated seed-once decode
         tids = torch.tensor([r.subject_tids], dtype=torch.long, device=DEV)
@@ -1918,20 +1975,32 @@ def eval_serve(base, adapter, injector, tok, kept, args):
             out.append(nxt); cur = torch.cat([cur, torch.tensor([[nxt]], device=DEV)], dim=1)
         return tok.decode(out).replace("\n", " ").strip()
 
+    survivors = {id(rr) for facts in bank_facts.values() for rr in facts}   # facts still in the store post-eviction
+    kept_now = [(r, pt, pn) for (r, pt, pn) in remembered if id(r) in survivors]
+    evicted_now = [(r, pt, pn) for (r, pt, pn) in remembered if id(r) not in survivors]
     hit = 0
-    show = remembered[:8]
-    print("[mag][serve] --- ask the served model (memory should supply the REMEMBERED novel answer) ---", flush=True)
+    show = kept_now[:8]
+    print("[mag][serve] --- ask the served model (memory should supply the KEPT novel answer) ---", flush=True)
     for r, p_true, p_new in show:
         g = serve_gen(r); ok = r.new_str.strip().lower() in g.lower(); hit += int(ok)
         print(f"  ask {r.prompt_text!r}", flush=True)
-        print(f"      base knew TRUE '{r.true_str}' (p={p_true:.2f}) -> not stored; remembered NOVEL "
+        print(f"      base knew TRUE '{r.true_str}' (p={p_true:.2f}) -> not stored; kept NOVEL "
               f"'{r.new_str}' (base p={p_new:.2f})", flush=True)
         print(f"      served: {g!r}   [novel answer present: {ok}]", flush=True)
+    ev_hit = 0
+    if evicted_now:
+        print("[mag][serve] --- EVICTED facts (forgotten — memory should NOT supply them) ---", flush=True)
+        for r, p_true, p_new in evicted_now[:3]:
+            g = serve_gen(r); leaked = r.new_str.strip().lower() in g.lower(); ev_hit += int(leaked)
+            print(f"  ask {r.prompt_text!r}  [evicted '{r.new_str}']  ->  {g!r}   [still present: {leaked}]", flush=True)
     n = max(1, len(show))
-    print(f"[mag][serve] delivery on remembered: {hit}/{len(show)} ({hit/n:.2f}) | write-gate: stored the "
-          f"base-unknowable, skipped the {n_skip_known}/{len(stream)} the base already holds", flush=True)
+    print(f"[mag][serve] delivery on KEPT: {hit}/{len(show)} ({hit/n:.2f})"
+          + (f" | evicted still-present: {ev_hit}/{len(evicted_now[:3])} (want 0 = truly forgotten)" if evicted_now else "")
+          + f" | write-gate {gate_mode}: skipped {n_skip_known}/{len(stream)} base-known, kept "
+          f"{len(kept_now)}, evicted {n_evicted}", flush=True)
     print("=" * 64, flush=True)
-    return {"remembered": len(remembered), "skipped_known": n_skip_known, "delivery": hit / n}
+    return {"remembered": len(remembered), "skipped_known": n_skip_known, "evicted": n_evicted,
+            "delivery": hit / n}
 
 
 @torch.no_grad()
@@ -2566,6 +2635,10 @@ def main():
                          "recall it, p_base<τ), then serve router-gated seed-once generation from what was kept. "
                          "Read/write symmetry: router decides how-much-to-deliver, gate decides what-to-remember. "
                          "Implies --persistent-sweep. Knobs: CAM_REMEMBER_TAU, CAM_SERVE_STREAM.")
+    ap.add_argument("--export-serving", type=str, default="", dest="export_serving",
+                    help="WS-B: after the --serve router fit, export the CAM serving checkpoint (meta.json, "
+                         "tap.pt, adapter.pt, router.pt) to this DIR for the minisgl serve engine to load "
+                         "(cam/export_serving.py). Additive + default-off; requires --serve.")
     ap.add_argument("--query-rel", type=str, default="", dest="query_rel",
                     help="ADVERSARIAL paraphrase probe (issue #10, natural phrasing only): bind and "
                          "train exactly as normal (bindings + training queries use ' lives in'), then "
