@@ -123,7 +123,10 @@ load-bearing: on facts the base is **confidently wrong** about, any base-side co
 blind (ΔP **+0.000** — confident-wrong is indistinguishable from confident-right), while a **store-presence
 gate rescues them (+0.464)** — the deliberate write is an external label no base-side signal carries. Full arc
 in [docs/research/multi-gate-steering.md](docs/research/multi-gate-steering.md), the honest prior-art/novelty
-map in [docs/research/novelty-positioning.md](docs/research/novelty-positioning.md).
+map in [docs/research/novelty-positioning.md](docs/research/novelty-positioning.md). Wired into a **warm serving
+loop** (`--serve`), the read/write symmetry runs end to end: the router decides *how much* to deliver and a
+**base-uncertainty write gate** decides *what to remember* (store iff `p_base < τ`) — streaming 24 facts, it
+stored the base-unknowable ones and served them back fluently **8/8** in real generation.
 
 See **[RESULTS.md](RESULTS.md)** for every number with its baseline and the full story including the
 [three corrections](DISCLOSURES.md#corrections-we-were-wrong-three-times), and **[METHOD.md](METHOD.md)** for

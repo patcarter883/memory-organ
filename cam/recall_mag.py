@@ -1835,6 +1835,106 @@ def eval_persistent_rescue(base, adapter, injector, tok, kept, args):
 
 
 @torch.no_grad()
+def eval_serve(base, adapter, injector, tok, kept, args):
+    """SERVING STATE (#99) — a warm in-process memory service that DECIDES WHAT TO REMEMBER. Completes the
+    read/write symmetry: the per-token router decides HOW MUCH to deliver (read side, done); a base-uncertainty
+    WRITE GATE decides WHAT is worth storing (write side, new) — remember iff the base can't already recall it
+    (`p_base(object) < τ`), so the store fills with the UNKNOWABLE, not the redundant.
+
+    Flow: (1) fit the router on a calibration store (schema-representative); (2) start an EMPTY serving store;
+    (3) stream facts — each offered as its TRUE association (base knows → SKIP) and a NOVEL association (base
+    can't know → REMEMBER), so the gate visibly discriminates on the same base-known set; (4) serve router-gated
+    generation from what was kept. Prints the transcript."""
+    injector.eval()
+    try:
+        from .gate_router import fit_router_pertoken, signal_features, _inj_pertoken
+    except ImportError:
+        from gate_router import fit_router_pertoken, signal_features, _inj_pertoken
+    pooled = os.environ.get("CAM_POOLED_SUBJ_KEY") == "1"
+    base_embed = base.get_input_embeddings()
+    lm = base.get_output_embeddings().weight
+    bos = [tok.bos_token_id] if tok.bos_token_id is not None else []
+    a_ref = float(os.environ.get("CAM_ROUTER_ALPHA", "1.5"))
+    topk = int(os.environ.get("CAM_MULTIGATE_TOPK", "16"))
+    tau = float(os.environ.get("CAM_REMEMBER_TAU", "0.5"))
+    gen_len = int(os.environ.get("CAM_GEN_LEN", "12"))
+    Bn = _n_disjoint_banks()
+
+    # (1) calibration store (all facts) + fit the per-token router on the schema
+    V_cal = _init_banks(adapter, Bn)
+    for r in kept:
+        V_cal = _persistent_write_one(adapter, V_cal, r, pooled)
+    off, raw, conf, _tt = _collect_router_data(base, adapter, injector, tok, V_cal, kept)
+    off, raw = off.to(DEV), raw.to(DEV); conf = conf.to(DEV) if conf is not None else None
+    tgt = torch.tensor([(r.new_ids or [r.new_tid])[0] for r in kept], device=DEV)   # serve the NOVEL (counterfactual) object
+    with torch.enable_grad():
+        router = fit_router_pertoken(off, raw, tgt, conf, a_ref, kl_weight=float(os.environ.get("CAM_ROUTER_KL", "0.1")),
+                                     beta=float(os.environ.get("CAM_ROUTER_BETA", "0.5")),
+                                     steps=int(os.environ.get("CAM_ROUTER_STEPS", "400")), topk=topk, device=str(DEV))
+    print(f"\n[mag][serve] === SERVING STATE (#99): warm memory service, base-uncertainty write-gate τ={tau} ===", flush=True)
+    print(f"[mag][serve] router calibrated on {len(kept)} schema facts; serving store starts EMPTY", flush=True)
+
+    def base_p(r, tid):
+        ids = torch.tensor([bos + tok(r.prompt_text, add_special_tokens=False).input_ids], device=DEV)
+        return float(torch.softmax(base(inputs_embeds=base_embed(ids)).logits[0, -1].float(), -1)[tid])
+
+    # (2)+(3) empty serving store; stream facts through the write gate
+    V = _init_banks(adapter, Bn)
+    stream = kept[:int(os.environ.get("CAM_SERVE_STREAM", "24"))]
+    remembered, n_skip_known = [], 0
+    for r in stream:
+        p_true = base_p(r, (r.true_ids or [r.true_tid])[0])              # offer the TRUE fact -> base knows it
+        n_skip_known += int(p_true >= tau)                              # gate SKIPS (redundant to store)
+        p_new = base_p(r, (r.new_ids or [r.new_tid])[0])               # offer a NOVEL fact -> base can't know it
+        if p_new < tau:
+            V = _persistent_write_one(adapter, V, r, pooled)           # gate REMEMBERS (the unknowable)
+            remembered.append((r, p_true, p_new))
+    print(f"[mag][serve] streamed {len(stream)} facts | wrote-nothing for the {n_skip_known} whose TRUE fact the "
+          f"base already knows | REMEMBERED {len(remembered)} NOVEL facts the base cannot recall", flush=True)
+
+    def serve_gen(r):                                                   # router-gated seed-once decode
+        tids = torch.tensor([r.subject_tids], dtype=torch.long, device=DEV)
+        if getattr(adapter, "_gte_keys", None) is not None:
+            q = adapter._gte_key(tids).unsqueeze(1)
+        else:
+            q = adapter._e(tids)
+            if os.environ.get("CAM_LEARNED_KEY_POOL") == "1":
+                q = adapter._pool_subject(q, keepdim=True)
+        bank = adapter.persistent_bank(V[_subject_bank(r.subject_tids, len(V))], q)
+        conf1 = getattr(adapter, "_last_conf", None)
+        injector.set_bank(None)
+        raw_full = (adapter.out_proj(bank).mean(1).to(lm.device, lm.dtype) @ lm.t()).float()
+        store_tok = int(raw_full.argmax(-1).item())
+        cur = torch.tensor([bos + tok(r.prompt_text, add_special_tokens=False).input_ids], device=DEV)
+        out, placed = [], False
+        for _t in range(gen_len):
+            off_t = base(inputs_embeds=base_embed(cur)).logits[:, -1].float()
+            if not placed:
+                g2 = router.gain(signal_features(off_t, raw_full, conf1))
+                off_t = off_t + _inj_pertoken(raw_full, g2, a_ref, topk).to(off_t.device)
+            nxt = int(off_t.argmax(-1).item())
+            if nxt == store_tok:
+                placed = True
+            out.append(nxt); cur = torch.cat([cur, torch.tensor([[nxt]], device=DEV)], dim=1)
+        return tok.decode(out).replace("\n", " ").strip()
+
+    hit = 0
+    show = remembered[:8]
+    print("[mag][serve] --- ask the served model (memory should supply the REMEMBERED novel answer) ---", flush=True)
+    for r, p_true, p_new in show:
+        g = serve_gen(r); ok = r.new_str.strip().lower() in g.lower(); hit += int(ok)
+        print(f"  ask {r.prompt_text!r}", flush=True)
+        print(f"      base knew TRUE '{r.true_str}' (p={p_true:.2f}) -> not stored; remembered NOVEL "
+              f"'{r.new_str}' (base p={p_new:.2f})", flush=True)
+        print(f"      served: {g!r}   [novel answer present: {ok}]", flush=True)
+    n = max(1, len(show))
+    print(f"[mag][serve] delivery on remembered: {hit}/{len(show)} ({hit/n:.2f}) | write-gate: stored the "
+          f"base-unknowable, skipped the {n_skip_known}/{len(stream)} the base already holds", flush=True)
+    print("=" * 64, flush=True)
+    return {"remembered": len(remembered), "skipped_known": n_skip_known, "delivery": hit / n}
+
+
+@torch.no_grad()
 def eval_persistent_generate(base, adapter, injector, tok, kept, args):
     """GENERATION-COHERENCE check (the reality test): does the edited memory produce FLUENT text carrying
     the edit, or only flip the next-token argmax? All prior metrics are single-token. Here we write all
@@ -2460,6 +2560,12 @@ def main():
                          "compare a base-confidence gate vs a store-presence gate on ΔP(true) — does provenance "
                          "rescue CONFIDENT-WRONG facts where base-confidence is blind? Implies --persistent-sweep. "
                          "Knobs: CAM_RESCUE_ALPHA, CAM_RESCUE_TAU.")
+    ap.add_argument("--serve", action="store_true", dest="serve",
+                    help="SERVING STATE (#99): warm in-process memory service. Fit the router, start an EMPTY "
+                         "store, stream facts through a base-uncertainty WRITE GATE (remember iff the base can't "
+                         "recall it, p_base<τ), then serve router-gated seed-once generation from what was kept. "
+                         "Read/write symmetry: router decides how-much-to-deliver, gate decides what-to-remember. "
+                         "Implies --persistent-sweep. Knobs: CAM_REMEMBER_TAU, CAM_SERVE_STREAM.")
     ap.add_argument("--query-rel", type=str, default="", dest="query_rel",
                     help="ADVERSARIAL paraphrase probe (issue #10, natural phrasing only): bind and "
                          "train exactly as normal (bindings + training queries use ' lives in'), then "
@@ -2638,7 +2744,7 @@ def main():
     if (getattr(args, "persistent_overwrite", False) or getattr(args, "persistent_solo", False)
             or getattr(args, "persistent_locality", False) or getattr(args, "persistent_generate", False)
             or getattr(args, "persistent_graded", False) or getattr(args, "persistent_router", False)
-            or getattr(args, "persistent_rescue", False)):
+            or getattr(args, "persistent_rescue", False) or getattr(args, "serve", False)):
         args.persistent_sweep = True         # the online-update / solo / locality tests run after the sweep
     if getattr(args, "persistent_sweep", False):
         args.persistent_eval = True          # the sweep is a superset of the persistent eval
@@ -2689,6 +2795,9 @@ def main():
                 if getattr(args, "persistent_rescue", False):
                     with StageCost(f"persistent provenance-vs-confidence rescue L={tag}"):
                         eval_persistent_rescue(base, adapter, injector, tok, cf_records, args)
+                if getattr(args, "serve", False):
+                    with StageCost(f"serving state (write-gate + router delivery) L={tag}"):
+                        eval_serve(base, adapter, injector, tok, cf_records, args)
             injector.detach()
             continue
         with StageCost(f"delivery eval L={tag}"):

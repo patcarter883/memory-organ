@@ -39,6 +39,11 @@ across applications.
   indistinguishable from confident-right), while a **store-presence gate rescues them (+0.464)** — the
   deliberate write-event is an external label no base-side signal carries. Novelty/prior-art map in
   [docs/research/novelty-positioning.md](docs/research/novelty-positioning.md).
+- ✅ **Serving state — decide what to remember + serve it (Track 5, `--serve`)**: a warm in-process memory
+  service closing the read/write symmetry — the calibrated router decides *how much* to deliver, a
+  **base-uncertainty write gate** decides *what to remember* (store iff `p_base < τ`). Streaming 24 facts it
+  stored the base-unknowable ones and the router-gated decode served them back fluently **8/8** (RESULTS §8).
+  Open write-side: capacity/eviction (store walls at M≈130, [#17](https://github.com/patcarter883/memory-organ/issues/17)) and conflict.
 
 ...all on a **synthetic recall probe** (curated/random facts, single- and 2-token answers), on AMD ROCm.
 

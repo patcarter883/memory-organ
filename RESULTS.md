@@ -553,6 +553,12 @@ works (pooled key). Multi-token **object** stored as a pooled latent does **not*
 decodes to "Moscow" through the single-token `out_proj` readout; genuine multi-token objects need
 first-token-seed+fluency or **sequential latent delivery** ([#100](https://github.com/patcarter883/memory-organ/issues/100)).
 
+**Serving state** (`--serve`) — the read/write symmetry in one warm service: the calibrated router decides
+*how much* to deliver, and a **base-uncertainty write gate** decides *what to remember* (store iff the base
+can't recall it, `p_base < τ`). Streaming 24 facts, the gate stored the 24 base-unknowable ones and the
+router-gated decode served them back fluently **8/8 (1.00)** (e.g. `"…Oleg Kotov is"` → `"English. The first
+step is to find a good place"`). Open write-side work: capacity/eviction (store walls at M≈130) and conflict.
+
 ## 9. Still open
 
 - **Multi-token cross-base transfer** — translator-bound (see §4); higher-capacity translator in progress.

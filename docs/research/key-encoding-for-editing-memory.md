@@ -501,6 +501,25 @@ means, with the structural wins reproducing exactly in every run):
 no residual self-addressing failure to retrain away; below-gate = 0 in all 3 reps). Shipped:
 `CAM_WRITE_AT_READ` (K1), `CAM_WRITE_REDUNDANT` (K2), `CAM_READ_SUB_TOPK` (K3, unneeded).
 
+## 3.29 SERVING STATE — the read/write symmetry made whole: what-to-remember + how-much-to-deliver (2026-07-06)
+
+A warm in-process memory service (`eval_serve`, `--serve`) that closes the loop: the per-token router decides
+HOW MUCH to deliver (read side), and a **base-uncertainty WRITE GATE** decides WHAT is worth remembering
+(write side) — store iff the base can't already recall it (`p_base(object) < τ`), so the store fills with the
+unknowable, not the redundant. Flow: fit the router on a calibration store → start an EMPTY serving store →
+stream facts through the gate (each offered as its TRUE association, base knows → SKIP, and a NOVEL one, base
+can't know → REMEMBER) → serve router-gated seed-once generation from what was kept.
+
+Result (24 facts, τ=0.5): the gate stored 24 NOVEL facts (base `p≈0.00–0.02`) and the router-gated decode
+delivered them **FLUENTLY 8/8 (1.00)** — e.g. `"The mother tongue of Oleg Kotov is"` → `"English. The first
+step is to find a good place"`; `"…Achille Varzi is"` → `"French, and he was born in Paris. He was a"`. The
+read side (calibrated router) and the write side (base-uncertainty gate) now run in one service.
+
+Honest note: the base-known editing filter yields facts the base holds only WEAKLY (P(true) 0.24–0.48), so an
+absolute-prob τ=0.5 under-demonstrates the SKIP side (1/24 skipped) — a rank-based or lower τ separates cleaner
+(the novel-vs-known gap 0.00 vs 0.28 is large regardless). Open write-side work carried forward: capacity /
+eviction (the store walls at M≈130, #17) and conflict handling. `CAM_REMEMBER_TAU`, `CAM_SERVE_STREAM`.
+
 ## 3.27 PROVENANCE vs CONFIDENCE — store-presence beats the separability wall (2026-07-06)
 
 The money experiment for the one novel framing (Claim 4). Bind the store's target, classify facts by the
