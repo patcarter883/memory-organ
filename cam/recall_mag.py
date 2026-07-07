@@ -1715,17 +1715,17 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
         Vb = Viso[_subject_bank(r.subject_tids, len(Viso))]
         gold = _obj_tids(r)
         L = min(len(gold), _mt_cap(adapter))
-        ok = True
+        hits = 0
         for t in range(L):
             bt = adapter.persistent_bank(Vb, adapter._pos_key(bq, t))
             pred = int((adapter.out_proj(bt).mean(1) @ adapter.unembed).argmax(-1).item())
-            ok = ok and (pred == int(gold[t]))
-        return ok
+            hits += int(pred == int(gold[t]))
+        return (hits == L), (hits / max(1, L))   # (span-exact, per-token)
 
     k_ans = int(os.environ.get("CAM_GEN_INJECT_STEPS", "2"))                  # single-token answer-span width
     print(f"\n[mag][persistent] === GENERATION COHERENCE ({len(sample)} edits, {gen_len} tok, α={alpha}, "
           f"answer-span=object-length, single-tok k_ans={k_ans}) ===", flush=True)
-    new_const = new_ans = true_off = tf_hit = store_hit = iso_hit = 0
+    new_const = new_ans = true_off = tf_hit = store_hit = iso_hit = 0; iso_pt = 0.0
     for r in sample:
         pid = bos + tok(r.prompt_text, add_special_tokens=False).input_ids
         banks, conf = _banks_seq(r)
@@ -1739,7 +1739,7 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
         new_const += int(nl in g_const.lower()); new_ans += int(nl in g_ans.lower())
         true_off += int(r.true_str.strip().lower() in g_off.lower()); tf_hit += int(tf_ok)
         store_hit += int(store_ok)
-        iso_hit += int(_iso_store_ok(r))
+        _iso_ex, _iso_pt = _iso_store_ok(r); iso_hit += int(_iso_ex); iso_pt += _iso_pt
         print(f"  [{r.relation_id}] {r.prompt_text!r}  edit {r.true_str!r}->{r.new_str!r} ({len(_obj_tids(r))} tok)", flush=True)
         print(f"     OFF        : {g_off!r}", flush=True)
         print(f"     ON constant: {g_const!r}", flush=True)
@@ -1754,7 +1754,8 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
     print(f"  --> #100 STORE-FORCED delivery (emit value_t from memory): {store_hit}/{len(sample)} "
           f"({store_hit/n:.2f})  [~store-side acc if the readout drives output directly]", flush=True)
     print(f"  --> #100 ISOLATED persistent round-trip (write r ALONE, read back): {iso_hit}/{len(sample)} "
-          f"({iso_hit/n:.2f})  [iso OK+standing 0 => interference; iso 0 => broken write/read or subword]", flush=True)
+          f"exact ({iso_hit/n:.2f}) | per-token {iso_pt/n:.2f}  [per-tok>>0 w/ exact 0 => value/subword "
+          f"capacity per position; per-tok~0 => addressing/key]", flush=True)
     print(f"  (constant-inject = repetition/degenerate; answer-span-inject should read FLUENT with the edit)",
           flush=True)
     print("=" * 64, flush=True)
