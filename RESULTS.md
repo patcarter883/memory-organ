@@ -545,6 +545,14 @@ The write-event is an external label no base-side confidence signal carries. Hon
 (this is mostly recombination; the provenance framing is the least-trodden idea) in
 [docs/research/novelty-positioning.md](docs/research/novelty-positioning.md).
 
+**In real generation** (the router wired into the autoregressive decode, `CAM_GEN_ROUTER=1`): a **seed-once**
+rule (inject until the object's first token lands, then hand to base fluency) produces **fluent** text carrying
+the edit at **9/12 (0.75)** delivery — matching the hand-tuned answer-span cutoff *without* the manual step
+count (e.g. `"Russian. The first step…"` → `"English. The first step…"`, clean swap). Multi-token **subject**
+works (pooled key). Multi-token **object** stored as a pooled latent does **not** — `mean('Nor','mandy')`
+decodes to "Moscow" through the single-token `out_proj` readout; genuine multi-token objects need
+first-token-seed+fluency or **sequential latent delivery** ([#100](https://github.com/patcarter883/memory-organ/issues/100)).
+
 ## 9. Still open
 
 - **Multi-token cross-base transfer** — translator-bound (see §4); higher-capacity translator in progress.
