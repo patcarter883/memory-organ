@@ -1205,7 +1205,13 @@ def _persistent_write_val(adapter, V, r, val_tid, pooled):
     else:
         subj_emb = adapter._e(tids)                                                        # [1,S,mem_dim]
         key = adapter._pool_subject(subj_emb, keepdim=True) if pooled else subj_emb[:, -1:]  # [1,H,mem] or [1,1,mem]
-    val = adapter._e(torch.tensor([[val_tid]], dtype=torch.long, device=DEV))              # [1,1,mem_dim]
+    if os.environ.get("CAM_OBJ_LATENT") == "1":               # OBJECT-as-LATENT (#99): store the pooled mean of
+        bt = os.environ.get("CAM_BIND_TRUE") == "1"           # the object's token embeddings -> ONE latent of
+        obj_ids = (r.true_ids if bt else r.new_ids) or [val_tid]   # ARBITRARY length (no single-token constraint;
+        oi = torch.tensor([obj_ids], dtype=torch.long, device=DEV)  # subject key already pools its span the same way).
+        val = adapter._e(oi).mean(1, keepdim=True)            # [1,1,mem_dim] — delivery biases the object phrase's
+    else:                                                     # tokens; seed-first + base fluency realises the tail.
+        val = adapter._e(torch.tensor([[val_tid]], dtype=torch.long, device=DEV))          # [1,1,mem_dim] single-token
     lam = float(os.environ.get("CAM_VALUE_SUPPRESS", "0"))    # R1-prior-v2: promote new, SUPPRESS original
     if lam > 0 and getattr(r, "true_tid", -1) >= 0:           # value = new - lam*original (damps the base's
         val = val - lam * adapter._e(torch.tensor([[r.true_tid]], dtype=torch.long, device=DEV))  # confident prior)
@@ -1853,7 +1859,15 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
     alpha = float(os.environ.get("CAM_LOGIT_INJECT", "0"))
     c0env, hard = os.environ.get("CAM_LOGIT_GATE_C0"), os.environ.get("CAM_LOGIT_GATE_HARD") == "1"
     gen_len = int(os.environ.get("CAM_GEN_LEN", "16"))
-    sample = kept[:int(os.environ.get("CAM_GEN_SAMPLE", "16"))]
+    ns = int(os.environ.get("CAM_GEN_SAMPLE", "16"))
+    if os.environ.get("CAM_GEN_MULTITOK") == "1":              # prefer facts whose OBJECT is multi-token (the
+        bt = os.environ.get("CAM_BIND_TRUE") == "1"            # latent-object test); fall back to all if too few
+        mt = [r for r in kept if len(getattr(r, "true_ids" if bt else "new_ids", [])) > 1]
+        print(f"[mag][persistent] gen sample: {len(mt)} multi-token-object facts available "
+              f"(of {len(kept)}); using {min(ns, len(mt)) if mt else ns}", flush=True)
+        sample = (mt or kept)[:ns]
+    else:
+        sample = kept[:ns]
 
     def _bank_conf(r):
         tids = torch.tensor([r.subject_tids], dtype=torch.long, device=DEV)
@@ -1896,10 +1910,54 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
         injector.set_bank(None)
         return tok.decode(out).replace("\n", " ").strip()
 
+    # ROUTER-GATED generation (#99): fit the per-token gate router, then at EACH decode step compute its gain
+    # from the CURRENT base distribution and inject the (latent) object push logit-only. The router subsumes the
+    # manual answer-span cutoff — it fires where headroom is high (the answer slot) and backs off during fluent
+    # continuation, handing the multi-token tail to base fluency.
+    router = None
+    if os.environ.get("CAM_GEN_ROUTER") == "1":
+        try:
+            from .gate_router import fit_router_pertoken, signal_features, _inj_pertoken
+        except ImportError:
+            from gate_router import fit_router_pertoken, signal_features, _inj_pertoken
+        a_ref = float(os.environ.get("CAM_ROUTER_ALPHA", "1.5"))
+        r_topk = int(os.environ.get("CAM_MULTIGATE_TOPK", "16"))
+        bt = os.environ.get("CAM_BIND_TRUE") == "1"
+        r_off, r_raw, r_conf, _tt = _collect_router_data(base, adapter, injector, tok, V, kept)
+        r_off, r_raw = r_off.to(DEV), r_raw.to(DEV)
+        r_conf = r_conf.to(DEV) if r_conf is not None else None
+        r_tgt = torch.tensor([((r.true_ids if bt else r.new_ids) or [r.true_tid if bt else r.new_tid])[0] for r in kept], device=DEV)
+        with torch.enable_grad():                                        # this eval is @torch.no_grad(); the router
+            router = fit_router_pertoken(r_off, r_raw, r_tgt, r_conf, a_ref,  # trains by backprop, so re-enable grad
+                                         kl_weight=float(os.environ.get("CAM_ROUTER_KL", "0.1")),
+                                         beta=float(os.environ.get("CAM_ROUTER_BETA", "0.5")),
+                                         steps=int(os.environ.get("CAM_ROUTER_STEPS", "400")), topk=r_topk, device=str(DEV))
+        print(f"[mag][persistent] gen-router fitted (per-token, alpha_ref={a_ref}, k={r_topk})", flush=True)
+
+        def _gen_router(prompt_ids, bank, conf):
+            injector.set_bank(None)                                            # router path is logit-only (tap off)
+            raw_full = (adapter.out_proj(bank).mean(1).to(lm.device, lm.dtype) @ lm.t()).float()  # [1,vocab] store push
+            store_tok = int(raw_full.argmax(-1).item())                        # the object's dominant (first) token
+            cur = torch.tensor([prompt_ids], dtype=torch.long, device=DEV)
+            out, gains, placed = [], [], False
+            for _t in range(gen_len):
+                off_t = base(inputs_embeds=base_embed(cur)).logits[:, -1].float()   # [1,vocab] pure base at this step
+                if not placed:                                                     # SEED-AND-FLUENCY: inject to place
+                    g2 = router.gain(signal_features(off_t, raw_full, conf))        # the object, then hand off — the
+                    logits = off_t + _inj_pertoken(raw_full, g2, a_ref, r_topk).to(off_t.device)  # base fluency carries
+                    gains.append(float(g2.mean()))                                 # the (multi-token) tail. Stops the
+                else:                                                              # headroom-driven repetition attractor.
+                    logits = off_t
+                nxt = int(logits.argmax(-1).item())
+                if nxt == store_tok:
+                    placed = True                                                  # object delivered -> stop injecting
+                out.append(nxt); cur = torch.cat([cur, torch.tensor([[nxt]], device=DEV)], dim=1)
+            return tok.decode(out).replace("\n", " ").strip(), (sum(gains) / max(1, len(gains)))
+
     k_ans = int(os.environ.get("CAM_GEN_INJECT_STEPS", "2"))                  # answer-span injection width
     print(f"\n[mag][persistent] === GENERATION COHERENCE ({len(sample)} edits, {gen_len} tok, α={alpha}, "
-          f"answer-inject-steps={k_ans}) ===", flush=True)
-    new_const = new_ans = true_off = 0
+          f"answer-inject-steps={k_ans}, router={'on' if router is not None else 'off'}) ===", flush=True)
+    new_const = new_ans = true_off = new_router = 0
     for r in sample:
         pid = bos + tok(r.prompt_text, add_special_tokens=False).input_ids
         bank, conf = _bank_conf(r)
@@ -1913,10 +1971,15 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
         print(f"     OFF        : {g_off!r}", flush=True)
         print(f"     ON constant: {g_const!r}", flush=True)
         print(f"     ON answer-{k_ans}: {g_ans!r}   [new: {nl in g_ans.lower()}]", flush=True)
+        if router is not None:
+            g_rt, mg = _gen_router(pid, bank, conf)
+            new_router += int(nl in g_rt.lower())
+            print(f"     ON router  : {g_rt!r}   [new: {nl in g_rt.lower()}, mean_gain {mg:.3f}]", flush=True)
     n = max(1, len(sample))
     print(f"  --> NEW object present — constant-inject: {new_const}/{len(sample)} ({new_const/n:.2f}) | "
-          f"answer-span-inject: {new_ans}/{len(sample)} ({new_ans/n:.2f}); base TRUE-recall {true_off}/{len(sample)}",
-          flush=True)
+          f"answer-span-inject: {new_ans}/{len(sample)} ({new_ans/n:.2f})"
+          + (f" | ROUTER-gated: {new_router}/{len(sample)} ({new_router/n:.2f})" if router is not None else "")
+          + f"; base TRUE-recall {true_off}/{len(sample)}", flush=True)
     print(f"  (constant-inject = repetition/degenerate; answer-span-inject should read FLUENT with the edit)",
           flush=True)
     print("=" * 64, flush=True)
