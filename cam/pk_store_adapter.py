@@ -223,7 +223,27 @@ class PKStoreAdapter(nn.Module):
 
     def _e(self, ids):
         """frozen embed -> in_proj -> LayerNorm: base ids -> [B,L,mem_dim] normalized mem embeds."""
+        if ids.numel() and (int(ids.min()) < 0 or int(ids.max()) >= int(self.embed.weight.shape[0])):
+            # a negative/OOB token id (e.g. the -1 multi-token sentinel) is an out-of-bounds embedding
+            # gather -> an unrecoverable HSA_STATUS_ERROR_EXCEPTION 0x1016 GPU abort. Fail loud in Python.
+            raise ValueError(f"PKStoreAdapter._e: token id out of range [0,{self.embed.weight.shape[0]}) "
+                             f"(min={int(ids.min())}, max={int(ids.max())}) — likely an unresolved "
+                             f"multi-token object (new_tid=-1); resolve to new_ids[0] before writing.")
         return self.norm(self.in_proj(self.embed(ids).float()))
+
+    def _e_val(self, ids):
+        """VALUE-path embed. Values are the object tokens the store must ROUND-TRIP (mt-recon delivery),
+        NOT addressing keys. CAM_MT_VALUE_NO_NORM=1 drops the shared LayerNorm on the value branch so the
+        stored code keeps its per-token magnitude/direction spread instead of being flattened onto the
+        mem_dim unit sphere — the value-capacity lever for distinguishing ~100k token identities. Applied
+        IDENTICALLY at train (mt-recon) and delivery (persistent write) so the round-trip stays consistent.
+        Default (env unset) is byte-identical to _e (keeps the norm)."""
+        if os.environ.get("CAM_MT_VALUE_NO_NORM") != "1":
+            return self._e(ids)
+        if ids.numel() and (int(ids.min()) < 0 or int(ids.max()) >= int(self.embed.weight.shape[0])):
+            raise ValueError(f"PKStoreAdapter._e_val: token id out of range "
+                             f"[0,{self.embed.weight.shape[0]}) (min={int(ids.min())}, max={int(ids.max())}).")
+        return self.in_proj(self.embed(ids).float())
 
     def _pool_subject(self, span, keepdim=False):
         """Pool a subject-span embed [B,L,mem_dim] -> subject key/query vector(s). Returns [B,mem_dim]
@@ -505,10 +525,14 @@ class PKStoreAdapter(nn.Module):
         return attn @ read                              # [B,K,mem_dim] pooled (PRE out_proj)
 
     # ---- Track 4: PERSISTENT / online store (doc-independent) --------------------------------------
-    def persistent_write(self, V, keys, vals):
+    def persistent_write(self, V, keys, vals, store=None):
         """Write A associations (keys/vals [B,A,mem_dim]) into a PERSISTENT value bank V (error-correcting
         delta write). Track 4 online binding: call once per edit on the SAME V to accumulate a standing
         memory — no episodic doc, no reset. Returns the updated V.
+
+        `store` selects WHICH ProductKeyStore to write through (default self.store). The perpos-key=disjoint
+        persistent path passes self.stores[t] so answer position t writes into its OWN per-position codebook
+        (mirrors _write_episode's disjoint branch); byte-identical to before when store is None.
 
         Phase K1 (write-where-you-read, now the DEFAULT — CAM_WRITE_AT_READ=0 to disable): address the
         write with the READ query head_query(key)=read_q[0](key)+head_bias[0] instead of to_wkey(key), so
@@ -520,24 +544,57 @@ class PKStoreAdapter(nn.Module):
         slots (two delta writes into the SAME V) — a softer K1 that keeps the trained write-address too, so
         a boundary subject is covered whichever cell the read lands in. Fallback if K1's pure relocation
         regresses anything."""
+        store = store if store is not None else self.store
         if os.environ.get("CAM_WRITE_REDUNDANT") == "1":      # K2: to_wkey slots AND read-query slots
-            V = self.store.write(V, keys, vals)               # (a) the trained write-address
-            return self.store.write(V, keys, vals, addr=self.store.head_query(keys, 0))  # (b) the read-address
+            V = store.write(V, keys, vals)                    # (a) the trained write-address
+            return store.write(V, keys, vals, addr=store.head_query(keys, 0))  # (b) the read-address
         addr = None
         if os.environ.get("CAM_WRITE_AT_READ", "1") != "0":   # K1 DEFAULT-ON (opt out with =0)
-            addr = self.store.head_query(keys, 0)             # read-space write address (K1)
-        return self.store.write(V, keys, vals, addr=addr)
+            addr = store.head_query(keys, 0)                  # read-space write address (K1)
+        return store.write(V, keys, vals, addr=addr)
 
-    def persistent_bank(self, V, q):
+    def persistent_bank(self, V, q, store=None):
         """Read a PERSISTENT bank V with a subject query q [B,Lq,mem_dim] -> pooled [B,K,mem_dim] bank +
         the store-confidence scalar (self._last_conf). A doc-independent mirror of memory_bank's
-        read+readout — the query is just the subject, the bank is the standing store."""
-        read, _hn, self._last_conf = self.store.read(V, q, return_conf=True)
+        read+readout — the query is just the subject, the bank is the standing store. `store` selects the
+        ProductKeyStore (default self.store); the perpos-key=disjoint path reads position t from
+        self.stores[t] (its own codebook). The readout (maxsim/readout_q/out_proj) is store-agnostic."""
+        store = store if store is not None else self.store
+        read, _hn, self._last_conf = store.read(V, q, return_conf=True)
         read = self._maxsim_reduce(read)                # multi-vector MaxSim: best head, not pool (Phase B)
         B = q.shape[0]
         pq = self.readout_q.unsqueeze(0).expand(B, -1, -1)
         attn = torch.softmax(pq @ read.transpose(1, 2) / (self.mem_dim ** 0.5), dim=-1)
         return attn @ read
+
+    def persistent_bank_direct(self, V, q, store=None, recon=False):
+        """DIRECT persistent read for perpos-key=disjoint (#100): the store's retrieved value mix WITHOUT
+        the readout_q attention pool. That pool (persistent_bank) is calibrated for the shared self.store's
+        readout; the per-position disjoint stores are read the way memory_bank reads them in its DISJOINT
+        branch — store_t.read(...) straight to out_proj, no readout_q — so the mt-recon reconstruction that
+        trains the disjoint stores and the persistent delivery that reads them agree. Returns [B,Q,mem_dim]
+        (Q = query length, typically 1). Reusing persistent_bank here instead reads the disjoint stores
+        through the wrong readout and collapses per-token delivery to ~0.
+
+        `recon` (#100 value-capacity): read the MAGNITUDE-PRESERVING value mix (store.read recon=True — no
+        read_norm/read_out_norm). The bypass-fix RMSNorms strip the magnitude that encodes t≥1 token
+        identity; recon keeps it (symmetric to VALNONORM on the write). mt-recon + delivery must agree."""
+        store = store if store is not None else self.store
+        read, _hn, self._last_conf = store.read(V, q, return_conf=True, recon=recon)
+        return self._maxsim_reduce(read)                # collapse multi-vector keys (identity when H==1)
+
+    # ---- POINTER id-bank (#100): exact-id delivery via the store's addressing (no value reconstruction) --
+    def persistent_write_ids(self, Vid, keys, ids, store=None):
+        """Record token `ids` [B,A] at the addressed slots of the parallel id-bank Vid (store selectable
+        for perpos-key=disjoint). keys [B,A,mem_dim]. Mirrors persistent_write's addressing."""
+        store = store if store is not None else self.store
+        return store.write_ids(Vid, keys, ids)
+
+    def persistent_read_ids(self, Vid, q, store=None):
+        """Look up the exact token id at the addressed slot -> [B,Q]. The pointer analog of persistent_bank:
+        uses the store's (reliable) addressing but returns the stored id, skipping the lossy value read."""
+        store = store if store is not None else self.store
+        return store.read_ids(Vid, q)
 
     def inject(self, ids, seg_len, qa_start, answer_pos, carry=True):
         """-> K prefix vectors [B,K,base_hidden]. carry=True writes the M bindings then reads with the
@@ -693,3 +750,24 @@ class PKStoreAdapter(nn.Module):
         out = self.dec(tgt, mem, tgt_mask=cmask)                     # [B,Kc,dec_dim]
         out = self.dec_out_norm(out)
         return self.dec_logit(out)                                   # [B,Kc,vocab]
+
+    @torch.no_grad()
+    def decoder_generate(self, prefix, Kc):
+        """FREE-RUN greedy AR decode of a Kc-token sequence from the K store-slot prefix (cross memory).
+        The free-run analog of the teacher-forced _decoder_logits: at step t the decoder attends over ALL
+        K retrieved value-slots (cross) + its OWN previously-generated tokens (self), so position t≥1 can
+        condition on position 0's token and every slot — unlike the per-position linear readout that
+        decodes each slot independently (the #100 t≥1 wall). Returns [B,Kc] predicted token ids."""
+        B, dev = prefix.shape[0], prefix.device
+        mem = self.dec_mem_norm(self.dec_mem_proj(prefix))           # [B,K,dec_dim] cross memory
+        tgt = self.dec_bos.view(1, 1, -1).expand(B, 1, -1)           # [B,1,dec_dim] start = learned BOS
+        toks = []
+        for t in range(Kc):
+            tin = tgt + self.dec_pos[:t + 1].unsqueeze(0)            # [B,t+1,dec_dim] + answer-pos codes
+            cmask = torch.triu(torch.ones(t + 1, t + 1, device=dev, dtype=torch.bool), diagonal=1)
+            out = self.dec_out_norm(self.dec(tin, mem, tgt_mask=cmask))   # [B,t+1,dec_dim]
+            nxt = self.dec_logit(out[:, -1]).argmax(-1)             # [B] greedy next token
+            toks.append(nxt)
+            nxt_emb = self.dec_tok_proj(self.embed(nxt).float()).unsqueeze(1)   # [B,1,dec_dim]
+            tgt = torch.cat([tgt, nxt_emb], dim=1)                  # feed OWN prediction
+        return torch.stack(toks, dim=1)                            # [B,Kc]

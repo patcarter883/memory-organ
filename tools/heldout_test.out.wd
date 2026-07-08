@@ -1,0 +1,7 @@
+gpu-lease: leased card(s) [1] as 'gpu1'  (HIP=0, port=8001, project=lease-gpu1)
+[heldout] start 11:03:06
+[mag][cf-multi][HELD-OUT] frac=0.3 seed=20260625 | BIND=96 subjects across 6 relations vs HELD-OUT=41 subjects across 6 relations | 0 bucket(s) too small to split (kept whole in bind)
+[mag][cf-multi] 41 edits across 6 relations | e.g. Alain Marleix [P103]: French->Russian; Annick Alane [P103]: French->Tamil; Romain Duris [P103]: French->Russian; Jean Follain [P103]: French->Russian; Claude Aveline [P103]: French->Russian
+  cf-delivery 0.659 | prior-recall 0.122   (cf HIGH + prior LOW = the persistent store overrides across all 41 edits at once)
+  (delivery=efficacy | DEP=locality (keep the neighbour) | GEN-hit=generality (edit fires on paraphrase, gold=new) | ADV=adversarial upper bound)
+[triad-dbg] sweep gated=False hard=False a=0.0 -> delivery(kept n=41) ...

@@ -169,7 +169,7 @@ def build_adapter(args, embed_weight, H, builder=None):
             addr_sup_weight=args.addr_sup_weight,
             read_heads=(args.pk_read_heads if args.pk_read_heads > 0 else None),
             mt_value=getattr(args, "mt_value", "mean"),
-            mt_positions=max(2, getattr(args, "cargo_tokens", 1)),
+            mt_positions=(getattr(args, "mt_positions", 0) or max(2, getattr(args, "cargo_tokens", 1))),
             readout=getattr(args, "readout", "linear"),
             dec_layers=getattr(args, "dec_layers", 2),
             dec_heads=getattr(args, "dec_heads", 4),
@@ -182,10 +182,146 @@ def build_adapter(args, embed_weight, H, builder=None):
                        args.expansion, args.k).to(DEV)
 
 
+def _real_word_seqs(tok, K, exclude=()):
+    """Real MULTI-TOKEN word sequences for training the DECODER readout (#100). The linear readout trains
+    on RANDOM subword tuples — which have no sequential structure, so an AR decoder learns nothing beyond
+    the per-position copy the linear head already does. The decoder's whole advantage (condition position
+    t on position <t) needs training data with real subword-CONTINUATION structure ('Elv'->'ish'). The
+    eval objects are invented FANTASY-language names, so we synthesize an in-distribution corpus from
+    fantasy morphology (prefix -> root -> suffix) and keep those that tokenize to 2..K tokens under the
+    SAME ' <word>' space-prefixed encoding delivery uses. Returns a list of token-id tuples; `exclude`
+    drops the held-out eval objects to keep the metric leak-free."""
+    pre = ["", "un", "el", "sil", "val", "dov", "sin", "quel", "mor", "gal", "tor", "kel", "vor", "thal",
+           "aer", "bel", "cor", "dra", "fen", "gor", "hal", "ith", "jor", "kai", "lor", "myr", "nor", "orl"]
+    root = ["ling", "dovah", "quen", "aria", "mith", "andor", "grim", "fell", "storm", "gorn", "wen",
+            "dain", "loth", "rath", "thas", "wyn", "brand", "hollow", "vale", "mere", "spire", "gale",
+            "fenn", "quill", "darin", "vish", "thraki", "gon", "rian", "wood", "shad", "flame", "frost"]
+    suf = ["", "ish", "ian", "ese", "arin", "on", "ki", "eth", "wen", "dor", "ic", "orn", "iel", "wyn",
+           "and", "as", "yr", "oth", "ael", "ir"]
+    seen, out = set(), []
+    exset = {tuple(e) for e in exclude}
+    for p in pre:
+        for r in root:
+            for s in suf:
+                w = (p + r + s)
+                if len(w) < 3:
+                    continue
+                w = w[0].upper() + w[1:]                                   # capitalized proper-noun form
+                ids = tuple(tok(" " + w, add_special_tokens=False).input_ids)
+                if 2 <= len(ids) <= K and ids not in seen and ids not in exset:
+                    seen.add(ids); out.append(ids)
+    return out
+
+
 # ---- stage 1: bind (direct tied-unembed; no base in the loop) ----------------------------------
-def bind_adapter(adapter, builder, rng, args):
+def _mt_recon_loss(adapter, unembed, rng, batch, K, weight, pool=None, words=None):
+    """Perpos MULTI-TOKEN reconstruction (autoencoder) loss — the Track-4 delivery path made trainable.
+    For a batch of "names" (keys) and K-token "objects" (values): write embed(obj_t) at _pos_key(name, t)
+    into a FRESH per-row store, then read each position back and score CE(out_proj(read_t) @ unembed^T,
+    obj_t). Backprops into in_proj/out_proj/pos_tag/pos_proj/codebooks so the store learns to STORE and
+    REPRODUCE multi-token sequences at position-SEPARATED addresses — exactly what Phase-C generation
+    needs to deliver a multi-token object.
+
+    `pool` (1-D LongTensor of REALISTIC subword ids — ASCII word-pieces) restricts both keys and values
+    to plausible language subwords. This is the load-bearing lever: sampling uniformly over the full
+    248320 vocab spreads the 512-d value capacity across every CJK/Cyrillic/symbol token (the store then
+    delivers garbage like '她要'/'пи'), whereas focusing on ~word-piece tokens lets it actually round-trip
+    the invented objects' subwords. Falls back to uniform when pool is None."""
+    import torch.nn.functional as F
+    dev = DEV
+    # #100 fix: train the KEY distribution to match delivery. The store is addressed by _pool_subject of
+    # the subject span; real subjects are MULTI-token ("Zephyrina Quillsworth") but mt-recon historically
+    # keyed on a SINGLE random token, so the store learned to separate single-token-pooled keys, not the
+    # multi-token-pooled keys delivery actually queries (isolated round-trip of a real subject = 0/4
+    # despite held-out 0.81). CAM_MT_RECON_NAME_TOKENS=N samples S in [1,N] name tokens per batch so the
+    # learned pos_tag/codebook addressing sees realistic multi-token keys. Default 1 = legacy behaviour.
+    nt = max(1, int(os.environ.get("CAM_MT_RECON_NAME_TOKENS", "1")))
+    S = 1 + int(rng.integers(0, nt)) if nt > 1 else 1
+    # DECODER readout (#100): the object must be a REAL multi-token WORD (sequential subword structure)
+    # so the AR decoder learns continuation ('Elv'->'ish'); a random subword tuple teaches it nothing. Use
+    # length-bucketing (one answer length Keff per step) so the batch is rectangular with NO padding.
+    dec = words is not None and len(words) > 0 and getattr(adapter, "readout", "linear") == "decoder"
+    if dec:
+        Keff = 2 + int(rng.integers(0, K - 1)) if K > 2 else 2                            # answer length in [2,K]
+        cand = [w for w in words if len(w) >= Keff] or words
+        Keff = min(Keff, min(len(w) for w in cand))
+        pick = rng.integers(0, len(cand), size=batch)
+        objs = torch.tensor([list(cand[i][:Keff]) for i in pick], dtype=torch.long, device=dev)  # [B,Keff] REAL
+    else:
+        Keff = K
+    if pool is not None and len(pool) > 0:
+        P = len(pool)
+        names = pool[torch.from_numpy(rng.integers(0, P, size=(batch, S))).long()].to(dev)   # [B,S]
+        if not dec:
+            objs = pool[torch.from_numpy(rng.integers(0, P, size=(batch, K))).long()].to(dev)  # [B,K] random
+    else:
+        Vsz = int(adapter.embed.weight.shape[0])
+        names = torch.from_numpy(rng.integers(0, Vsz, size=(batch, S))).long().to(dev)
+        if not dec:
+            objs = torch.from_numpy(rng.integers(0, Vsz, size=(batch, K))).long().to(dev)
+    name_key = adapter._pool_subject(adapter._e(names), keepdim=True)                    # [B,H,mem]
+    # DISJOINT (perpos-key=disjoint): train each answer position's OWN store (self.stores[t]) with the
+    # DIRECT readout, so the disjoint stores actually learn the reconstruction the persistent delivery
+    # reads back — otherwise mt-recon only trains self.store and the disjoint delivery stores stay
+    # untrained (per-token delivery 0.00). Mirrors _write_episode's disjoint branch + persistent_bank_direct.
+    disjoint = _is_disjoint_mt(adapter)
+    recon = os.environ.get("CAM_RECON_MAGNITUDE") == "1"     # #100: magnitude-preserving value read
+    # write each object token at its per-position address, then read it back — shared by both readouts.
+    # recon reads the magnitude-preserving value mix (no read-side RMSNorm) via the DIRECT path for both
+    # codebook and disjoint (the readout_q pool would re-normalize away the magnitude we're preserving).
+    def _read_t(t):
+        if disjoint:
+            return adapter.persistent_bank_direct(Vt[t], adapter._pos_key(name_key, t),
+                                                  store=adapter.stores[t], recon=recon)
+        if recon:
+            return adapter.persistent_bank_direct(V, adapter._pos_key(name_key, t), recon=True)
+        return adapter.persistent_bank(V, adapter._pos_key(name_key, t))
+    if disjoint:
+        Vt = [adapter.stores[t].init_state(batch, dev, dtype=torch.float32) for t in range(Keff)]
+        for t in range(Keff):
+            key_t = adapter._pos_key(name_key, t)                                        # [B,H,mem]
+            val_t = adapter._e_val(objs[:, t:t + 1])                                     # [B,1,mem] value branch
+            if key_t.shape[1] > 1:                                                       # multi-vector keys
+                val_t = val_t.expand(-1, key_t.shape[1], -1)
+            Vt[t] = adapter.persistent_write(Vt[t], key_t, val_t, store=adapter.stores[t])
+    else:
+        V = adapter.store.init_state(batch, dev, dtype=torch.float32)
+        for t in range(Keff):
+            key_t = adapter._pos_key(name_key, t)                                        # [B,H,mem]
+            val_t = adapter._e_val(objs[:, t:t + 1])                                     # [B,1,mem] value branch
+            if key_t.shape[1] > 1:                                                       # multi-vector keys
+                val_t = val_t.expand(-1, key_t.shape[1], -1)
+            V = adapter.persistent_write(V, key_t, val_t)
+    if dec:
+        # DECODER readout: build the K-slot prefix (out_proj of each position's retrieved value) and score
+        # the answer SEQUENCE teacher-forced through the AR decoder — position t conditions on positions
+        # <t + all slots (cross-attn), the lever the independent per-position linear readout lacks.
+        prefix = torch.stack([adapter.out_proj(_read_t(t)).mean(1) for t in range(Keff)], dim=1)  # [B,Keff,base_hidden]
+        dlog = adapter._decoder_logits(prefix, objs, Keff)                               # [B,Keff,vocab]
+        loss = sum(F.cross_entropy(dlog[:, t].float(), objs[:, t]) for t in range(Keff))
+        return weight * loss / max(1, Keff)
+    # LINEAR readout (default): per-position independent CE. DISJOINT holds K store write-graphs live, so
+    # the extra ~GiB tips the fp32 unembed cast into OOM — do the matmul in native dtype there and cast only
+    # the small [B,vocab] result; codebook keeps the fp32 unembed (byte-identical).
+    ue = unembed.to(dev)
+    ue_f = ue if disjoint else ue.float()                                               # [vocab, hidden]
+    loss = 0.0
+    for t in range(Keff):
+        read = _read_t(t)
+        if disjoint:
+            logits = (adapter.out_proj(read).mean(1).to(ue_f.dtype) @ ue_f.t()).float()  # [B,vocab] native matmul
+        else:
+            logits = adapter.out_proj(read).mean(1).float() @ ue_f.t()                   # [B,vocab]
+        loss = loss + F.cross_entropy(logits, objs[:, t])
+    return weight * loss / max(1, Keff)
+
+
+def bind_adapter(adapter, builder, rng, args, unembed=None, mt_pool=None, mt_words=None):
     train_params = [p for p in adapter.parameters() if p.requires_grad]
     opt = torch.optim.AdamW(train_params, lr=args.lr)
+    mt_w = float(getattr(args, "mt_recon_weight", 0.0))
+    mt_k = min(int(getattr(args, "mt_recon_tokens", 4)), int(getattr(adapter, "mt_positions", 4)))
+    mt_on = mt_w > 0 and unembed is not None and hasattr(adapter, "_pos_key")
     for step in range(args.bind_steps):
         opt.zero_grad()
         ids, ans, apos = builder.build(rng, args.batch, local=False)
@@ -200,13 +336,17 @@ def bind_adapter(adapter, builder, rng, args):
         aux_fn = getattr(adapter, "aux_loss", None)
         aux = aux_fn() if aux_fn is not None else None
         loss = lm + aux if aux is not None else lm
+        mt = _mt_recon_loss(adapter, unembed, rng, args.batch, mt_k, mt_w, pool=mt_pool, words=mt_words) if mt_on else None
+        if mt is not None:
+            loss = loss + mt
         loss.backward()
         torch.nn.utils.clip_grad_norm_(train_params, 1.0)
         opt.step()
         if step % 200 == 0 or step == args.bind_steps - 1:
             em, pt = _seq_metrics(_dlogits(adapter, pref, ans, _dec), ans)   # exact-match ; per-token
             astr = f" addr {aux.item():.3f}" if aux is not None else ""
-            print(f"[mag] bind step {step:4d} loss {lm.item():.3f}{astr} "
+            mstr = f" mt-recon {mt.item():.3f}" if mt is not None else ""
+            print(f"[mag] bind step {step:4d} loss {lm.item():.3f}{astr}{mstr} "
                   f"direct_acc(exact) {em.mean().item():.3f} per_tok {pt.mean().item():.3f}", flush=True)
     d_carry, d_abl, pt_carry, pt_abl = eval_direct(adapter, builder, rng, args)
     print(f"[mag] binding held-out: carry(exact) {d_carry:.3f} | ablated(exact) {d_abl:.3f} | "
@@ -411,6 +551,7 @@ def save_ckpt(path, adapter, injector, tap_layer, args, d_carry, cf_meta=None):
         "pk_read_heads": getattr(args, "pk_read_heads", 0),
         "phrasing": getattr(args, "phrasing", "dict"),      # doc format (v1 rebuilds the same builder)
         "cargo_tokens": getattr(args, "cargo_tokens", 1),   # multi-token answer length (v1 rebuilds K)
+        "mt_positions": (getattr(args, "mt_positions", 0) or max(2, getattr(args, "cargo_tokens", 1))),
         "mt_value": getattr(args, "mt_value", "mean"),      # multi-token value mode (mean/perpos)
         "readout": getattr(args, "readout", "linear"),      # Stage-1 value readout (linear/decoder)
         "dec_layers": getattr(args, "dec_layers", 2),
@@ -449,7 +590,7 @@ def load_ckpt(path, embed_weight, base, dev, builder=None):
             addr_sup_weight=ck.get("addr_sup_weight", 0.0),
             read_heads=(ck.get("pk_read_heads", 0) if ck.get("pk_read_heads", 0) > 0 else None),
             mt_value=ck.get("mt_value", "mean"),
-            mt_positions=max(2, ck.get("cargo_tokens", 1)),
+            mt_positions=ck.get("mt_positions", max(2, ck.get("cargo_tokens", 1))),
             readout=ck.get("readout", "linear"),
             dec_layers=ck.get("dec_layers", 2),
             dec_heads=ck.get("dec_heads", 4),
@@ -1193,12 +1334,65 @@ def _init_banks(adapter, B):
     return [adapter.store.init_state(1, DEV, dtype=torch.float32) for _ in range(B)]
 
 
+def _init_pp_banks():
+    """PER-POSITION disjoint persistent banks for perpos-key=disjoint (#100 t>=1 wall): a LAZY dict
+    {subject-bucket b -> [bank_t0 .. bank_t(K-1)]} where bank_t is the standing value bank at answer
+    position t over adapter.stores[t]'s OWN codebook — so position 0 and position 1 address disjoint slot
+    spaces (no shared-codebook cross-position contamination). Allocated on first multi-token write to a
+    bucket (only a handful of invented multi-token objects exist), NOT pre-allocated B*K full store states
+    (each ~20 MiB -> tens of GB OOM). Parallel to _init_banks' V (self.store), which single-token +
+    non-disjoint records still use. Bucket space = _n_disjoint_banks()."""
+    return {}
+
+
+def _pp_bucket(adapter, Vpp, b):
+    """Get-or-create the per-position bank list for subject-bucket b (K = mt_positions empty store states,
+    one per answer position). Lazy so we only pay VRAM for buckets that actually hold a multi-token object."""
+    if b not in Vpp:
+        K = _mt_cap(adapter)
+        Vpp[b] = [adapter.stores[t].init_state(1, DEV, dtype=torch.float32) for t in range(K)]
+    return Vpp[b]
+
+
+# ---- MULTI-TOKEN object support (Track 4) --------------------------------------------------------
+# The single-token store value/inject/score pipeline can only carry a 1-token object. A multi-token
+# object (e.g. an invented "Klingon" -> several BPE tokens) is stored/delivered as a per-position
+# SEQUENCE using the existing perpos scheme (key = name + pos_tag[t] -> token t), so generation can
+# retrieve and emit each token in turn. All of this is GATED on `_is_multi(r)`; single-token records
+# take the byte-identical legacy path.
+def _obj_tids(r):
+    """Full object token-id sequence for edit r (the invented/new object), else [new_tid]."""
+    nids = getattr(r, "new_ids", None)
+    return list(nids) if nids else [getattr(r, "new_tid", -1)]
+
+
+def _is_multi(r):
+    """True when the object is genuinely multi-token (has a >1-length new_ids sequence)."""
+    return getattr(r, "new_ids", None) is not None and len(r.new_ids) > 1
+
+
+def _target_tid(r):
+    """Single-token delivery/scoring target: new_tid if resolved, else the object's FIRST token
+    (mirrors realedit.py's new_ids[0] fallback so a multi-token object scores on its first token)."""
+    nt = getattr(r, "new_tid", -1)
+    return nt if nt is not None and nt >= 0 else _obj_tids(r)[0]
+
+
+def _mt_cap(adapter):
+    """How many answer positions the store's learned pos_tag table can address (mt_positions)."""
+    return int(getattr(adapter, "mt_positions", 4) or 4)
+
+
 @torch.no_grad()
 def _persistent_write_val(adapter, V, r, val_tid, pooled):
     """Incremental error-correcting write of subject(`r`) -> `val_tid` into the standing bank(s) V (a LIST
     of B disjoint banks; subject routed by stable hash — Phase C). Key = pooled subject span (mean, or the
     learned attention pool when CAM_LEARNED_KEY_POOL=1), else last token. `val_tid` lets the overwrite test
     write a SECOND value for the same key."""
+    if val_tid is not None and int(val_tid) < 0:                 # multi-token object -> new_tid sentinel -1
+        _nids = getattr(r, "new_ids", None)                      # (realedit.py:133). embed(-1) is an OOB
+        if _nids:                                                # gather -> HSA 0x1016 abort; fall back to
+            val_tid = int(_nids[0])                              # the object's FIRST token (mirrors L~893).
     tids = torch.tensor([r.subject_tids], dtype=torch.long, device=DEV)
     if getattr(adapter, "_gte_keys", None) is not None:                                    # DECOUPLED: GTE key
         key = adapter._gte_key(tids).unsqueeze(1)                                          # [1,1,mem_dim]
@@ -1211,10 +1405,10 @@ def _persistent_write_val(adapter, V, r, val_tid, pooled):
         oi = torch.tensor([obj_ids], dtype=torch.long, device=DEV)  # subject key already pools its span the same way).
         val = adapter._e(oi).mean(1, keepdim=True)            # [1,1,mem_dim] — delivery biases the object phrase's
     else:                                                     # tokens; seed-first + base fluency realises the tail.
-        val = adapter._e(torch.tensor([[val_tid]], dtype=torch.long, device=DEV))          # [1,1,mem_dim] single-token
+        val = adapter._e_val(torch.tensor([[val_tid]], dtype=torch.long, device=DEV))      # [1,1,mem] value branch (#100 VALNONORM)
     lam = float(os.environ.get("CAM_VALUE_SUPPRESS", "0"))    # R1-prior-v2: promote new, SUPPRESS original
     if lam > 0 and getattr(r, "true_tid", -1) >= 0:           # value = new - lam*original (damps the base's
-        val = val - lam * adapter._e(torch.tensor([[r.true_tid]], dtype=torch.long, device=DEV))  # confident prior)
+        val = val - lam * adapter._e_val(torch.tensor([[r.true_tid]], dtype=torch.long, device=DEV))  # confident prior)
     if os.environ.get("CAM_VALUE_UNIT_NORM") == "1":         # store a UNIT value so retrieval conf reflects
         val = torch.nn.functional.normalize(val, dim=-1)    # ADDRESSING quality, not the object token's
                                                             # embedding norm (weak-edit diagnostic §3.15)
@@ -1225,12 +1419,77 @@ def _persistent_write_val(adapter, V, r, val_tid, pooled):
     return V
 
 
-def _persistent_write_one(adapter, V, r, pooled):
-    """One incremental write of edit `r` into the standing bank(s) V. Value = its own new_tid
-    (counterfactual overwrite, default), OR its true_tid when CAM_BIND_TRUE=1 — soft-steering (#99):
-    reinforce the object the base already (weakly) holds instead of overwriting it. Default is
-    byte-identical to the counterfactual path."""
-    val_tid = r.true_tid if os.environ.get("CAM_BIND_TRUE") == "1" else r.new_tid
+@torch.no_grad()
+def _persistent_write_seq(adapter, V, r, obj_tids, pooled):
+    """Write a MULTI-token object as position-tagged associations into the subject's standing bank:
+    for each object token t, key = _pos_key(subject_key, t) = name + learned pos_tag[t], value =
+    embed(token_t). Generation queries name+pos_tag[t] at answer step t to retrieve and deliver each
+    token in turn — the perpos sequence-store scheme, extended from the episodic path to Track 4."""
+    cap = _mt_cap(adapter)
+    L = min(len(obj_tids), cap)
+    tids = torch.tensor([r.subject_tids], dtype=torch.long, device=DEV)
+    if getattr(adapter, "_gte_keys", None) is not None:
+        base_key = adapter._gte_key(tids).unsqueeze(1)                                # [1,1,mem]
+    else:
+        subj_emb = adapter._e(tids)                                                   # [1,S,mem]
+        base_key = adapter._pool_subject(subj_emb, keepdim=True) if pooled else subj_emb[:, -1:]
+    b = _subject_bank(r.subject_tids, len(V))
+    for t in range(L):
+        key_t = adapter._pos_key(base_key, t)                                         # [1,H,mem] name+pos_tag[t]
+        val_t = adapter._e_val(torch.tensor([[int(obj_tids[t])]], dtype=torch.long, device=DEV))  # [1,1,mem] value branch
+        if key_t.shape[1] > 1:                                                        # multi-vector keys
+            val_t = val_t.expand(-1, key_t.shape[1], -1)
+        V[b] = adapter.persistent_write(V[b], key_t, val_t)
+    return V
+
+
+@torch.no_grad()
+def _persistent_write_seq_disjoint(adapter, Vpp, r, obj_tids, pooled):
+    """Multi-token DISJOINT write: object token t -> its OWN per-position store adapter.stores[t], standing
+    bank Vpp[b][t]. Key = _pos_key(subject_key, t), value = embed(token_t). Mirrors the episodic disjoint
+    branch of _write_episode: each answer position addresses a SEPARATE codebook, removing the shared-
+    codebook cross-position contamination that pinned the persistent per-token round-trip at 0.50 (t>=1
+    never delivered). Writes into Vpp only; the shared V (self.store) is untouched for multi in this mode."""
+    cap = _mt_cap(adapter)
+    L = min(len(obj_tids), cap)
+    tids = torch.tensor([r.subject_tids], dtype=torch.long, device=DEV)
+    if getattr(adapter, "_gte_keys", None) is not None:
+        base_key = adapter._gte_key(tids).unsqueeze(1)                                # [1,1,mem]
+    else:
+        subj_emb = adapter._e(tids)                                                   # [1,S,mem]
+        base_key = adapter._pool_subject(subj_emb, keepdim=True) if pooled else subj_emb[:, -1:]
+    b = _subject_bank(r.subject_tids, _n_disjoint_banks())
+    banks_b = _pp_bucket(adapter, Vpp, b)
+    for t in range(L):
+        store_t = adapter.stores[t]                                                   # position t's own codebook
+        key_t = adapter._pos_key(base_key, t)                                         # [1,H,mem] name+pos_tag[t]
+        val_t = adapter._e_val(torch.tensor([[int(obj_tids[t])]], dtype=torch.long, device=DEV))  # [1,1,mem]
+        if key_t.shape[1] > 1:                                                        # multi-vector keys
+            val_t = val_t.expand(-1, key_t.shape[1], -1)
+        banks_b[t] = adapter.persistent_write(banks_b[t], key_t, val_t, store=store_t)
+    return Vpp
+
+
+def _is_disjoint_mt(adapter):
+    """perpos-key=disjoint AND the per-position stores exist -> route multi-token writes/reads through the
+    per-position disjoint banks (Vpp) instead of the shared self.store bank (V)."""
+    return getattr(adapter, "perpos_key", None) == "disjoint" and hasattr(adapter, "stores")
+
+
+def _persistent_write_one(adapter, V, r, pooled, Vpp=None):
+    """One incremental write of edit `r` into the standing bank(s). A MULTI-token object is written
+    as a per-position sequence (name+pos_tag[t] -> object token t) so generation can deliver the whole
+    object; a single-token object takes the byte-identical single-value path. When perpos-key=disjoint and
+    a per-position bank set Vpp is supplied, the multi-token sequence routes into the disjoint per-position
+    stores (Vpp) and leaves the shared V unchanged; single-token still writes V (byte-identical)."""
+    if _is_multi(r) and hasattr(adapter, "_pos_key"):
+        if Vpp is not None and _is_disjoint_mt(adapter):
+            _persistent_write_seq_disjoint(adapter, Vpp, r, _obj_tids(r), pooled)
+            return V
+        return _persistent_write_seq(adapter, V, r, _obj_tids(r), pooled)
+    # single-token: CAM_BIND_TRUE=1 reinforces the object the base already holds (#99 soft-steering),
+    # else the counterfactual new object; _target_tid resolves the new_tid=-1 sentinel to new_ids[0].
+    val_tid = r.true_tid if os.environ.get("CAM_BIND_TRUE") == "1" else _target_tid(r)
     return _persistent_write_val(adapter, V, r, val_tid, pooled)
 
 
@@ -1261,6 +1520,8 @@ def _persistent_preds(base, adapter, injector, tok, V, cohort, bank_ids=None):
             q = adapter._e(tids)
             if learned_pool:                                            # symmetric with the pooled write key
                 q = adapter._pool_subject(q, keepdim=True)              # [1,1,mem]
+        if _is_multi(r) and hasattr(adapter, "_pos_key"):              # multi-token: the value lives at the
+            q = adapter._pos_key(q, 0)                                 # pos-tagged slots; score answer position 0
         b = bank_ids[i] if bank_ids is not None else _subject_bank(r.subject_tids, len(V))  # R0 solo: identity
         banks.append(adapter.persistent_bank(V[b], q))                    # [1,K,mem]
         confs.append(getattr(adapter, "_last_conf", None))               # [1] or None
@@ -1307,7 +1568,7 @@ def _persistent_score(base, adapter, injector, tok, V, cohort):
     """cf_delivery, prior_recall over `cohort` — fraction predicting the edit's new_tid / true_tid."""
     preds = _persistent_preds(base, adapter, injector, tok, V, cohort)
     n = max(1, len(cohort))
-    cf_hit = sum(int(preds[i] == cohort[i].new_tid) for i in range(len(cohort)))
+    cf_hit = sum(int(preds[i] == _target_tid(cohort[i])) for i in range(len(cohort)))   # multi-token: 1st obj token
     pr_hit = sum(int(preds[i] == cohort[i].true_tid) for i in range(len(cohort)))
     return cf_hit / n, pr_hit / n
 
@@ -1948,9 +2209,70 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
     finding about the blunt mechanism."""
     injector.eval()
     pooled = os.environ.get("CAM_POOLED_SUBJ_KEY") == "1"
+    disjoint = _is_disjoint_mt(adapter)                      # perpos-key=disjoint: route multi-token via Vpp
+    recon = os.environ.get("CAM_RECON_MAGNITUDE") == "1"     # #100: magnitude-preserving value read (matches mt-recon)
     V = _init_banks(adapter, _n_disjoint_banks())
+    Vpp = _init_pp_banks() if disjoint else None
+    # per-token embedding-row norms for the COSINE-NN value decode (#100 lever): the standard readout
+    # out_proj(value) @ unembed is a DOT-PRODUCT NN in the tied-embedding space, biased toward high-norm
+    # (frequent) token rows — so an approximate position-t value lands on a frequent NEIGHBOUR ("ish"->"ity").
+    # Dividing by the row norm turns it into a true cosine nearest-neighbour, removing that bias. [vocab].
+    enorm = adapter.unembed.norm(dim=0).clamp_min(1e-6)
+    learned_pool0 = os.environ.get("CAM_LEARNED_KEY_POOL") == "1"
+    gte0 = getattr(adapter, "_gte_keys", None) is not None
+
+    def _subj_key(r):
+        """The subject key/query EXACTLY as _persistent_write_seq derives it (pooled/gte/last-token)."""
+        tids = torch.tensor([r.subject_tids], dtype=torch.long, device=DEV)
+        if gte0:
+            return adapter._gte_key(tids).unsqueeze(1)
+        e = adapter._e(tids)
+        return adapter._pool_subject(e, keepdim=True) if pooled else e[:, -1:]
+
+    nbanks = _n_disjoint_banks()
+    # POINTER id-banks (#100), parallel to the value banks: record each object token's exact id at its
+    # addressed slot, so delivery can look it up instead of reconstructing a lossy value. Real (standing-
+    # store) test — collisions across all kept objects are what determine whether the pointer holds.
+    Vid = None if disjoint else [adapter.store.init_ids(1, DEV) for _ in range(nbanks)]
+    Vpp_id = {} if disjoint else None
     for r in kept:
-        V = _persistent_write_one(adapter, V, r, pooled)
+        V = _persistent_write_one(adapter, V, r, pooled, Vpp=Vpp)
+        if not (_is_multi(r) and hasattr(adapter, "_pos_key")):
+            continue
+        bk = _subj_key(r); b = _subject_bank(r.subject_tids, nbanks)
+        obj = _obj_tids(r); L = min(len(obj), _mt_cap(adapter))
+        if disjoint and b not in Vpp_id:
+            Vpp_id[b] = [adapter.stores[t].init_ids(1, DEV) for t in range(_mt_cap(adapter))]
+        for t in range(L):
+            key_t = adapter._pos_key(bk, t)
+            idt = torch.tensor([[int(obj[t])]], dtype=torch.long, device=DEV)
+            if disjoint:
+                Vpp_id[b][t] = adapter.stores[t].write_ids(Vpp_id[b][t], key_t, idt)
+            else:
+                Vid[b] = adapter.store.write_ids(Vid[b], key_t, idt)
+
+    def _ptr_ids(r):
+        """The pointer-retrieved token id per object position from the standing id-bank -> [id_0..id_{L-1}]
+        (-1 if the addressed slot is empty). This IS the delivered object, straight from memory."""
+        bk = _subj_key(r); b = _subject_bank(r.subject_tids, nbanks)
+        L = min(len(_obj_tids(r)), _mt_cap(adapter))
+        ids = []
+        for t in range(L):
+            key_t = adapter._pos_key(bk, t)
+            if disjoint:
+                vb = Vpp_id.get(b)
+                pid = int(adapter.stores[t].read_ids(vb[t], key_t)[0, 0].item()) if vb is not None else -1
+            else:
+                pid = int(adapter.store.read_ids(Vid[b], key_t)[0, 0].item())
+            ids.append(pid)
+        return ids
+
+    def _ptr_seq(r):
+        """POINTER store-side delivery accuracy vs gold. (span-exact, per-token)."""
+        ids, gold = _ptr_ids(r), _obj_tids(r)
+        hits = sum(int(ids[t] == int(gold[t])) for t in range(len(ids)))
+        return (hits == len(ids) and len(ids) > 0), (hits / max(1, len(ids)))
+
     base_embed = base.get_input_embeddings()
     lm = base.get_output_embeddings().weight
     bos = [tok.bos_token_id] if tok.bos_token_id is not None else []
@@ -1969,38 +2291,71 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
     else:
         sample = kept[:ns]
 
-    def _bank_conf(r):
+    def _banks_seq(r):
+        """Per-answer-position bank list for edit r. Multi-token -> one bank per object position
+        (queried with name+pos_tag[t]); single-token -> a 1-element list (plain subject query,
+        byte-identical to the legacy single-bank read)."""
         tids = torch.tensor([r.subject_tids], dtype=torch.long, device=DEV)
         if gte:
-            q = adapter._gte_key(tids).unsqueeze(1)
+            base_q = adapter._gte_key(tids).unsqueeze(1)
         else:
-            q = adapter._e(tids)
+            base_q = adapter._e(tids)
             if learned_pool:
-                q = adapter._pool_subject(q, keepdim=True)
-        bank = adapter.persistent_bank(V[_subject_bank(r.subject_tids, len(V))], q)
-        return bank, getattr(adapter, "_last_conf", None)
-
-    # CAM_GEN_INJECT_STEPS: how many leading generation steps get the logit injection. 0 = ALL steps
-    # (naive constant — degenerates into repetition of the object). >0 = inject only the first K steps (the
-    # ANSWER span) then let the base continue fluently — the fix for the repetition failure.
-    def _gen(prompt_ids, bank, conf, inj_steps):
-        injector.set_bank(bank, conf=conf, relidx=0) if bank is not None else injector.set_bank(None)
-        inj = None
-        if bank is not None and alpha > 0:
-            inj = alpha * (adapter.out_proj(bank).mean(1).to(lm.device, lm.dtype) @ lm.t())   # [1,vocab]
-            if c0env is not None and conf is not None:
-                cc = conf.to(inj.device)
-                if hard:
-                    g = (cc > float(c0env)).to(inj.dtype)
+                base_q = adapter._pool_subject(base_q, keepdim=True)
+        Vb = V[_subject_bank(r.subject_tids, len(V))]
+        if _is_multi(r) and hasattr(adapter, "_pos_key"):
+            L = min(len(_obj_tids(r)), _mt_cap(adapter))
+            banks, conf = [], None
+            Vppb = _pp_bucket(adapter, Vpp, _subject_bank(r.subject_tids, _n_disjoint_banks())) if disjoint else None
+            for t in range(L):
+                if disjoint:                                 # read position t from its OWN store/bank (direct)
+                    bt = adapter.persistent_bank_direct(Vppb[t], adapter._pos_key(base_q, t), store=adapter.stores[t], recon=recon)
+                elif recon:                                  # magnitude-preserving direct read (no readout_q)
+                    bt = adapter.persistent_bank_direct(Vb, adapter._pos_key(base_q, t), recon=True)
                 else:
-                    g = torch.sigmoid(float(os.environ.get("CAM_LOGIT_GATE_K", "1")) * (cc - float(c0env)))
-                inj = inj * g.view(-1, 1)
+                    bt = adapter.persistent_bank(Vb, adapter._pos_key(base_q, t))
+                if t == 0:
+                    conf = getattr(adapter, "_last_conf", None)
+                banks.append(bt)
+            return banks, conf
+        return [adapter.persistent_bank(Vb, base_q)], getattr(adapter, "_last_conf", None)
+
+    def _inj_for(bank_t, conf):
+        """Logit contribution of a retrieved value bank (conf-gated), or None when off/alpha<=0."""
+        if bank_t is None or alpha <= 0:
+            return None
+        v = alpha * (adapter.out_proj(bank_t).mean(1).to(lm.device, lm.dtype) @ lm.t())   # [1,vocab]
+        if c0env is not None and conf is not None:
+            cc = conf.to(v.device)
+            if hard:
+                g = (cc > float(c0env)).to(v.dtype)
+            else:
+                g = torch.sigmoid(float(os.environ.get("CAM_LOGIT_GATE_K", "1")) * (cc - float(c0env)))
+            v = v * g.view(-1, 1)
+        return v
+
+    # mode: 'off' (no memory) | 'const' (inject answer position 0 EVERY step — the naive/degenerate
+    # repetition baseline) | 'answer' (inject position t at step t for `span` steps, then release so the
+    # base continues fluently AFTER the whole object is delivered). For a multi-token object span=L walks
+    # the object token-by-token; for a single-token object span=k_ans injects the one value k_ans times
+    # (byte-identical to the legacy answer-span path).
+    def _gen(prompt_ids, banks, conf, mode, span=None):
+        L = 0 if not banks else len(banks)
+        if span is None:
+            span = L
         cur = torch.tensor([prompt_ids], dtype=torch.long, device=DEV)
         out = []
         for t in range(gen_len):
-            if inj_steps > 0 and t == inj_steps and bank is not None:
-                injector.set_bank(None)                                       # disable the TAP too after the
-                inj = None                                                    # answer span -> base continues fluent
+            if mode == "off" or not banks:
+                injector.set_bank(None); inj = None
+            elif mode == "const":
+                injector.set_bank(banks[0], conf=conf, relidx=0); inj = _inj_for(banks[0], conf)
+            else:                                                             # 'answer' — walk positions then release
+                if t < span:
+                    bt = banks[min(t, L - 1)]                                # multi: banks[t]; single: banks[0] x span
+                    injector.set_bank(bt, conf=conf, relidx=0); inj = _inj_for(bt, conf)
+                else:
+                    injector.set_bank(None); inj = None
             logits = base(inputs_embeds=base_embed(cur)).logits[:, -1]        # [1,vocab] (no KV cache; small)
             if inj is not None:
                 logits = logits + inj.to(logits.device)
@@ -2009,6 +2364,136 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
             cur = torch.cat([cur, nxt.view(1, 1)], dim=1)
         injector.set_bank(None)
         return tok.decode(out).replace("\n", " ").strip()
+
+    def _gen_tf(prompt_ids, banks, conf, span, gold):
+        """TEACHER-FORCED delivery (#100 diagnostic): at answer position t inject banks[t] via the tap
+        (+ optional logit inject), forward on (prompt + GOLD[:t]), check argmax == gold[t], then feed
+        GOLD (not argmax) so position t+1 sees the correct prefix. Exact-match over the object. Isolates
+        delivery-STRENGTH (can the tap override the base per-position at all?) from the free-running
+        exposure bias that _gen 'answer' suffers. If TF delivery >> free-running, the wall is exposure
+        bias (fix: scheduled sampling); if TF is also ~0, the tap cannot override the prior."""
+        cur = torch.tensor([prompt_ids], dtype=torch.long, device=DEV)
+        L = len(banks) if banks else 0
+        ok = True
+        for t in range(len(gold)):
+            if banks and t < span:
+                bt = banks[min(t, L - 1)]
+                injector.set_bank(bt, conf=conf, relidx=0); inj = _inj_for(bt, conf)
+            else:
+                injector.set_bank(None); inj = None
+            logits = base(inputs_embeds=base_embed(cur)).logits[:, -1]
+            if inj is not None:
+                logits = logits + inj.to(logits.device)
+            ok = ok and (int(logits.argmax(-1).item()) == int(gold[t]))
+            cur = torch.cat([cur, torch.tensor([[int(gold[t])]], device=DEV)], dim=1)   # feed GOLD
+        injector.set_bank(None)
+        return ok
+
+    def _store_pred(bank_t):
+        """The STORE's OWN per-position token prediction via its tied unembed (the 0.84 store-side
+        readout) — vs the imprecise base-argmax-on-injected-latent that lands on adjacent tokens. This
+        IS 'emit value_t from memory'."""
+        pref = adapter.out_proj(bank_t).mean(1)                              # [1, base_hidden]
+        return int((pref @ adapter.unembed).argmax(-1).item())              # [1,vocab] store-space -> token
+
+    def _gen_store(prompt_ids, banks, span, gold):
+        """#100 sequential latent delivery: emit the STORE's per-position prediction for `span` steps
+        (the object straight from memory, ~store accuracy), THEN release to base fluency. Returns
+        (text, span_exact_match vs gold). Decouples delivery from the base's argmax imprecision on rare
+        subwords — the store already reconstructs the object; just USE its prediction."""
+        cur = torch.tensor([prompt_ids], dtype=torch.long, device=DEV)
+        out, L = [], (len(banks) if banks else 0)
+        for t in range(gen_len):
+            if banks and t < span:
+                nxt = _store_pred(banks[min(t, L - 1)])                      # from memory
+            else:
+                injector.set_bank(None)
+                nxt = int(base(inputs_embeds=base_embed(cur)).logits[:, -1].argmax(-1).item())
+            out.append(nxt)
+            cur = torch.cat([cur, torch.tensor([[nxt]], device=DEV)], dim=1)
+        txt = tok.decode(out).replace("\n", " ").strip()
+        m = min(span, len(gold))
+        span_ok = m > 0 and all(out[t] == int(gold[t]) for t in range(m))
+        return txt, span_ok
+
+    def _gen_ptr(prompt_ids, ptr_ids, gold):
+        """#100 POINTER free-run delivery (the end-to-end unlock): emit the EXACT retrieved id from the
+        id-bank at each answer step (the object token straight from memory — no lossy reconstruction),
+        then RELEASE to the base so it continues fluently AFTER the whole object is delivered. Returns
+        (text, span_exact vs gold). This is the real deployment readout: memory supplies the unknowable
+        object tokens, the base supplies the surrounding language."""
+        cur = torch.tensor([prompt_ids], dtype=torch.long, device=DEV)
+        injector.set_bank(None)                                            # pointer emits ids directly; no tap
+        span, out = len(ptr_ids), []
+        for t in range(gen_len):
+            if t < span and ptr_ids[t] >= 0:
+                nxt = ptr_ids[t]                                          # exact object token from the id-bank
+            else:
+                nxt = int(base(inputs_embeds=base_embed(cur)).logits[:, -1].argmax(-1).item())  # base continues
+            out.append(nxt)
+            cur = torch.cat([cur, torch.tensor([[nxt]], device=DEV)], dim=1)
+        txt = tok.decode(out).replace("\n", " ").strip()
+        m = min(span, len(gold))
+        span_ok = m > 0 and all(out[t] == int(gold[t]) for t in range(m))
+        return txt, span_ok
+
+    def _iso_store_ok(r):
+        """#100 decisive isolation: write edit r ALONE into a FRESH standing store, read each position
+        back (the exact _banks_seq path), decode via the store's unembed. Splits standing-store
+        interference (iso OK but standing 0/4) from a broken persistent write/read or subword-coverage
+        gap (iso ALSO fails). Reuses _persistent_write_one so it exercises the real seq write.
+
+        A single record is written ALONE, so ONE bank (B=1) suffices — numerically identical to the
+        512-bucket version (only the one hashed bucket ever holds data) but ~10 GiB cheaper, which matters
+        because the full standing V (512 banks) is still resident during this per-record isolation."""
+        Viso = _init_banks(adapter, 1)
+        Vpp_iso = _init_pp_banks() if disjoint else None
+        Viso = _persistent_write_one(adapter, Viso, r, pooled, Vpp=Vpp_iso)
+        tids = torch.tensor([r.subject_tids], dtype=torch.long, device=DEV)
+        if gte:
+            bq = adapter._gte_key(tids).unsqueeze(1)
+        else:
+            bq = adapter._e(tids)
+            if learned_pool:
+                bq = adapter._pool_subject(bq, keepdim=True)
+        Vb = Viso[_subject_bank(r.subject_tids, len(Viso))]
+        Vppb = _pp_bucket(adapter, Vpp_iso, _subject_bank(r.subject_tids, _n_disjoint_banks())) if disjoint else None
+        gold = _obj_tids(r)
+        L = min(len(gold), _mt_cap(adapter))
+        hits = hits_cos = 0
+        prefs = []
+        for t in range(L):
+            if disjoint:
+                bt = adapter.persistent_bank_direct(Vppb[t], adapter._pos_key(bq, t), store=adapter.stores[t], recon=recon)
+            elif recon:
+                bt = adapter.persistent_bank_direct(Vb, adapter._pos_key(bq, t), recon=True)
+            else:
+                bt = adapter.persistent_bank(Vb, adapter._pos_key(bq, t))
+            pref = adapter.out_proj(bt).mean(1)                                 # [1, base_hidden]
+            prefs.append(pref)
+            pred = int((pref @ adapter.unembed).argmax(-1).item())              # DOT-product decode (current)
+            pref_n = pref / pref.norm(dim=-1, keepdim=True).clamp_min(1e-6)
+            pred_cos = int(((pref_n @ adapter.unembed) / enorm).argmax(-1).item())  # COSINE-NN decode (falsified)
+            hits += int(pred == int(gold[t]))
+            hits_cos += int(pred_cos == int(gold[t]))
+        # DECODER readout (#100): AR free-run over the K retrieved slots as cross-memory — position t
+        # conditions on positions <t + all slots, the lever the independent per-position decodes lack.
+        hits_dec = 0
+        if getattr(adapter, "readout", "linear") == "decoder":
+            dpred = adapter.decoder_generate(torch.stack(prefs, dim=1), L)[0]   # [L] free-run token ids
+            hits_dec = sum(int(int(dpred[t]) == int(gold[t])) for t in range(L))
+        # POINTER id-bank (#100): exact-id delivery via the store's ADDRESSING, skipping the lossy value
+        # reconstruction. Write the gold id at the addressed slot, read it back. In ISOLATION this is
+        # exact by construction IF write-slot == read-slot — so pointer≈1.0 while value-recon=0.50 proves
+        # the addressing is reliable and reconstruction was the SOLE floor (i.e. the pointer is the fix).
+        hits_ptr = 0
+        for t in range(L):
+            key_t = adapter._pos_key(bq, t)
+            store_t = adapter.stores[t] if disjoint else adapter.store
+            Vid = store_t.init_ids(1, DEV)
+            Vid = store_t.write_ids(Vid, key_t, torch.tensor([[int(gold[t])]], dtype=torch.long, device=DEV))
+            hits_ptr += int(int(store_t.read_ids(Vid, key_t)[0, 0].item()) == int(gold[t]))
+        return (hits == L), (hits / max(1, L)), (hits_cos / max(1, L)), (hits_dec / max(1, L)), (hits_ptr / max(1, L))
 
     # ROUTER-GATED generation (#99): fit the per-token gate router, then at EACH decode step compute its gain
     # from the CURRENT base distribution and inject the (latent) object push logit-only. The router subsumes the
@@ -2057,22 +2542,34 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
     k_ans = int(os.environ.get("CAM_GEN_INJECT_STEPS", "2"))                  # answer-span injection width
     print(f"\n[mag][persistent] === GENERATION COHERENCE ({len(sample)} edits, {gen_len} tok, α={alpha}, "
           f"answer-inject-steps={k_ans}, router={'on' if router is not None else 'off'}) ===", flush=True)
-    new_const = new_ans = true_off = new_router = 0
+    new_const = new_ans = true_off = tf_hit = store_hit = iso_hit = ptr_hit = ptr_gen_hit = new_router = 0
+    iso_pt = iso_pt_cos = iso_pt_dec = iso_pt_ptr = ptr_pt = 0.0
     for r in sample:
         pid = bos + tok(r.prompt_text, add_special_tokens=False).input_ids
-        bank, conf = _bank_conf(r)
-        g_off = _gen(pid, None, None, 0)
-        g_const = _gen(pid, bank, conf, 0)                                   # inject EVERY step (naive)
-        g_ans = _gen(pid, bank, conf, k_ans)                                 # inject only the answer span
+        banks, conf = _banks_seq(r)
+        span = len(banks) if _is_multi(r) else k_ans                         # walk the object, else legacy k_ans
+        g_off = _gen(pid, None, None, "off")
+        g_const = _gen(pid, banks, conf, "const")                            # inject pos-0 EVERY step (naive)
+        g_ans = _gen(pid, banks, conf, "answer", span)                       # walk the object then release
+        tf_ok = _gen_tf(pid, banks, conf, span, _obj_tids(r))                # #100: teacher-forced delivery
+        g_store, store_ok = _gen_store(pid, banks, span, _obj_tids(r))       # #100: store-forced delivery
+        g_ptr, ptr_gen_ok = _gen_ptr(pid, _ptr_ids(r), _obj_tids(r))         # #100: POINTER free-run delivery
         nl = r.new_str.strip().lower()
         new_const += int(nl in g_const.lower()); new_ans += int(nl in g_ans.lower())
-        true_off += int(r.true_str.strip().lower() in g_off.lower())
-        print(f"  [{r.relation_id}] {r.prompt_text!r}  edit {r.true_str!r}->{r.new_str!r}", flush=True)
+        true_off += int(r.true_str.strip().lower() in g_off.lower()); tf_hit += int(tf_ok)
+        store_hit += int(store_ok); ptr_gen_hit += int(ptr_gen_ok)
+        _iso_ex, _iso_pt, _iso_pt_cos, _iso_pt_dec, _iso_pt_ptr = _iso_store_ok(r)
+        iso_hit += int(_iso_ex); iso_pt += _iso_pt; iso_pt_cos += _iso_pt_cos
+        iso_pt_dec += _iso_pt_dec; iso_pt_ptr += _iso_pt_ptr
+        _ptr_ex, _ptr_pt = _ptr_seq(r); ptr_hit += int(_ptr_ex); ptr_pt += _ptr_pt
+        print(f"  [{r.relation_id}] {r.prompt_text!r}  edit {r.true_str!r}->{r.new_str!r} ({len(_obj_tids(r))} tok)", flush=True)
         print(f"     OFF        : {g_off!r}", flush=True)
         print(f"     ON constant: {g_const!r}", flush=True)
-        print(f"     ON answer-{k_ans}: {g_ans!r}   [new: {nl in g_ans.lower()}]", flush=True)
-        if router is not None:
-            g_rt, mg = _gen_router(pid, bank, conf)
+        print(f"     ON answer  : {g_ans!r}   [new: {nl in g_ans.lower()}]  [TF-deliver: {tf_ok}]", flush=True)
+        print(f"     STORE-force: {g_store!r}   [span-exact: {store_ok}]", flush=True)
+        print(f"     PTR-gen    : {g_ptr!r}   [span-exact: {ptr_gen_ok}]  [new: {nl in g_ptr.lower()}]", flush=True)
+        if router is not None:                                               # #99 router-gated generation
+            g_rt, mg = _gen_router(pid, banks[0] if banks else None, conf)
             new_router += int(nl in g_rt.lower())
             print(f"     ON router  : {g_rt!r}   [new: {nl in g_rt.lower()}, mean_gain {mg:.3f}]", flush=True)
     n = max(1, len(sample))
@@ -2080,6 +2577,26 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
           f"answer-span-inject: {new_ans}/{len(sample)} ({new_ans/n:.2f})"
           + (f" | ROUTER-gated: {new_router}/{len(sample)} ({new_router/n:.2f})" if router is not None else "")
           + f"; base TRUE-recall {true_off}/{len(sample)}", flush=True)
+    print(f"  --> #100 TEACHER-FORCED delivery (exposure-bias isolation): {tf_hit}/{len(sample)} "
+          f"({tf_hit/n:.2f})  [TF>>free-run => exposure bias; TF~0 => can't override prior]", flush=True)
+    print(f"  --> #100 STORE-FORCED delivery (emit value_t from memory): {store_hit}/{len(sample)} "
+          f"({store_hit/n:.2f})  [~store-side acc if the readout drives output directly]", flush=True)
+    print(f"  --> #100 ISOLATED persistent round-trip (write r ALONE, read back): {iso_hit}/{len(sample)} "
+          f"exact ({iso_hit/n:.2f}) | per-token {iso_pt/n:.2f}  [per-tok>>0 w/ exact 0 => value/subword "
+          f"capacity per position; per-tok~0 => addressing/key]", flush=True)
+    print(f"  --> #100 ISOLATED cosine-NN decode (row-norm debiased): per-token {iso_pt_cos/n:.2f}  "
+          f"[cos>>argmax {iso_pt/n:.2f} => the wall is unembed-norm decode bias, not store retrieval]", flush=True)
+    if getattr(adapter, "readout", "linear") == "decoder":
+        print(f"  --> #100 ISOLATED decoder AR-readout (cross-attn over K slots + AR): per-token {iso_pt_dec/n:.2f}  "
+              f"[dec>>linear {iso_pt/n:.2f} => the sequence decoder recovers t>=1 the per-position readout can't]",
+              flush=True)
+    print(f"  --> #100 POINTER id-bank (exact id at addressed slot, NO value reconstruction): "
+          f"ISOLATED per-token {iso_pt_ptr/n:.2f} | STANDING-store {ptr_hit}/{len(sample)} exact "
+          f"({ptr_hit/n:.2f}) per-token {ptr_pt/n:.2f}  [iso~1.0 & recon 0.50 => addressing is reliable, "
+          f"reconstruction was the sole floor; standing = the real collision-limited delivery]", flush=True)
+    print(f"  --> #100 POINTER free-run DELIVERY (emit the id at each answer step, then release to base): "
+          f"{ptr_gen_hit}/{len(sample)} span-exact ({ptr_gen_hit/n:.2f})  [END-TO-END: memory supplies the "
+          f"unknowable object tokens, the base continues the sentence — see PTR-gen lines above]", flush=True)
     print(f"  (constant-inject = repetition/degenerate; answer-span-inject should read FLUENT with the edit)",
           flush=True)
     print("=" * 64, flush=True)
@@ -2535,6 +3052,11 @@ def main():
                          "facts JSON (CounterFact schema; target_true.str = the CORRECT current answer). "
                          "Probe the frozen base + report how often it is already correct vs WRONG (editable), "
                          "then exit. The cheap gate before building the full API-override edit+eval.")
+    ap.add_argument("--private-facts", type=str, default="", dest="private_facts",
+                    help="DEMO of the validated niche (§3.21/3.23): bind on CounterFact schemas, then SWAP "
+                         "the persistent-eval set to this JSON of INVENTED 'private' facts (CounterFact "
+                         "schema; use a SEEN relation template + novel subjects/values the base can't know). "
+                         "Run with --persistent-generate to show fluent delivery of unknowable facts.")
     ap.add_argument("--persistent-generate", action="store_true", dest="persistent_generate",
                     help="GENERATION-COHERENCE (reality check): after writing all edits, GENERATE "
                          "CAM_GEN_LEN tokens (greedy) from a sample of edit prompts with memory OFF vs ON "
@@ -2601,6 +3123,22 @@ def main():
                          "reads/writes/addr-sups against store t ONLY, so the per-position address cannot "
                          "be contaminated by the other position's slots (key = L2(name)+pos_tag[t]). "
                          "Only active under perpos.")
+    ap.add_argument("--mt-positions", type=int, default=0, dest="mt_positions",
+                    help="answer positions the perpos store can address (pos_tag/pos_proj table size). "
+                         "0 = auto = max(2, cargo_tokens). Set >1 to store/deliver MULTI-token objects in "
+                         "the Track-4 persistent path WITHOUT the single-token counterfactual-phrasing "
+                         "restriction on --cargo-tokens (they are now decoupled).")
+    ap.add_argument("--mt-recon-weight", type=float, default=0.0, dest="mt_recon_weight",
+                    help="weight of the perpos MULTI-TOKEN reconstruction auxiliary loss added to Stage-1 "
+                         "bind (0 = off, byte-identical). >0 teaches the store to round-trip an arbitrary "
+                         "K-token object: write embed(tok_t) at _pos_key(name,t) into a fresh store, read "
+                         "each position back, CE(out_proj(read_t)@unembed, tok_t). Trains in_proj/out_proj/"
+                         "pos_tag/pos_proj/codebooks to STORE + REPRODUCE arbitrary multi-token sequences "
+                         "(incl. rare subwords) at position-separated addresses — the Track-4 delivery path. "
+                         "Pair with --perpos-key codebook (strong per-position separation) and --mt-positions K.")
+    ap.add_argument("--mt-recon-tokens", type=int, default=4, dest="mt_recon_tokens",
+                    help="K: object length trained by the --mt-recon-weight reconstruction loss (positions "
+                         "0..K-1). Capped at --mt-positions.")
     args = ap.parse_args()
 
     # '--readout perpos' is shorthand: it selects the per-position VALUE STORE (mt_value=perpos) +
@@ -2661,6 +3199,18 @@ def main():
         if args.dataset == "counterfact" and multi_relation:
             # Track 1 MULTI-RELATION (#16): edit N distinct relations in ONE memory (faithful prefix).
             builder, cf_records, prior_acc_full = setup_counterfact_multi(base, tok, args)
+            if getattr(args, "private_facts", ""):
+                # DEMO of the validated niche (§3.21/3.23): bind trains the readout on the CounterFact
+                # relation SCHEMAS above; here we SWAP the persistent-eval set to fully INVENTED "private"
+                # facts of a SEEN schema (novel subjects + values the base cannot know). The machinery then
+                # writes+delivers them at inference with NO retraining — the schema-bound, subject-free niche.
+                _priv, _pstats = load_counterfact(args.private_facts, tok, single_token_only=False)
+                for _r in _priv:
+                    _r._relkey = _r.relation_id or "private"
+                cf_records = _priv
+                print(f"[mag][private] DEMO: bound on CounterFact schemas; SWAPPED persistent-eval set to "
+                      f"{len(cf_records)} INVENTED private facts (base cannot know them). e.g. "
+                      f"{cf_records[0].prompt_text!r} -> {cf_records[0].new_str!r}", flush=True)
             if getattr(args, "probe_only", False):
                 # cache-build run: the probe (the costly part) ran + cached inside setup; exit before the
                 # single-card-fragile stage-2 so the cache is ready for a subsequent (2-card) sweep.
@@ -2732,8 +3282,39 @@ def main():
 
     # ---- stage 1: bind once ----
     adapter = build_adapter(args, embed_weight, H, builder=builder)
+    # REALISTIC subword pool for the multi-token reconstruction loss: ASCII word-piece tokens only
+    # (strip BPE space markers). Excludes CJK/Cyrillic/symbol/number tokens so the store focuses its
+    # value capacity on the language subwords that invented objects are actually built from.
+    mt_pool = None
+    if float(getattr(args, "mt_recon_weight", 0.0)) > 0:
+        _marks = ("Ġ", "▁", "Ċ", "Ġ", "▁")
+        _ids = []
+        for _piece, _id in tok.get_vocab().items():
+            _s = _piece
+            for _m in _marks:
+                _s = _s.replace(_m, "")
+            if len(_s) >= 1 and _s.isascii() and _s.isalpha():
+                _ids.append(int(_id))
+        mt_pool = torch.tensor(sorted(set(_ids)), dtype=torch.long, device=DEV)
+        print(f"[mag] mt-recon realistic subword pool: {len(mt_pool)} ASCII word-piece tokens "
+              f"(of {len(tok.get_vocab())} vocab)", flush=True)
+    # DECODER readout (#100): a corpus of REAL multi-token fantasy-morphology words to train the AR decoder
+    # on genuine subword continuation. Hold out the eval objects (private-facts new_str) to keep the metric
+    # leak-free. Only built when --readout decoder (the linear path uses random subwords).
+    mt_words = None
+    if getattr(args, "readout", "linear") == "decoder":
+        _excl = []
+        for _r in (cf_records or []):
+            _nid = getattr(_r, "new_ids", None)
+            if _nid and len(_nid) > 1:
+                _excl.append(tuple(_nid))
+        mt_words = _real_word_seqs(tok, int(getattr(adapter, "mt_positions", 4) or 4), exclude=_excl)
+        print(f"[mag] decoder mt-recon: {len(mt_words)} real multi-token words "
+              f"({len(_excl)} eval objects held out)", flush=True)
     with StageCost(f"stage-1 bind (M={args.M}, {args.bind_steps} steps, batch {args.batch})"):
-        d_carry = bind_adapter(adapter, builder, rng, args)
+        d_carry = bind_adapter(adapter, builder, rng, args,
+                               unembed=base.get_output_embeddings().weight.detach(),
+                               mt_pool=mt_pool, mt_words=mt_words)
     # free stage-1's AdamW state + autograd fragments before stage-2 — on a single 16GB card the leftover
     # fragmentation (bind runs many steps) is what pushed stage-2's first backward over the wall + wedged.
     import gc as _gc0

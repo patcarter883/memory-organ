@@ -195,8 +195,32 @@ class ProductKeyStore(nn.Module):
                           delta.reshape(B, A * self.topk, self.d_hub).to(bank_dtype))
         return Vnew
 
+    # ---- POINTER id-bank (#100): exact token id at the addressed slot, no value reconstruction --------
+    def init_ids(self, batch, device):
+        """A parallel per-slot token-ID bank [B,N] (init -1 = empty). Records WHICH token each slot owns,
+        so delivery can look up the exact id at the addressed slot instead of reconstructing a lossy value
+        embedding — decoupling the store's (reliable) ADDRESSING from its (lossy) value reconstruction."""
+        return torch.full((batch, self.N), -1, dtype=torch.long, device=device)
+
+    def write_ids(self, Vid, keys, ids, addr=None):
+        """Record each association's exact token id at its TOP-1 addressed slot (the argmax-weight slot the
+        read selects). Same head-query addressing as the K1 value write (addr=head_query(key,0)), so
+        write-slot == read-slot by construction. keys:[B,A,d_hub], ids:[B,A] long -> Vid:[B,N]."""
+        wk = self.head_query(keys) if addr is None else addr
+        slot_idx, slot_w = self._address(wk)                  # [B,A,topk]
+        top = slot_w.argmax(dim=-1, keepdim=True)             # [B,A,1] pick the dominant slot
+        top_slot = torch.gather(slot_idx, -1, top).squeeze(-1)  # [B,A] global slot id
+        return Vid.scatter(1, top_slot, ids)                  # exact id at the owning slot
+
+    def read_ids(self, Vid, query):
+        """Look up the exact token id at the TOP-1 addressed slot (head-0 read addressing). [B,Q] -> [B,Q]."""
+        slot_idx, slot_w = self._address(self.head_query(query))   # [B,Q,topk]
+        top = slot_w.argmax(dim=-1, keepdim=True)             # [B,Q,1]
+        top_slot = torch.gather(slot_idx, -1, top).squeeze(-1)  # [B,Q]
+        return torch.gather(Vid, 1, top_slot)                # [B,Q] ids (-1 if the slot is empty)
+
     # ---- multi-head read -------------------------------------------------
-    def read(self, V, query, return_ctx=False, return_conf=False):
+    def read(self, V, query, return_ctx=False, return_conf=False, recon=False):
         """query:[B,Q,d_hub] hub-space read query -> (read_out[B,Q,d_hub], head_norms list).
         Each head: q_h = read_q[h](query) + head_bias[h]; address V; weighted-sum selected slot values
         -> RMSNorm (strip magnitude, the bypass fix) -> read_o[h]. Heads summed. Returns per-head
@@ -215,7 +239,7 @@ class ProductKeyStore(nn.Module):
         B, Q, _ = query.shape
         out = query.new_zeros(B, Q, self.d_hub)
         head_norms, ctxs = [], []
-        conf = None
+        conf = recon_out = None
         _rst = os.environ.get("CAM_READ_SUB_TOPK")           # K3: widen the read candidate pool only
         rst = int(_rst) if _rst else None
         for h in range(self.n_heads):
@@ -226,13 +250,23 @@ class ProductKeyStore(nn.Module):
             vals = torch.gather(V, 1, slot_idx.reshape(B, Q * self.topk, 1).expand(-1, -1, self.d_hub)
                                 ).reshape(B, Q, self.topk, self.d_hub).float()
             ctx = (slot_w.unsqueeze(-1) * vals).sum(dim=2)   # [B,Q,d_hub]  retrieved value mix (fp32)
-            if return_conf and h == 0:                       # factual head = the content-addressed read
+            if (return_conf or recon) and h == 0:            # factual head = the content-addressed read
                 conf = ctx.norm(dim=-1).mean(dim=1)          # [B] pre-norm retrieval magnitude
+                recon_out = ctx                              # MAGNITUDE-PRESERVING value mix (head 0)
             oh = self.read_o[h](self.read_norm[h](ctx))      # RMSNorm strips magnitude
             out = out + oh
             head_norms.append(float(oh.detach().norm(dim=-1).mean()))
             if return_ctx:
                 ctxs.append(ctx)
+        if recon:
+            # RECONSTRUCTION READ (#100 value-capacity): the factual head's raw value mix, with NO
+            # read_norm / read_o / read_out_norm. The bypass-fix RMSNorms deliberately STRIP magnitude
+            # (so the tap gate carries retrieval strength) — but magnitude encodes token IDENTITY that
+            # out_proj@unembed needs to decode t≥1 continuation subwords. Symmetric to VALNONORM on the
+            # write side; mt-recon + delivery must train/read this SAME path for the round-trip to hold.
+            if return_conf:
+                return recon_out, head_norms, conf
+            return recon_out, head_norms
         out = self.read_out_norm(out)            # bound the bank norm; gate carries the scale
         if return_ctx:
             return out, head_norms, ctxs

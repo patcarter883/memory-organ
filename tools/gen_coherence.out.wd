@@ -1,0 +1,19 @@
+gpu-lease: leased card(s) [1] as 'gpu1'  (HIP=0, port=8001, project=lease-gpu1)
+[gen] start 10:31:23
+[mag][cf-multi] 137 edits across 6 relations | e.g. Raymond Triboulet [P103]: French->Dutch; Oleg Kotov [P103]: Russian->English; Francis de Croisset [P103]: French->English; Marie NDiaye [P103]: French->Russian; Pierre Guyotat [P103]: French->Russian
+[mag] binding held-out: carry(exact) 0.813 | ablated(exact) 0.000 | carry per-tok 0.813 | ablated per-tok 0.000 | chance 0.125
+[mag][persistent] === GENERATION COHERENCE (12 edits, 16 tok, α=8.0, answer-inject-steps=1) ===
+  [P103] 'The mother tongue of Raymond Triboulet is'  edit 'French'->'Dutch'
+  [P103] 'The mother tongue of Oleg Kotov is'  edit 'Russian'->'English'
+  [P103] 'The mother tongue of Francis de Croisset is'  edit 'French'->'English'
+  [P103] 'The mother tongue of Marie NDiaye is'  edit 'French'->'Russian'
+  [P103] 'The mother tongue of Pierre Guyotat is'  edit 'French'->'Russian'
+  [P103] 'The mother tongue of Achille Varzi is'  edit 'Italian'->'French'
+  [P103] 'The mother tongue of Paolo Tiralongo is'  edit 'Italian'->'Dutch'
+  [P103] 'The mother tongue of Antonietta Di Martino is'  edit 'Italian'->'French'
+  [P103] 'The mother tongue of Nicolaas Pierson is'  edit 'Dutch'->'French'
+  [P103] 'The mother tongue of Lionel Jospin is'  edit 'French'->'Dutch'
+  [P103] 'The mother tongue of Irina Shayk is'  edit 'Russian'->'French'
+  [P103] 'The mother tongue of Ilya Ehrenburg is'  edit 'Russian'->'Dutch'
+  --> NEW object present — constant-inject: 12/12 (1.00) | answer-span-inject: 12/12 (1.00); base TRUE-recall 12/12
+[gen] done 10:33:25
