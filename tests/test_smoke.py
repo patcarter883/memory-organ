@@ -19,9 +19,9 @@ import torch
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 CAM_MODULES = [
-    "bind_msweep", "deep_mem_analytic", "deep_memory", "gated_tap", "kv_adapter", "m2_adapter",
-    "persist_probe", "pk_store", "pk_store_adapter", "recall_boltA", "recall_deepmem",
-    "recall_mag", "recall_v1", "store_recurrence", "translator",
+    "bind_msweep", "deep_mem_analytic", "deep_memory", "gated_tap", "kv_adapter", "lens",
+    "m2_adapter", "persist_probe", "pk_store", "pk_store_adapter", "recall_boltA",
+    "recall_deepmem", "recall_mag", "recall_v1", "store_recurrence", "translator",
 ]
 
 
@@ -33,7 +33,7 @@ def test_import_package_mode(name):
 
 
 # ---- both documented run styles reach argparse ------------------------------------------------
-@pytest.mark.parametrize("driver", ["recall_mag", "bind_msweep", "recall_v1", "persist_probe"])
+@pytest.mark.parametrize("driver", ["recall_mag", "bind_msweep", "recall_v1", "persist_probe", "lens"])
 @pytest.mark.parametrize("style", ["module", "file"])
 def test_driver_help(driver, style):
     """README promises both `python -m cam.X` and `python cam/X.py`; --help exits 0 in both,

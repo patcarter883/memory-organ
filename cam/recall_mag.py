@@ -1399,7 +1399,13 @@ def _persistent_write_val(adapter, V, r, val_tid, pooled):
     else:
         subj_emb = adapter._e(tids)                                                        # [1,S,mem_dim]
         key = adapter._pool_subject(subj_emb, keepdim=True) if pooled else subj_emb[:, -1:]  # [1,H,mem] or [1,1,mem]
-    val = adapter._e_val(torch.tensor([[val_tid]], dtype=torch.long, device=DEV))          # [1,1,mem_dim] value branch
+    if os.environ.get("CAM_OBJ_LATENT") == "1":               # OBJECT-as-LATENT (#99): store the pooled mean of
+        bt = os.environ.get("CAM_BIND_TRUE") == "1"           # the object's token embeddings -> ONE latent of
+        obj_ids = (r.true_ids if bt else r.new_ids) or [val_tid]   # ARBITRARY length (no single-token constraint;
+        oi = torch.tensor([obj_ids], dtype=torch.long, device=DEV)  # subject key already pools its span the same way).
+        val = adapter._e(oi).mean(1, keepdim=True)            # [1,1,mem_dim] — delivery biases the object phrase's
+    else:                                                     # tokens; seed-first + base fluency realises the tail.
+        val = adapter._e_val(torch.tensor([[val_tid]], dtype=torch.long, device=DEV))      # [1,1,mem] value branch (#100 VALNONORM)
     lam = float(os.environ.get("CAM_VALUE_SUPPRESS", "0"))    # R1-prior-v2: promote new, SUPPRESS original
     if lam > 0 and getattr(r, "true_tid", -1) >= 0:           # value = new - lam*original (damps the base's
         val = val - lam * adapter._e_val(torch.tensor([[r.true_tid]], dtype=torch.long, device=DEV))  # confident prior)
@@ -1481,7 +1487,10 @@ def _persistent_write_one(adapter, V, r, pooled, Vpp=None):
             _persistent_write_seq_disjoint(adapter, Vpp, r, _obj_tids(r), pooled)
             return V
         return _persistent_write_seq(adapter, V, r, _obj_tids(r), pooled)
-    return _persistent_write_val(adapter, V, r, _target_tid(r), pooled)
+    # single-token: CAM_BIND_TRUE=1 reinforces the object the base already holds (#99 soft-steering),
+    # else the counterfactual new object; _target_tid resolves the new_tid=-1 sentinel to new_ids[0].
+    val_tid = r.true_tid if os.environ.get("CAM_BIND_TRUE") == "1" else _target_tid(r)
+    return _persistent_write_val(adapter, V, r, val_tid, pooled)
 
 
 def _persistent_preds(base, adapter, injector, tok, V, cohort, bank_ids=None):
@@ -1696,6 +1705,497 @@ def eval_persistent_solo(base, adapter, injector, tok, kept, args):
 
 
 @torch.no_grad()
+def _persistent_graded(base, adapter, injector, tok, V, cohort, bank_ids=None):
+    """Soft-steering (#99): per-fact GRADED effect of the memory on the TRUE object — the lean that
+    argmax-flip scoring is blind to. For each edit, forward the base twice at the prompt's last position:
+    memory OFF (no tap, no logit inject) vs ON (residual tap + optional conf-gated logit inject), and record
+      p_off / p_on   softmax P(true object)          rank_off / rank_on   0-based rank of the true object
+      dlogp          logP_on(true) - logP_off(true)  kl                   KL(off || on) over the vocab
+      conf           store retrieval strength (addressing)
+    Non-mutating. Batched exactly like _persistent_preds (same store reads); the OFF pass is one extra
+    forward per batch. Returns a list of per-edit dicts aligned to `cohort`."""
+    bos = [tok.bos_token_id] if tok.bos_token_id is not None else []
+    base_embed = base.get_input_embeddings()
+    bs = max(1, int(os.environ.get("CAM_PERSISTENT_EVAL_BATCH", "1")))
+    pad_id = tok.pad_token_id if tok.pad_token_id is not None else 0
+    banks, confs, id_lists = [], [], []
+    learned_pool = os.environ.get("CAM_LEARNED_KEY_POOL") == "1"
+    gte = getattr(adapter, "_gte_keys", None) is not None
+    for i, r in enumerate(cohort):
+        tids = torch.tensor([r.subject_tids], dtype=torch.long, device=DEV)
+        if gte:
+            q = adapter._gte_key(tids).unsqueeze(1)
+        else:
+            q = adapter._e(tids)
+            if learned_pool:
+                q = adapter._pool_subject(q, keepdim=True)
+        b = bank_ids[i] if bank_ids is not None else _subject_bank(r.subject_tids, len(V))
+        banks.append(adapter.persistent_bank(V[b], q))
+        confs.append(getattr(adapter, "_last_conf", None))
+        id_lists.append(bos + tok(r.prompt_text, add_special_tokens=False).input_ids)
+    out = [None] * len(cohort)
+    for i in range(0, len(cohort), bs):
+        rows = list(range(i, min(i + bs, len(cohort))))
+        B = len(rows)
+        lens = [len(id_lists[j]) for j in rows]
+        Tmax = max(lens)
+        ids = torch.full((B, Tmax), pad_id, dtype=torch.long, device=DEV)
+        for b, j in enumerate(rows):
+            ids[b, :lens[b]] = torch.tensor(id_lists[j], dtype=torch.long, device=DEV)
+        emb = base_embed(ids)
+        bank = torch.cat([banks[j] for j in rows], dim=0)
+        conf = None if any(confs[j] is None for j in rows) else torch.cat([confs[j] for j in rows], dim=0)
+        # OFF pass: no memory at all (matches the CAM_PRIORCONF_LOG no-tap base logits)
+        injector.set_bank(None)
+        logits_off = base(inputs_embeds=emb).logits
+        ld = logits_off.device
+        idx = torch.arange(B, device=ld)
+        last = torch.tensor([lens[b] - 1 for b in range(B)], device=ld)
+        off = logits_off[idx, last].float()                              # [B,vocab]
+        alpha = float(os.environ.get("CAM_LOGIT_INJECT", "0"))
+        soft = os.environ.get("CAM_SOFT_STEER") == "1"                   # surgical path: NO residual tap,
+        if soft:                                                          # deliver ONLY via a gated logit bias
+            on = off.clone()                                              # -> ON = pure base + inj (one forward,
+        else:                                                             # gentle: KL small; base argmax below is
+            injector.set_bank(bank, conf=conf, relidx=0)                 # the TRUE base uncertainty signal)
+            on = base(inputs_embeds=emb).logits[idx, last].float()
+        grow = torch.ones(B, device=ld)                                  # per-row composite gain (diagnostic)
+        if alpha > 0:
+            bh = adapter.out_proj(bank).mean(1)
+            lm = base.get_output_embeddings().weight
+            raw = (bh.to(lm.device, lm.dtype) @ lm.t()).to(ld).float()   # [B,vocab] UNSCALED store logits
+            inj = alpha * raw                                            # the store's push
+            store_prob = torch.softmax(raw, -1)                         # store's own delivered distribution
+            store_tok = raw.argmax(-1)                                  # token the memory most wants to deliver
+            # GATE A (store retrieval conf, §3.15): fire only on the addressed subject -> protects locality.
+            c0 = os.environ.get("CAM_LOGIT_GATE_C0")
+            if c0 is not None and conf is not None:
+                cc = conf.to(ld).float()
+                if os.environ.get("CAM_LOGIT_GATE_HARD") == "1":
+                    gA = (cc > float(c0)).float()
+                else:
+                    gA = torch.sigmoid(float(os.environ.get("CAM_LOGIT_GATE_K", "1")) * (cc - float(c0)))
+                grow = grow * gA
+            multigate = os.environ.get("CAM_MULTIGATE") == "1"
+            if multigate or os.environ.get("CAM_MARGIN_GATE") == "1":
+                # STRENGTH gate — self-dosing HEADROOM: push ∝ (1 - base P(target)). base already certain
+                # -> ~0 (inert, no confident-fact harm §3.24); base gives target nothing -> ~1 (full push).
+                p_target = torch.softmax(off, -1)[idx, store_tok]
+                grow = grow * (1.0 - p_target).clamp(0, 1)
+            elif os.environ.get("CAM_AGREE_GATE") == "1":               # crude hard form (kept for ablation)
+                grow = grow * (store_tok != off.argmax(-1)).float()
+            if multigate:
+                # SCOPE veto (§3.23): a novel/garbage value decodes DIFFUSE through out_proj -> low peak;
+                # stay inert rather than deliver corruption. Label-free (store's own decode confidence).
+                scope_min = float(os.environ.get("CAM_MULTIGATE_SCOPE_MIN", "0.10"))
+                grow = grow * (store_prob.max(-1).values >= scope_min).float()
+            inj = inj * grow.view(-1, 1)
+            if multigate:
+                # SUPPORT gate — SPARSE: keep only the store's top-k token logits, zero the rest. Confines
+                # collateral to a few tokens -> collapses the blunt KL (§3.24, dense tap KL 24-38). "where".
+                topk = int(os.environ.get("CAM_MULTIGATE_TOPK", "16"))
+                if 0 < topk < inj.shape[-1]:
+                    keep = raw.topk(topk, dim=-1).indices
+                    m = torch.zeros_like(inj)
+                    m.scatter_(1, keep, 1.0)
+                    inj = inj * m
+            on = on + inj
+        lp_off = torch.log_softmax(off, -1)
+        lp_on = torch.log_softmax(on, -1)
+        p_off, p_on = lp_off.exp(), lp_on.exp()
+        kl = (p_off * (lp_off - lp_on)).sum(-1)                          # KL(off || on)
+        for b, j in enumerate(rows):
+            t = cohort[j].true_tid
+            out[j] = {
+                "p_off": float(p_off[b, t]), "p_on": float(p_on[b, t]),
+                "rank_off": int((off[b] > off[b, t]).sum().item()),
+                "rank_on": int((on[b] > on[b, t]).sum().item()),
+                "dlogp": float(lp_on[b, t] - lp_off[b, t]),
+                "kl": float(kl[b]),
+                "conf": float(conf[b]) if conf is not None else None,
+                "gain": float(grow[b]),                                   # composite gate gain (A*margin*scope)
+                "rid": getattr(cohort[j], "relation_id", None),
+            }
+    injector.set_bank(None)
+    return out
+
+
+def eval_persistent_graded(base, adapter, injector, tok, kept, args):
+    """Track 5 (#99) — SOFT-STEERING. Write ALL edits into ONE standing store, then measure the GRADED
+    lean on the TRUE object (P(true)/rank/logprob/KL, memory OFF vs ON) rather than the argmax flip.
+    Bucket by the base's PRE-EDIT P(true): §3.12 predicts the largest lift where the base is UNCERTAIN,
+    because a lean there does not fight the residual wall. Pair with CAM_BIND_TRUE=1 (reinforce the true
+    object) and a low CAM_LOGIT_INJECT on CAM_LOGIT_GATE_HARD=1 (fires only on the addressed subject)."""
+    injector.eval()
+    pooled = os.environ.get("CAM_POOLED_SUBJ_KEY") == "1"
+    N = len(kept)
+    B = _n_disjoint_banks()
+    V = _init_banks(adapter, B)
+    for r in kept:
+        V = _persistent_write_one(adapter, V, r, pooled)
+    stats = [s for s in _persistent_graded(base, adapter, injector, tok, V, kept) if s is not None]
+    bind_true = os.environ.get("CAM_BIND_TRUE") == "1"
+    alpha = os.environ.get("CAM_LOGIT_INJECT", "0")
+    mode = "soft(logit-only)" if os.environ.get("CAM_SOFT_STEER") == "1" else "tap"
+    mg = os.environ.get("CAM_MULTIGATE") == "1"
+    gates = ("storeconf+margin+scope+sparse(k=%s)" % os.environ.get("CAM_MULTIGATE_TOPK", "16")) if mg else \
+        ("+".join([g for g, on in [("storeconf", os.environ.get("CAM_LOGIT_GATE_C0") is not None),
+                                   ("agree", os.environ.get("CAM_AGREE_GATE") == "1"),
+                                   ("margin", os.environ.get("CAM_MARGIN_GATE") == "1")] if on]) or "none")
+    print(f"\n[mag][persistent] === Track 5 (#99): SOFT-STEERING graded lean over {N} edits "
+          f"(bind={'TRUE' if bind_true else 'counterfactual'}, alpha={alpha}, path={mode}, gates={gates}) ===",
+          flush=True)
+    print("  the LEAN toward the true object, memory OFF vs ON, bucketed by the base's pre-edit P(true):",
+          flush=True)
+    print("  P(true)_off bucket    N    dP(true)   d_logp   d_rank  %rank_up   meanKL", flush=True)
+    for lo, hi in [(0.0, 0.1), (0.1, 0.3), (0.3, 0.6), (0.6, 1.01)]:
+        sel = [s for s in stats if lo <= s["p_off"] < hi]
+        if not sel:
+            continue
+        n = len(sel)
+        dP = sum(s["p_on"] - s["p_off"] for s in sel) / n
+        dlp = sum(s["dlogp"] for s in sel) / n
+        drank = sum(s["rank_on"] - s["rank_off"] for s in sel) / n       # negative = true object ROSE
+        rup = sum(1 for s in sel if s["rank_on"] < s["rank_off"]) / n
+        mkl = sum(s["kl"] for s in sel) / n
+        print(f"  [{lo:.2f}, {hi:.2f})       {n:4d}   {dP:+.4f}  {dlp:+.3f}  {drank:+6.1f}   {rup:.2f}"
+              f"     {mkl:.3f}", flush=True)
+    n = max(1, len(stats))
+    dP = sum(s["p_on"] - s["p_off"] for s in stats) / n
+    dlp = sum(s["dlogp"] for s in stats) / n
+    rup = sum(1 for s in stats if s["rank_on"] < s["rank_off"]) / n
+    print(f"  ALL                   {len(stats):4d}   {dP:+.4f}  {dlp:+.3f}    (%rank_up {rup:.2f})", flush=True)
+    gains = [s.get("gain", 1.0) for s in stats]
+    inert = sum(1 for gv in gains if gv <= 1e-6) / max(1, len(gains))
+    print(f"  gate: mean composite gain {sum(gains)/max(1,len(gains)):.3f} | fully-inert rows {inert:.2f} "
+          f"(gain->0 = base already certain, or scope-vetoed)", flush=True)
+    print(f"  positive dP(true)/d_logp = the memory LEANS the frozen base toward the true object it already "
+          f"holds\n  (a soft push, not a replace — {'TRUE-bound' if bind_true else 'NOTE: counterfactual-bound, expect NEGATIVE'})",
+          flush=True)
+    print("=" * 64, flush=True)
+    return {"stats": stats}
+
+
+@torch.no_grad()
+def _collect_router_data(base, adapter, injector, tok, V, cohort, bank_ids=None):
+    """Per-fact frozen constants for router training: off [N,V] base last-token logits, raw [N,V] store push
+    logits (out_proj(bank)@lmT), conf [N] retrieval strength (or None), true_tid [N]. One OFF forward + the
+    per-fact store reads; no gradients."""
+    bos = [tok.bos_token_id] if tok.bos_token_id is not None else []
+    base_embed = base.get_input_embeddings()
+    bs = max(1, int(os.environ.get("CAM_PERSISTENT_EVAL_BATCH", "1")))
+    pad_id = tok.pad_token_id if tok.pad_token_id is not None else 0
+    lm = base.get_output_embeddings().weight
+    learned_pool = os.environ.get("CAM_LEARNED_KEY_POOL") == "1"
+    gte = getattr(adapter, "_gte_keys", None) is not None
+    banks, confs, id_lists = [], [], []
+    for r in cohort:
+        tids = torch.tensor([r.subject_tids], dtype=torch.long, device=DEV)
+        if gte:
+            q = adapter._gte_key(tids).unsqueeze(1)
+        else:
+            q = adapter._e(tids)
+            if learned_pool:
+                q = adapter._pool_subject(q, keepdim=True)
+        b = _subject_bank(r.subject_tids, len(V)) if bank_ids is None else bank_ids[cohort.index(r)]
+        banks.append(adapter.persistent_bank(V[b], q))
+        confs.append(getattr(adapter, "_last_conf", None))
+        id_lists.append(bos + tok(r.prompt_text, add_special_tokens=False).input_ids)
+    offs, raws = [], []
+    have_conf = all(c is not None for c in confs)
+    injector.set_bank(None)
+    for i in range(0, len(cohort), bs):
+        rows = list(range(i, min(i + bs, len(cohort))))
+        lens = [len(id_lists[j]) for j in rows]
+        Tmax = max(lens)
+        ids = torch.full((len(rows), Tmax), pad_id, dtype=torch.long, device=DEV)
+        for b, j in enumerate(rows):
+            ids[b, :lens[b]] = torch.tensor(id_lists[j], dtype=torch.long, device=DEV)
+        logits = base(inputs_embeds=base_embed(ids)).logits
+        ld = logits.device
+        last = torch.tensor([lens[b] - 1 for b in range(len(rows))], device=ld)
+        offs.append(logits[torch.arange(len(rows), device=ld), last].float().cpu())
+        for j in rows:
+            bh = adapter.out_proj(banks[j]).mean(1)                      # [1,H]
+            raws.append((bh.to(lm.device, lm.dtype) @ lm.t()).float().squeeze(0).cpu())  # [V]
+    off = torch.cat(offs, 0)
+    raw = torch.stack(raws, 0)
+    conf = torch.cat([c.float().cpu() for c in confs], 0) if have_conf else None
+    true_tid = torch.tensor([r.true_tid for r in cohort], dtype=torch.long)
+    return off, raw, conf, true_tid
+
+
+def eval_persistent_router(base, adapter, injector, tok, kept, args):
+    """Track 5 (#99) — LEARNED GATE ROUTER. Replace the hand-composed multigate product with ONE small MLP
+    over label-free signals, trained (outcome-supervised, backprop through the logit injection) on a TRAIN
+    split and evaluated on a HELD-OUT split. Tests the ceiling claim: does a learned gate GENERALISE to
+    unseen facts, and does it recover the self-dosing (high gain where the base is unsure)?"""
+    try:
+        from .gate_router import (fit_router, fit_router_regress, fit_router_hybrid, fit_router_pertoken,
+                                  oracle_gain, signal_features, _inj_base, _inj_pertoken)
+    except ImportError:                                          # run as a file: _HERE already on sys.path
+        from gate_router import (fit_router, fit_router_regress, fit_router_hybrid, fit_router_pertoken,
+                                 oracle_gain, signal_features, _inj_base, _inj_pertoken)
+    injector.eval()
+    pooled = os.environ.get("CAM_POOLED_SUBJ_KEY") == "1"
+    N = len(kept)
+    B = _n_disjoint_banks()
+    V = _init_banks(adapter, B)
+    for r in kept:
+        V = _persistent_write_one(adapter, V, r, pooled)
+    off, raw, conf, true_tid = _collect_router_data(base, adapter, injector, tok, V, kept)
+    off, raw = off.to(DEV), raw.to(DEV)
+    true_tid = true_tid.to(DEV)
+    conf = conf.to(DEV) if conf is not None else None
+    # deterministic stride split spanning relations (no rng): every 3rd fact held out.
+    # CAM_ROUTER_SPLIT in {0,1,2} shifts WHICH third is held out — a robustness check (result stable across splits?).
+    soff = int(os.environ.get("CAM_ROUTER_SPLIT", "0")) % 3
+    ho_mask = torch.tensor([(i % 3 == soff) for i in range(N)], device=DEV)
+    tr = (~ho_mask).nonzero(as_tuple=True)[0]
+    ho = ho_mask.nonzero(as_tuple=True)[0]
+    alpha_ref = float(os.environ.get("CAM_ROUTER_ALPHA", "1.5"))
+    topk = int(os.environ.get("CAM_MULTIGATE_TOPK", "16"))
+    kl_w = float(os.environ.get("CAM_ROUTER_KL", "0.3"))
+    steps = int(os.environ.get("CAM_ROUTER_STEPS", "400"))
+    o, r_, t = off[ho], raw[ho], true_tid[ho]
+    c = None if conf is None else conf[ho]
+    idx = torch.arange(len(ho), device=DEV)
+    p_off = torch.softmax(o, -1); lp_off = torch.log_softmax(o, -1)
+    pofft = p_off[idx, t]
+    inj_ho = _inj_base(r_, alpha_ref, topk)
+    # held-out ORACLE gain (best-possible per-fact dose) = the calibration reference + the achievable ceiling
+    g_star_ho, _ = oracle_gain(o, r_, t, alpha_ref, kl_weight=kl_w, topk=topk, device=str(DEV))
+
+    def _eval(router, name):
+        with torch.no_grad():
+            g_out = router.gain(signal_features(o, r_, c))
+            if g_out.dim() == 2:                                  # per-token (g_top, g_rest)
+                on = o + _inj_pertoken(r_, g_out, alpha_ref, topk)
+                g = g_out.mean(-1)                                # summarise for corr/mean-gain reporting
+            else:
+                g = g_out
+                on = o + g.unsqueeze(-1) * inj_ho
+            lp_on = torch.log_softmax(on, -1)
+            pont = lp_on.exp()[idx, t]
+            kl = (p_off * (lp_off - lp_on)).sum(-1)
+        dP_all = float((pont - pofft).mean())
+        corr = float(torch.corrcoef(torch.stack([g, 1.0 - pofft]))[0, 1]) if len(ho) > 2 else float("nan")
+        mae = float((g - g_star_ho).abs().mean())                # calibration: how close to the oracle dose
+        gcorr = float(torch.corrcoef(torch.stack([g, g_star_ho]))[0, 1]) if len(ho) > 2 else float("nan")
+        print(f"  [{name:7s}] ALL dP {dP_all:+.4f} | meanKL {float(kl.mean()):.3f} | mean_gain {float(g.mean()):.3f}"
+              f" | corr(gain,uncert) {corr:+.3f} | vs-oracle: MAE {mae:.3f} corr {gcorr:+.3f}", flush=True)
+        for lo, hi in [(0.0, 0.1), (0.1, 0.3), (0.3, 0.6), (0.6, 1.01)]:
+            m = (pofft >= lo) & (pofft < hi)
+            if int(m.sum()) == 0:
+                continue
+            dpb = float((pont[m] - pofft[m]).mean()); klb = float(kl[m].mean()); gb = float(g[m].mean())
+            print(f"      P(true)_off [{lo:.2f},{hi:.2f})  N={int(m.sum()):3d}  dP {dpb:+.4f}  KL {klb:6.3f}  gain {gb:.3f}",
+                  flush=True)
+        return {"name": name, "dP": dP_all, "gain_uncert_corr": corr, "oracle_mae": mae, "oracle_corr": gcorr}
+
+    print(f"\n[mag][persistent] === Track 5 (#99): LEARNED GATE ROUTER (iter) — {len(tr)} train / {len(ho)} HELD-OUT "
+          f"(alpha_ref={alpha_ref}, kl_w={kl_w}, k={topk}, N_SIG=8) ===", flush=True)
+    # oracle ceiling on held-out (best achievable with the same signals+injection)
+    on_star = o + g_star_ho.unsqueeze(-1) * inj_ho
+    dP_star = float((torch.softmax(on_star, -1)[idx, t] - pofft).mean())
+    print(f"  ORACLE ceiling (per-fact best gain): ALL dP {dP_star:+.4f}  mean_gain {float(g_star_ho.mean()):.3f}",
+          flush=True)
+    res = []
+    r_diff = fit_router(off[tr], raw[tr], true_tid[tr], None if conf is None else conf[tr],
+                        alpha_ref, kl_weight=kl_w, steps=steps, topk=topk, device=str(DEV))
+    res.append(_eval(r_diff, "diff"))
+    r_reg = fit_router_regress(off[tr], raw[tr], true_tid[tr], None if conf is None else conf[tr],
+                               alpha_ref, kl_weight=kl_w, steps=steps, topk=topk, device=str(DEV))
+    res.append(_eval(r_reg, "regress"))
+    beta = float(os.environ.get("CAM_ROUTER_BETA", "0.5"))
+    r_hyb = fit_router_hybrid(off[tr], raw[tr], true_tid[tr], None if conf is None else conf[tr],
+                              alpha_ref, kl_weight=kl_w, beta=beta, steps=steps, topk=topk, device=str(DEV))
+    res.append(_eval(r_hyb, "hybrid"))
+    r_pt = fit_router_pertoken(off[tr], raw[tr], true_tid[tr], None if conf is None else conf[tr],
+                               alpha_ref, kl_weight=kl_w, beta=beta, steps=steps, topk=topk, device=str(DEV))
+    res.append(_eval(r_pt, "pertoken"))
+    best = max(res, key=lambda d: d["dP"])
+    print(f"  BEST held-out: {best['name']} (dP {best['dP']:+.4f}, oracle dP {dP_star:+.4f} = "
+          f"{100*best['dP']/max(1e-6,dP_star):.0f}% of ceiling); lower vs-oracle MAE = better-calibrated dose", flush=True)
+    print("=" * 64, flush=True)
+    return {"results": res, "oracle_dP": dP_star}
+
+
+@torch.no_grad()
+def eval_persistent_rescue(base, adapter, injector, tok, kept, args):
+    """Track 5 (#99) — PROVENANCE vs CONFIDENCE (the separability-wall experiment). Bind TRUE into the store
+    for all facts, classify each by the BASE's own state, and compare two label-free gating policies on the
+    graded rescue ΔP(true):
+      - CONFIDENCE gate: fire where the base looks UNSURE (p_base(top) < tau). Blind to confident-WRONG.
+      - PRESENCE gate:   fire where a memory was WRITTEN for this subject (store conf > C0). Provenance.
+    Claim: on CONFIDENT-WRONG facts (base sure of a wrong token) the confidence gate is at chance (stays
+    inert — the base looks confident) while the presence gate rescues, because the write-event carries the
+    label the base-side signal cannot. Both gates fixed alpha = CAM_RESCUE_ALPHA; injection top-k masked."""
+    injector.eval()
+    pooled = os.environ.get("CAM_POOLED_SUBJ_KEY") == "1"
+    N = len(kept)
+    B = _n_disjoint_banks()
+    V = _init_banks(adapter, B)
+    for r in kept:
+        V = _persistent_write_one(adapter, V, r, pooled)
+    off, raw, conf, _tt = _collect_router_data(base, adapter, injector, tok, V, kept)
+    off, raw = off.to(DEV), raw.to(DEV)
+    conf = conf.to(DEV) if conf is not None else None
+    # TARGET = the object the store was WRITTEN to deliver (true if CAM_BIND_TRUE else the counterfactual).
+    # Binding the counterfactual turns base-confident-in-true facts into the CONFIDENT-WRONG class (base is
+    # confidently wrong w.r.t. the target the store holds) — the regime where base-confidence is blind.
+    bind_true = os.environ.get("CAM_BIND_TRUE") == "1"
+    target = torch.tensor([(r.true_tid if bind_true else r.new_tid) for r in kept], device=DEV)
+    idx = torch.arange(N, device=DEV)
+    p_off = torch.softmax(off, -1)
+    base_top = off.argmax(-1); p_top = p_off[idx, base_top]
+    pofft = p_off[idx, target]
+    is_right = (base_top == target)                              # base already agrees with the store's target
+    alpha = float(os.environ.get("CAM_RESCUE_ALPHA", "0.5"))
+    tau = float(os.environ.get("CAM_RESCUE_TAU", "0.5"))          # "confident" threshold on base top prob
+    c0 = float(os.environ.get("CAM_LOGIT_GATE_C0", "1"))
+    topk = int(os.environ.get("CAM_MULTIGATE_TOPK", "16"))
+    inj = alpha * raw
+    if 0 < topk < inj.shape[-1]:
+        keep = raw.topk(topk, -1).indices
+        m = torch.zeros_like(inj); m.scatter_(1, keep, 1.0); inj = inj * m
+    # label-free gates (per-fact scalar in {0,1})
+    g_conf = (p_top < tau).float()                               # base-side confidence gate: fire where UNSURE
+    g_pres = torch.ones(N, device=DEV) if conf is None else (conf.float() > c0).float()  # provenance: subject in store
+
+    def dP(gate):
+        on = off + gate.unsqueeze(-1) * inj
+        return (torch.softmax(on, -1)[idx, target] - pofft)   # [N] per-fact ΔP(true)
+
+    dP_conf, dP_pres = dP(g_conf), dP(g_pres)
+    classes = [("confident-RIGHT", is_right & (p_top >= tau)),
+               ("confident-WRONG", (~is_right) & (p_top >= tau)),
+               ("uncertain      ", p_top < tau)]
+    print(f"\n[mag][persistent] === Track 5 (#99): PROVENANCE vs CONFIDENCE rescue over {N} facts "
+          f"(alpha={alpha}, tau={tau}) ===", flush=True)
+    print("  ΔP(true) under a base-CONFIDENCE gate vs a store-PRESENCE gate, by the base's own state:", flush=True)
+    print("  class              N    fires:conf/pres    dP_confidence   dP_presence", flush=True)
+    for name, mask in classes:
+        n = int(mask.sum())
+        if n == 0:
+            print(f"  {name}  {n:4d}    (none)", flush=True); continue
+        fc = float(g_conf[mask].mean()); fp = float(g_pres[mask].mean())
+        dc = float(dP_conf[mask].mean()); dpr = float(dP_pres[mask].mean())
+        print(f"  {name}  {n:4d}      {fc:.2f} / {fp:.2f}       {dc:+.4f}        {dpr:+.4f}", flush=True)
+    cw = (~is_right) & (p_top >= tau)
+    if int(cw.sum()) > 0:
+        print(f"  >>> CONFIDENT-WRONG rescue: presence {float(dP_pres[cw].mean()):+.4f} vs confidence "
+              f"{float(dP_conf[cw].mean()):+.4f}  — provenance rescues where base-confidence is blind "
+              f"(the write-event IS the label)", flush=True)
+    else:
+        print("  >>> no confident-wrong facts in this set — relax the base-known filter to construct them "
+              "(CAM_RESCUE_TAU lower, or include base-wrong facts).", flush=True)
+    print("=" * 64, flush=True)
+    return {"cw_n": int(cw.sum()), "cw_dP_presence": float(dP_pres[cw].mean()) if int(cw.sum()) else 0.0,
+            "cw_dP_confidence": float(dP_conf[cw].mean()) if int(cw.sum()) else 0.0}
+
+
+@torch.no_grad()
+def eval_serve(base, adapter, injector, tok, kept, args):
+    """SERVING STATE (#99) — a warm in-process memory service that DECIDES WHAT TO REMEMBER. Completes the
+    read/write symmetry: the per-token router decides HOW MUCH to deliver (read side, done); a base-uncertainty
+    WRITE GATE decides WHAT is worth storing (write side, new) — remember iff the base can't already recall it
+    (`p_base(object) < τ`), so the store fills with the UNKNOWABLE, not the redundant.
+
+    Flow: (1) fit the router on a calibration store (schema-representative); (2) start an EMPTY serving store;
+    (3) stream facts — each offered as its TRUE association (base knows → SKIP) and a NOVEL association (base
+    can't know → REMEMBER), so the gate visibly discriminates on the same base-known set; (4) serve router-gated
+    generation from what was kept. Prints the transcript."""
+    injector.eval()
+    try:
+        from .gate_router import fit_router_pertoken, signal_features, _inj_pertoken
+    except ImportError:
+        from gate_router import fit_router_pertoken, signal_features, _inj_pertoken
+    pooled = os.environ.get("CAM_POOLED_SUBJ_KEY") == "1"
+    base_embed = base.get_input_embeddings()
+    lm = base.get_output_embeddings().weight
+    bos = [tok.bos_token_id] if tok.bos_token_id is not None else []
+    a_ref = float(os.environ.get("CAM_ROUTER_ALPHA", "1.5"))
+    topk = int(os.environ.get("CAM_MULTIGATE_TOPK", "16"))
+    tau = float(os.environ.get("CAM_REMEMBER_TAU", "0.5"))
+    gen_len = int(os.environ.get("CAM_GEN_LEN", "12"))
+    Bn = _n_disjoint_banks()
+
+    # (1) calibration store (all facts) + fit the per-token router on the schema
+    V_cal = _init_banks(adapter, Bn)
+    for r in kept:
+        V_cal = _persistent_write_one(adapter, V_cal, r, pooled)
+    off, raw, conf, _tt = _collect_router_data(base, adapter, injector, tok, V_cal, kept)
+    off, raw = off.to(DEV), raw.to(DEV); conf = conf.to(DEV) if conf is not None else None
+    tgt = torch.tensor([(r.new_ids or [r.new_tid])[0] for r in kept], device=DEV)   # serve the NOVEL (counterfactual) object
+    with torch.enable_grad():
+        router = fit_router_pertoken(off, raw, tgt, conf, a_ref, kl_weight=float(os.environ.get("CAM_ROUTER_KL", "0.1")),
+                                     beta=float(os.environ.get("CAM_ROUTER_BETA", "0.5")),
+                                     steps=int(os.environ.get("CAM_ROUTER_STEPS", "400")), topk=topk, device=str(DEV))
+    print(f"\n[mag][serve] === SERVING STATE (#99): warm memory service, base-uncertainty write-gate τ={tau} ===", flush=True)
+    print(f"[mag][serve] router calibrated on {len(kept)} schema facts; serving store starts EMPTY", flush=True)
+
+    def base_p(r, tid):
+        ids = torch.tensor([bos + tok(r.prompt_text, add_special_tokens=False).input_ids], device=DEV)
+        return float(torch.softmax(base(inputs_embeds=base_embed(ids)).logits[0, -1].float(), -1)[tid])
+
+    # (2)+(3) empty serving store; stream facts through the write gate
+    V = _init_banks(adapter, Bn)
+    stream = kept[:int(os.environ.get("CAM_SERVE_STREAM", "24"))]
+    remembered, n_skip_known = [], 0
+    for r in stream:
+        p_true = base_p(r, (r.true_ids or [r.true_tid])[0])              # offer the TRUE fact -> base knows it
+        n_skip_known += int(p_true >= tau)                              # gate SKIPS (redundant to store)
+        p_new = base_p(r, (r.new_ids or [r.new_tid])[0])               # offer a NOVEL fact -> base can't know it
+        if p_new < tau:
+            V = _persistent_write_one(adapter, V, r, pooled)           # gate REMEMBERS (the unknowable)
+            remembered.append((r, p_true, p_new))
+    print(f"[mag][serve] streamed {len(stream)} facts | wrote-nothing for the {n_skip_known} whose TRUE fact the "
+          f"base already knows | REMEMBERED {len(remembered)} NOVEL facts the base cannot recall", flush=True)
+
+    def serve_gen(r):                                                   # router-gated seed-once decode
+        tids = torch.tensor([r.subject_tids], dtype=torch.long, device=DEV)
+        if getattr(adapter, "_gte_keys", None) is not None:
+            q = adapter._gte_key(tids).unsqueeze(1)
+        else:
+            q = adapter._e(tids)
+            if os.environ.get("CAM_LEARNED_KEY_POOL") == "1":
+                q = adapter._pool_subject(q, keepdim=True)
+        bank = adapter.persistent_bank(V[_subject_bank(r.subject_tids, len(V))], q)
+        conf1 = getattr(adapter, "_last_conf", None)
+        injector.set_bank(None)
+        raw_full = (adapter.out_proj(bank).mean(1).to(lm.device, lm.dtype) @ lm.t()).float()
+        store_tok = int(raw_full.argmax(-1).item())
+        cur = torch.tensor([bos + tok(r.prompt_text, add_special_tokens=False).input_ids], device=DEV)
+        out, placed = [], False
+        for _t in range(gen_len):
+            off_t = base(inputs_embeds=base_embed(cur)).logits[:, -1].float()
+            if not placed:
+                g2 = router.gain(signal_features(off_t, raw_full, conf1))
+                off_t = off_t + _inj_pertoken(raw_full, g2, a_ref, topk).to(off_t.device)
+            nxt = int(off_t.argmax(-1).item())
+            if nxt == store_tok:
+                placed = True
+            out.append(nxt); cur = torch.cat([cur, torch.tensor([[nxt]], device=DEV)], dim=1)
+        return tok.decode(out).replace("\n", " ").strip()
+
+    hit = 0
+    show = remembered[:8]
+    print("[mag][serve] --- ask the served model (memory should supply the REMEMBERED novel answer) ---", flush=True)
+    for r, p_true, p_new in show:
+        g = serve_gen(r); ok = r.new_str.strip().lower() in g.lower(); hit += int(ok)
+        print(f"  ask {r.prompt_text!r}", flush=True)
+        print(f"      base knew TRUE '{r.true_str}' (p={p_true:.2f}) -> not stored; remembered NOVEL "
+              f"'{r.new_str}' (base p={p_new:.2f})", flush=True)
+        print(f"      served: {g!r}   [novel answer present: {ok}]", flush=True)
+    n = max(1, len(show))
+    print(f"[mag][serve] delivery on remembered: {hit}/{len(show)} ({hit/n:.2f}) | write-gate: stored the "
+          f"base-unknowable, skipped the {n_skip_known}/{len(stream)} the base already holds", flush=True)
+    print("=" * 64, flush=True)
+    return {"remembered": len(remembered), "skipped_known": n_skip_known, "delivery": hit / n}
+
+
+@torch.no_grad()
 def eval_persistent_generate(base, adapter, injector, tok, kept, args):
     """GENERATION-COHERENCE check (the reality test): does the edited memory produce FLUENT text carrying
     the edit, or only flip the next-token argmax? All prior metrics are single-token. Here we write all
@@ -1781,7 +2281,15 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
     alpha = float(os.environ.get("CAM_LOGIT_INJECT", "0"))
     c0env, hard = os.environ.get("CAM_LOGIT_GATE_C0"), os.environ.get("CAM_LOGIT_GATE_HARD") == "1"
     gen_len = int(os.environ.get("CAM_GEN_LEN", "16"))
-    sample = kept[:int(os.environ.get("CAM_GEN_SAMPLE", "16"))]
+    ns = int(os.environ.get("CAM_GEN_SAMPLE", "16"))
+    if os.environ.get("CAM_GEN_MULTITOK") == "1":              # prefer facts whose OBJECT is multi-token (the
+        bt = os.environ.get("CAM_BIND_TRUE") == "1"            # latent-object test); fall back to all if too few
+        mt = [r for r in kept if len(getattr(r, "true_ids" if bt else "new_ids", [])) > 1]
+        print(f"[mag][persistent] gen sample: {len(mt)} multi-token-object facts available "
+              f"(of {len(kept)}); using {min(ns, len(mt)) if mt else ns}", flush=True)
+        sample = (mt or kept)[:ns]
+    else:
+        sample = kept[:ns]
 
     def _banks_seq(r):
         """Per-answer-position bank list for edit r. Multi-token -> one bank per object position
@@ -1987,10 +2495,54 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
             hits_ptr += int(int(store_t.read_ids(Vid, key_t)[0, 0].item()) == int(gold[t]))
         return (hits == L), (hits / max(1, L)), (hits_cos / max(1, L)), (hits_dec / max(1, L)), (hits_ptr / max(1, L))
 
-    k_ans = int(os.environ.get("CAM_GEN_INJECT_STEPS", "2"))                  # single-token answer-span width
+    # ROUTER-GATED generation (#99): fit the per-token gate router, then at EACH decode step compute its gain
+    # from the CURRENT base distribution and inject the (latent) object push logit-only. The router subsumes the
+    # manual answer-span cutoff — it fires where headroom is high (the answer slot) and backs off during fluent
+    # continuation, handing the multi-token tail to base fluency.
+    router = None
+    if os.environ.get("CAM_GEN_ROUTER") == "1":
+        try:
+            from .gate_router import fit_router_pertoken, signal_features, _inj_pertoken
+        except ImportError:
+            from gate_router import fit_router_pertoken, signal_features, _inj_pertoken
+        a_ref = float(os.environ.get("CAM_ROUTER_ALPHA", "1.5"))
+        r_topk = int(os.environ.get("CAM_MULTIGATE_TOPK", "16"))
+        bt = os.environ.get("CAM_BIND_TRUE") == "1"
+        r_off, r_raw, r_conf, _tt = _collect_router_data(base, adapter, injector, tok, V, kept)
+        r_off, r_raw = r_off.to(DEV), r_raw.to(DEV)
+        r_conf = r_conf.to(DEV) if r_conf is not None else None
+        r_tgt = torch.tensor([((r.true_ids if bt else r.new_ids) or [r.true_tid if bt else r.new_tid])[0] for r in kept], device=DEV)
+        with torch.enable_grad():                                        # this eval is @torch.no_grad(); the router
+            router = fit_router_pertoken(r_off, r_raw, r_tgt, r_conf, a_ref,  # trains by backprop, so re-enable grad
+                                         kl_weight=float(os.environ.get("CAM_ROUTER_KL", "0.1")),
+                                         beta=float(os.environ.get("CAM_ROUTER_BETA", "0.5")),
+                                         steps=int(os.environ.get("CAM_ROUTER_STEPS", "400")), topk=r_topk, device=str(DEV))
+        print(f"[mag][persistent] gen-router fitted (per-token, alpha_ref={a_ref}, k={r_topk})", flush=True)
+
+        def _gen_router(prompt_ids, bank, conf):
+            injector.set_bank(None)                                            # router path is logit-only (tap off)
+            raw_full = (adapter.out_proj(bank).mean(1).to(lm.device, lm.dtype) @ lm.t()).float()  # [1,vocab] store push
+            store_tok = int(raw_full.argmax(-1).item())                        # the object's dominant (first) token
+            cur = torch.tensor([prompt_ids], dtype=torch.long, device=DEV)
+            out, gains, placed = [], [], False
+            for _t in range(gen_len):
+                off_t = base(inputs_embeds=base_embed(cur)).logits[:, -1].float()   # [1,vocab] pure base at this step
+                if not placed:                                                     # SEED-AND-FLUENCY: inject to place
+                    g2 = router.gain(signal_features(off_t, raw_full, conf))        # the object, then hand off — the
+                    logits = off_t + _inj_pertoken(raw_full, g2, a_ref, r_topk).to(off_t.device)  # base fluency carries
+                    gains.append(float(g2.mean()))                                 # the (multi-token) tail. Stops the
+                else:                                                              # headroom-driven repetition attractor.
+                    logits = off_t
+                nxt = int(logits.argmax(-1).item())
+                if nxt == store_tok:
+                    placed = True                                                  # object delivered -> stop injecting
+                out.append(nxt); cur = torch.cat([cur, torch.tensor([[nxt]], device=DEV)], dim=1)
+            return tok.decode(out).replace("\n", " ").strip(), (sum(gains) / max(1, len(gains)))
+
+    k_ans = int(os.environ.get("CAM_GEN_INJECT_STEPS", "2"))                  # answer-span injection width
     print(f"\n[mag][persistent] === GENERATION COHERENCE ({len(sample)} edits, {gen_len} tok, α={alpha}, "
-          f"answer-span=object-length, single-tok k_ans={k_ans}) ===", flush=True)
-    new_const = new_ans = true_off = tf_hit = store_hit = iso_hit = ptr_hit = ptr_gen_hit = 0
+          f"answer-inject-steps={k_ans}, router={'on' if router is not None else 'off'}) ===", flush=True)
+    new_const = new_ans = true_off = tf_hit = store_hit = iso_hit = ptr_hit = ptr_gen_hit = new_router = 0
     iso_pt = iso_pt_cos = iso_pt_dec = iso_pt_ptr = ptr_pt = 0.0
     for r in sample:
         pid = bos + tok(r.prompt_text, add_special_tokens=False).input_ids
@@ -2016,10 +2568,15 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
         print(f"     ON answer  : {g_ans!r}   [new: {nl in g_ans.lower()}]  [TF-deliver: {tf_ok}]", flush=True)
         print(f"     STORE-force: {g_store!r}   [span-exact: {store_ok}]", flush=True)
         print(f"     PTR-gen    : {g_ptr!r}   [span-exact: {ptr_gen_ok}]  [new: {nl in g_ptr.lower()}]", flush=True)
+        if router is not None:                                               # #99 router-gated generation
+            g_rt, mg = _gen_router(pid, banks[0] if banks else None, conf)
+            new_router += int(nl in g_rt.lower())
+            print(f"     ON router  : {g_rt!r}   [new: {nl in g_rt.lower()}, mean_gain {mg:.3f}]", flush=True)
     n = max(1, len(sample))
     print(f"  --> NEW object present — constant-inject: {new_const}/{len(sample)} ({new_const/n:.2f}) | "
-          f"answer-span-inject: {new_ans}/{len(sample)} ({new_ans/n:.2f}); base TRUE-recall {true_off}/{len(sample)}",
-          flush=True)
+          f"answer-span-inject: {new_ans}/{len(sample)} ({new_ans/n:.2f})"
+          + (f" | ROUTER-gated: {new_router}/{len(sample)} ({new_router/n:.2f})" if router is not None else "")
+          + f"; base TRUE-recall {true_off}/{len(sample)}", flush=True)
     print(f"  --> #100 TEACHER-FORCED delivery (exposure-bias isolation): {tf_hit}/{len(sample)} "
           f"({tf_hit/n:.2f})  [TF>>free-run => exposure bias; TF~0 => can't override prior]", flush=True)
     print(f"  --> #100 STORE-FORCED delivery (emit value_t from memory): {store_hit}/{len(sample)} "
@@ -2506,6 +3063,31 @@ def main():
                          "(tap + hard-conf-gated logit injection) so a human can eyeball fluency + whether "
                          "the edit takes in free generation, not just next-token argmax. Implies "
                          "--persistent-sweep.")
+    ap.add_argument("--persistent-graded", action="store_true", dest="persistent_graded",
+                    help="SOFT-STEERING / lean (Track 5, #99): after writing all edits, measure the GRADED "
+                         "effect on the TRUE object (P(true)/rank/logprob/KL, memory OFF vs ON) instead of "
+                         "the argmax flip — the lean that flip-scoring is blind to. Bucketed by the base's "
+                         "PRE-EDIT P(true) (§3.12: biggest lift where the base is UNCERTAIN). Pair with "
+                         "CAM_BIND_TRUE=1 (reinforce the true object, not overwrite) and a LOW "
+                         "CAM_LOGIT_INJECT on CAM_LOGIT_GATE_HARD=1. Implies --persistent-sweep.")
+    ap.add_argument("--persistent-router", action="store_true", dest="persistent_router",
+                    help="LEARNED GATE ROUTER (Track 5, #99): train ONE small MLP over label-free signals "
+                         "(retrieval conf, base entropy, headroom, store peak, agreement margin, base conf) -> "
+                         "per-fact injection gain, outcome-supervised (backprop through the logit injection) on "
+                         "a TRAIN split, evaluated on a HELD-OUT split. Tests whether a learned gate generalises "
+                         "to unseen facts and recovers the self-dosing. Implies --persistent-sweep. Knobs: "
+                         "CAM_ROUTER_ALPHA, CAM_ROUTER_KL, CAM_ROUTER_STEPS, CAM_MULTIGATE_TOPK.")
+    ap.add_argument("--persistent-rescue", action="store_true", dest="persistent_rescue",
+                    help="PROVENANCE vs CONFIDENCE (Track 5, #99): classify facts by the base's state and "
+                         "compare a base-confidence gate vs a store-presence gate on ΔP(true) — does provenance "
+                         "rescue CONFIDENT-WRONG facts where base-confidence is blind? Implies --persistent-sweep. "
+                         "Knobs: CAM_RESCUE_ALPHA, CAM_RESCUE_TAU.")
+    ap.add_argument("--serve", action="store_true", dest="serve",
+                    help="SERVING STATE (#99): warm in-process memory service. Fit the router, start an EMPTY "
+                         "store, stream facts through a base-uncertainty WRITE GATE (remember iff the base can't "
+                         "recall it, p_base<τ), then serve router-gated seed-once generation from what was kept. "
+                         "Read/write symmetry: router decides how-much-to-deliver, gate decides what-to-remember. "
+                         "Implies --persistent-sweep. Knobs: CAM_REMEMBER_TAU, CAM_SERVE_STREAM.")
     ap.add_argument("--query-rel", type=str, default="", dest="query_rel",
                     help="ADVERSARIAL paraphrase probe (issue #10, natural phrasing only): bind and "
                          "train exactly as normal (bindings + training queries use ' lives in'), then "
@@ -2741,7 +3323,9 @@ def main():
 
     # ---- stage 2: MAG delivery ----
     if (getattr(args, "persistent_overwrite", False) or getattr(args, "persistent_solo", False)
-            or getattr(args, "persistent_locality", False) or getattr(args, "persistent_generate", False)):
+            or getattr(args, "persistent_locality", False) or getattr(args, "persistent_generate", False)
+            or getattr(args, "persistent_graded", False) or getattr(args, "persistent_router", False)
+            or getattr(args, "persistent_rescue", False) or getattr(args, "serve", False)):
         args.persistent_sweep = True         # the online-update / solo / locality tests run after the sweep
     if getattr(args, "persistent_sweep", False):
         args.persistent_eval = True          # the sweep is a superset of the persistent eval
@@ -2783,6 +3367,18 @@ def main():
                 if getattr(args, "persistent_generate", False):
                     with StageCost(f"persistent generation-coherence L={tag}"):
                         eval_persistent_generate(base, adapter, injector, tok, cf_records, args)
+                if getattr(args, "persistent_graded", False):
+                    with StageCost(f"persistent soft-steering graded lean L={tag}"):
+                        eval_persistent_graded(base, adapter, injector, tok, cf_records, args)
+                if getattr(args, "persistent_router", False):
+                    with StageCost(f"persistent learned gate-router L={tag}"):
+                        eval_persistent_router(base, adapter, injector, tok, cf_records, args)
+                if getattr(args, "persistent_rescue", False):
+                    with StageCost(f"persistent provenance-vs-confidence rescue L={tag}"):
+                        eval_persistent_rescue(base, adapter, injector, tok, cf_records, args)
+                if getattr(args, "serve", False):
+                    with StageCost(f"serving state (write-gate + router delivery) L={tag}"):
+                        eval_serve(base, adapter, injector, tok, cf_records, args)
             injector.detach()
             continue
         with StageCost(f"delivery eval L={tag}"):

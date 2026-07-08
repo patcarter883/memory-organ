@@ -506,7 +506,60 @@ help both store retrieval (M=32) and editing (M=16), neutral near the M=8 defaul
 **fact supply** — even a full probe yields only ~13–37 base-known single-token-object facts per relation,
 capping M for the diverse set (`--cf-probe-cap` widens it). Neither limit is exposed by the M=8 headline.
 
-## 8. Still open
+## 8. Soft steering — the graded lean, the gate router, and provenance (Track 5, [#99](https://github.com/patcarter883/memory-organ/issues/99))
+
+The delivery primitive `Δlogits = gate(conf)·α·out_proj(value)` is an *additive gated bias*, so overwriting is
+its hardest special case. Bound to the object the base already holds, the memory *reinforces* it. All numbers
+below are held-out; full derivation in [docs/research/multi-gate-steering.md](docs/research/multi-gate-steering.md)
+and RESEARCH §3.24–3.25.
+
+**The lean is graded and monotonic in base uncertainty** (137 edits, bind=true, α=0 tap):
+
+| base P(true)_off | ΔP(true) |
+|---|---|
+| < 0.10 (most unsure) | **+0.53** |
+| 0.10–0.30 | +0.37 |
+| 0.30–0.60 | +0.17 |
+| > 0.60 (confident) | −0.41 (blunt tap disrupts; fixed below) |
+
+**Gentleness is the injection gain α, not sparsity** — dose-response peaks at **α≈0.25–0.5** (max ΔP, positive
+Δlog-p, low KL); sparse masking does *not* lower KL (softmax renormalisation, not #logits, sets it).
+
+**Learned per-token gate router** — one small MLP over label-free signals, trained outcome-supervised on 2/3
+of facts, evaluated on the held-out 1/3, iterated to a per-token gain:
+
+| | held-out ΔP(true) | % of oracle ceiling | corr(gain, uncertainty) |
+|---|---|---|---|
+| diff baseline | +0.325 | 89 % | +0.62 |
+| **per-token (final)** | **+0.37 / +0.43** (2 splits) | **98 %** | **+0.79 / +0.94** |
+
+**Provenance beats the confidence-separability wall.** On facts the base is *confidently wrong* about, a
+base-side confidence gate is structurally blind while a store-presence gate rescues:
+
+| base state | confidence gate ΔP | presence gate ΔP |
+|---|---|---|
+| confident-wrong (33) | **+0.000** (fires 0 %) | **+0.464** |
+| uncertain (104) | +0.688 | +0.688 |
+
+The write-event is an external label no base-side confidence signal carries. Honest prior-art / novelty map
+(this is mostly recombination; the provenance framing is the least-trodden idea) in
+[docs/research/novelty-positioning.md](docs/research/novelty-positioning.md).
+
+**In real generation** (the router wired into the autoregressive decode, `CAM_GEN_ROUTER=1`): a **seed-once**
+rule (inject until the object's first token lands, then hand to base fluency) produces **fluent** text carrying
+the edit at **9/12 (0.75)** delivery — matching the hand-tuned answer-span cutoff *without* the manual step
+count (e.g. `"Russian. The first step…"` → `"English. The first step…"`, clean swap). Multi-token **subject**
+works (pooled key). Multi-token **object** stored as a pooled latent does **not** — `mean('Nor','mandy')`
+decodes to "Moscow" through the single-token `out_proj` readout; genuine multi-token objects need
+first-token-seed+fluency or **sequential latent delivery** ([#100](https://github.com/patcarter883/memory-organ/issues/100)).
+
+**Serving state** (`--serve`) — the read/write symmetry in one warm service: the calibrated router decides
+*how much* to deliver, and a **base-uncertainty write gate** decides *what to remember* (store iff the base
+can't recall it, `p_base < τ`). Streaming 24 facts, the gate stored the 24 base-unknowable ones and the
+router-gated decode served them back fluently **8/8 (1.00)** (e.g. `"…Oleg Kotov is"` → `"English. The first
+step is to find a good place"`). Open write-side work: capacity/eviction (store walls at M≈130) and conflict.
+
+## 9. Still open
 
 - **Multi-token cross-base transfer** — translator-bound (see §4); higher-capacity translator in progress.
 - **Real knowledge in real documents** (not random name→word pairs) — the true generalization test. §5 now

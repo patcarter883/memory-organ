@@ -501,6 +501,175 @@ means, with the structural wins reproducing exactly in every run):
 no residual self-addressing failure to retrain away; below-gate = 0 in all 3 reps). Shipped:
 `CAM_WRITE_AT_READ` (K1), `CAM_WRITE_REDUNDANT` (K2), `CAM_READ_SUB_TOPK` (K3, unneeded).
 
+## 3.29 SERVING STATE — the read/write symmetry made whole: what-to-remember + how-much-to-deliver (2026-07-06)
+
+A warm in-process memory service (`eval_serve`, `--serve`) that closes the loop: the per-token router decides
+HOW MUCH to deliver (read side), and a **base-uncertainty WRITE GATE** decides WHAT is worth remembering
+(write side) — store iff the base can't already recall it (`p_base(object) < τ`), so the store fills with the
+unknowable, not the redundant. Flow: fit the router on a calibration store → start an EMPTY serving store →
+stream facts through the gate (each offered as its TRUE association, base knows → SKIP, and a NOVEL one, base
+can't know → REMEMBER) → serve router-gated seed-once generation from what was kept.
+
+Result (24 facts, τ=0.5): the gate stored 24 NOVEL facts (base `p≈0.00–0.02`) and the router-gated decode
+delivered them **FLUENTLY 8/8 (1.00)** — e.g. `"The mother tongue of Oleg Kotov is"` → `"English. The first
+step is to find a good place"`; `"…Achille Varzi is"` → `"French, and he was born in Paris. He was a"`. The
+read side (calibrated router) and the write side (base-uncertainty gate) now run in one service.
+
+Honest note: the base-known editing filter yields facts the base holds only WEAKLY (P(true) 0.24–0.48), so an
+absolute-prob τ=0.5 under-demonstrates the SKIP side (1/24 skipped) — a rank-based or lower τ separates cleaner
+(the novel-vs-known gap 0.00 vs 0.28 is large regardless). Open write-side work carried forward: capacity /
+eviction (the store walls at M≈130, #17) and conflict handling. `CAM_REMEMBER_TAU`, `CAM_SERVE_STREAM`.
+
+## 3.27 PROVENANCE vs CONFIDENCE — store-presence beats the separability wall (2026-07-06)
+
+The money experiment for the one novel framing (Claim 4). Bind the store's target, classify facts by the
+BASE's own state, compare a base-CONFIDENCE gate (fire where `p_base(top)<τ`) vs a store-PRESENCE gate (fire
+where a memory was written). Confident-wrong facts don't exist in base-known data (a confident base is
+confident in TRUE), so bind the COUNTERFACTUAL → the 33 base-confident facts become CONFIDENT-WRONG w.r.t.
+the target. Result: on those 33 the confidence gate fires 0 % and delivers **ΔP = +0.000** (structurally
+blind — confident-wrong is indistinguishable from confident-right by any base-side signal), while the
+presence gate rescues **ΔP = +0.464**; on the 104 uncertain facts both fire (+0.688). The deliberate
+write-event is the external label no base-side confidence signal carries. `eval_persistent_rescue`,
+`--persistent-rescue`. Full novelty/prior-art map: [novelty-positioning.md](novelty-positioning.md) — the
+system is mostly recombination; this provenance framing is the least-trodden idea.
+
+## 3.28 REAL GENERATION — router-gated seed-once works; pooled-latent OBJECT hits the readout wall (2026-07-06)
+
+Wired the per-token router into the actual autoregressive DECODE (`CAM_GEN_ROUTER=1`): at each step the router
+gain is computed from the CURRENT base distribution and the object push is injected logit-only (tap off). The
+**SEED-ONCE** rule — inject until the object's first token lands, then hand off to base fluency — kills the
+headroom-driven repetition attractor (the naive per-step inject degenerates to "Dutch Dutch Dutch…").
+
+- **WIN**: router-gated + seed-once produces FLUENT text carrying the edit, **9/12 (0.75)** delivery, matching
+  the hand-tuned answer-span cutoff *without* its manual step count — the router decides per step. E.g.
+  `"Russian. The first step is to find a good place to live."` → `"English. The first step…"` (clean swap,
+  base continues). Multi-token SUBJECT works (pooled key addresses it).
+- **WALL**: multi-token OBJECT stored as a pooled latent (`mean(object_token_embeddings)`, `CAM_OBJ_LATENT=1`)
+  FAILS — `mean('Nor','mandy')` for "Normandy" decoded to **"Moscow"** through the single-token-trained
+  `out_proj → lm_head` readout; it doesn't even seed the first token. **The pooled-latent shortcut is a dead
+  end.** Multi-token objects need either (a) first-token-seed + base fluency (base-known phrases; no latent),
+  or (b) SEQUENTIAL latent delivery — per-step value emission via the perpos/AR-decoder readout
+  ([#100](https://github.com/patcarter883/memory-organ/issues/100)), now the *required* path, not parked.
+- Aside: the base-known editing filter yields ~1 multi-token-object fact of 137 — testing multi-token objects
+  needs facts bound OUTSIDE that filter (ties to the write-policy / base-uncertainty gate).
+`eval_persistent_generate` (CAM_GEN_ROUTER / CAM_OBJ_LATENT / CAM_GEN_MULTITOK), `tools/gen_latent.sh`.
+
+## 3.26 LEARNED GATE ROUTER — one MLP replaces the hand gates, generalises, rediscovers the dose (2026-07-06)
+
+Collapse the hand-composed multigate into ONE small MLP over label-free signals (retrieval conf, base
+entropy, headroom, store peak, agreement margin, base conf, + base decisiveness, store diffuseness = 8),
+→ per-fact gain, trained OUTCOME-supervised by backprop through the logit injection (frozen base logits
+detached → no base backward), fit on 2/3 of facts, evaluated on the held-out 1/3. Iterated
+(`cam/gate_router.py`, `--persistent-router`, `tools/router*.sh`):
+
+- **diff baseline** generalises: held-out ΔP +0.325 (89 % of the per-fact ORACLE ceiling), corr(gain,
+  uncertainty) +0.62 — it rediscovered "push harder where the base is unsure" from label-free signals.
+- **richer signals** → corr +0.76–0.83.
+- **hybrid** (diff obj + β·oracle-dose MSE) beats both pure variants: diff degenerates at aggressive kl_w
+  (dose-corr → −0.15, over-doses), regress alone is unstable (collapsed to −0.02 in a run); hybrid gets
+  diff's ΔP + regress's calibration. Cross-split (3 held-out thirds): 93–97 % of ceiling, stable dosing.
+- **per-token** (2-DOF: gain the target token vs the rest of the support) WINS: best ΔP both splits
+  (98 % of ceiling), highest dose-corr ever (**+0.94**), at the LOWEST mean_gain — same lean, less
+  collateral, because it pushes the true token precisely instead of scaling the whole support.
+The scalar router is near-maxed against its own ceiling; raising it further needs per-token (done) or a
+learned per-token oracle.
+
+## 3.25 MULTIGATE — composed gates + the dose-response: gentleness is α, not sparsity (2026-07-06)
+
+Track 5 (#99), building on §3.24. Question: can we COMPOSE gates so the lean is local, non-disruptive,
+OOD-safe, AND gentle at once? Built a single injection-site multigate, all label-free signals:
+`δ = g_storeconf · g_headroom(1−p_base(target)) · g_scope(store-decode peak) · sparse_topk · α·out_proj(value)`
+(`CAM_MULTIGATE=1`). Store-conf = locality (§3.15); headroom = self-dosing strength (kills the §3.24
+confident-fact harm); scope = §3.23 corruption guard (inert on in-distribution here, as it should be);
+sparse top-k = "where". Gate arc first established the right forms:
+
+- **Hard argmax agreement gate FAILS** (killed the lean, +0.353→−0.066): base already argmaxes true at LOW
+  prob, so "top==target" misreads unsure-but-top as satisfied. Fix = **SOFT margin** `1−p_base(target)`
+  (push ∝ headroom), exactly as CD/CAD predict (contrast hurts where base already right).
+- **Surgical logit path (tap off) removes the harm**: confident bucket −0.41 (blunt tap) → +0.014 (logit-
+  only) by aiming the delta along the target direction, not the tap's broad perturbation.
+
+**FALSIFIED: sparse support does NOT reduce collateral KL.** Full multigate ≈ ungated on KL (~15/15/9/4 at
+α=1). `KL(off‖on)` is set by the softmax CONCENTRATION MAGNITUDE (α), not the number of perturbed logits —
+masking to 16 tokens still lets the target grab the mass after renormalisation. Sparsity governs
+where/locality/interpretability, NOT gentleness.
+
+**The gentleness knob is α — full multigate dose-response (137 edits, bind=TRUE):**
+
+| α | ALL ΔP(true) | ALL d_logp | low-bucket ΔP (P<0.1) | confident-bucket ΔP (P>0.6) | confident KL |
+|---|---|---|---|---|---|
+| 0.1  | +0.232 | +0.540 | +0.350 | +0.086 | 0.05 |
+| 0.25 | **+0.414** | **+0.740** | +0.773 | +0.115 | 0.30 |
+| 0.5  | +0.386 | +0.203 | +0.886 | +0.066 | 0.79 |
+| 1    | +0.341 | −2.820 | +0.866 | −0.035 | 3.97 |
+| 2    | +0.264 | −9.074 | +0.870 | −0.180 | 10.5 |
+| 4    | +0.182 | −20.196 | +0.431 | −0.405 | 30.0 |
+
+Clean sweet spot at **α≈0.25–0.5**: it MAXIMISES the mean lean (+0.41), keeps d_logp POSITIVE (no tail
+catastrophes), holds low collateral KL (0.3–0.8), preserves strong rescue in the uncertain buckets
+(+0.77–0.89), and stays near-inert on confident facts. Below it (α=0.1) the push UNDER-delivers (rescue
+falls to +0.35, KL ~0.05 — too gentle); above it (α≥1) the "override" region buries true on a subset
+(d_logp → −20) and drags the mean down. Matches the feature-steering
+"sweet spot" (Anthropic 2024). **Net: gates shape WHERE/WHEN/WHETHER/HOW-MUCH-per-fact; α sets magnitude,
+and gentle magnitude dominates.** The gentle lean is real, and it is BETTER than the hard override, not a
+weaker version of it.
+
+**Ceiling & wall (2024–26 lit, full map in `docs/research/multi-gate-steering.md`):** the concept pushes all
+the way to a single calibrated, conformal, value-function-driven, closed-loop, feature-interpretable
+memory-router — but it can NEVER separate confidently-wrong from confidently-right without an external
+label-bearing signal (`I(signal;correctness)≈0` there; high-certainty hallucinations are signature-identical
+to correct ones). The store's own PRESENCE (Gate A) IS that external signal — it was written because the fact
+needed changing — which is why store-conf gating is load-bearing in a way no base-side signal can be.
+Shipped `CAM_MULTIGATE`/`_TOPK`/`_SCOPE_MIN`, `CAM_MARGIN_GATE`, `CAM_SOFT_STEER`, the multigate injection +
+composite-gain diagnostic, `tools/multigate*.sh`.
+
+## 3.24 SOFT-STEERING — the mechanism does a graded LEAN, not only a hard replace (2026-07-06)
+
+Track 5 (#99). Every prior editing result is counterfactual OVERWRITE scored by argmax FLIP. But the
+delivery primitive — `logit_delta = gate(conf)·α·out_proj(retrieved_value)` — is an *additive, gated,
+gain-scaled* bias on the output distribution; overwrite is its hardest special case. Two changes, neither
+touching the mechanism, expose the softer mode: (1) `CAM_BIND_TRUE=1` binds the store to each fact's TRUE
+object instead of the counterfactual (reinforce what the base holds, don't overwrite it); (2) a new
+`--persistent-graded` eval (`_persistent_graded`) forwards the base OFF vs ON and logs the GRADED effect on
+the true object — ΔP(true), rank, Δlog-prob, KL — bucketed by the base's pre-edit P(true). Same 137-edit /
+6-relation / K1 config as §3.15, α=0 (pure trained-tap lean, no logit injection).
+
+**Counterfactual bind (metric sanity): ΔP(true) NEGATIVE in every bucket** (−0.04 → −0.58 as base
+confidence rises), ALL = **−0.289**. The graded metric reads direction correctly — the memory pushes the
+distribution AWAY from the true object it was told to overwrite.
+
+**True bind (the lean): ΔP(true) is POSITIVE and MONOTONIC in base uncertainty** — a textbook §3.12 result:
+
+| base P(true)_off | N | ΔP(true) | Δlog-p | meanKL |
+|---|---|---|---|---|
+| [0.00, 0.10)  most uncertain | 4  | **+0.526** | +1.94 | 3.0 |
+| [0.10, 0.30) | 57 | **+0.372** | +0.11 | 3.6 |
+| [0.30, 0.60) | 55 | **+0.174** | −0.77 | 3.1 |
+| [0.60, 1.01)  confident | 21 | **−0.407** | −2.62 | 3.3 |
+| ALL | 137 | **+0.177** | −0.61 | — |
+
+Independently corroborated by the retention sweep: prior-recall (argmax==true) = **0.63–1.0** under true-bind
+vs 0.14 under counterfactual-bind. So binding the true object leans the frozen base toward it — a soft push,
+not a replace — **and the push is largest exactly where the base is unsure and REVERSES where it is already
+confident** (the tap only disrupts a fact the base already nails). This is the §3.12 wall seen from the
+other side: soft steering has room precisely in the base's uncertainty.
+
+**Two honest reads, both pointing at the next lever:**
+- **`%rank_up = 0.00` is the eval set, not a null.** These are *base-known* facts (the probe keeps only the
+  ~2936 the base already answers), so the true object is usually already argmax OFF — rank cannot improve
+  below 0. The lean shows in ΔP(true); to see rank *rescue* the eval must include facts the base gets WRONG
+  (low-P(true) / zsRE). Next increment.
+- **At α=0 the residual tap is BLUNT (meanKL 3–5 nats).** It nets +0.177 on P(true) but scrambles the rest
+  of the distribution (Δlog-p can go negative; confident facts drop −0.41). A *gentle* lean wants the
+  surgical low-α logit path (adds only along the object direction) and/or a **base-uncertainty gate** (fire
+  the lean only where P(true) is low), not the trained hard-delivery tap. That gate is the concrete Track-5
+  follow-up: it would turn "helps-where-unsure / hurts-where-sure" into "helps-where-unsure / inert-elsewhere."
+
+**Net: memory-organ is NOT bound to counterfactual injection.** The same store + tap, bound to the true
+object, produces a measurable graded lean toward facts the base already (weakly) holds, concentrated in the
+uncertain regime — the "push, don't replace" mode. Shipped `CAM_BIND_TRUE`, `--persistent-graded`,
+`_persistent_graded`, `tools/soft_steer.sh`.
+
 ## 3.23 NOVEL-RELATION held-out — editing FAILS for relation shapes the bind never saw (2026-07-05)
 
 The last generalisation axis, and the decisive one for the private/codebase-facts niche: held-out SUBJECT
