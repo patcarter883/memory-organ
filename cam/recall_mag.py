@@ -1718,8 +1718,54 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
     # (frequent) token rows — so an approximate position-t value lands on a frequent NEIGHBOUR ("ish"->"ity").
     # Dividing by the row norm turns it into a true cosine nearest-neighbour, removing that bias. [vocab].
     enorm = adapter.unembed.norm(dim=0).clamp_min(1e-6)
+    learned_pool0 = os.environ.get("CAM_LEARNED_KEY_POOL") == "1"
+    gte0 = getattr(adapter, "_gte_keys", None) is not None
+
+    def _subj_key(r):
+        """The subject key/query EXACTLY as _persistent_write_seq derives it (pooled/gte/last-token)."""
+        tids = torch.tensor([r.subject_tids], dtype=torch.long, device=DEV)
+        if gte0:
+            return adapter._gte_key(tids).unsqueeze(1)
+        e = adapter._e(tids)
+        return adapter._pool_subject(e, keepdim=True) if pooled else e[:, -1:]
+
+    nbanks = _n_disjoint_banks()
+    # POINTER id-banks (#100), parallel to the value banks: record each object token's exact id at its
+    # addressed slot, so delivery can look it up instead of reconstructing a lossy value. Real (standing-
+    # store) test — collisions across all kept objects are what determine whether the pointer holds.
+    Vid = None if disjoint else [adapter.store.init_ids(1, DEV) for _ in range(nbanks)]
+    Vpp_id = {} if disjoint else None
     for r in kept:
         V = _persistent_write_one(adapter, V, r, pooled, Vpp=Vpp)
+        if not (_is_multi(r) and hasattr(adapter, "_pos_key")):
+            continue
+        bk = _subj_key(r); b = _subject_bank(r.subject_tids, nbanks)
+        obj = _obj_tids(r); L = min(len(obj), _mt_cap(adapter))
+        if disjoint and b not in Vpp_id:
+            Vpp_id[b] = [adapter.stores[t].init_ids(1, DEV) for t in range(_mt_cap(adapter))]
+        for t in range(L):
+            key_t = adapter._pos_key(bk, t)
+            idt = torch.tensor([[int(obj[t])]], dtype=torch.long, device=DEV)
+            if disjoint:
+                Vpp_id[b][t] = adapter.stores[t].write_ids(Vpp_id[b][t], key_t, idt)
+            else:
+                Vid[b] = adapter.store.write_ids(Vid[b], key_t, idt)
+
+    def _ptr_seq(r):
+        """POINTER delivery: read each object position's exact id from the standing id-bank. (span-exact, per-token)."""
+        bk = _subj_key(r); b = _subject_bank(r.subject_tids, nbanks)
+        obj = _obj_tids(r); L = min(len(obj), _mt_cap(adapter))
+        hits = 0
+        for t in range(L):
+            key_t = adapter._pos_key(bk, t)
+            if disjoint:
+                vb = Vpp_id.get(b)
+                pid = int(adapter.stores[t].read_ids(vb[t], key_t)[0, 0].item()) if vb is not None else -1
+            else:
+                pid = int(adapter.store.read_ids(Vid[b], key_t)[0, 0].item())
+            hits += int(pid == int(obj[t]))
+        return (hits == L), (hits / max(1, L))
+
     base_embed = base.get_input_embeddings()
     lm = base.get_output_embeddings().weight
     bos = [tok.bos_token_id] if tok.bos_token_id is not None else []
@@ -1900,12 +1946,24 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
         if getattr(adapter, "readout", "linear") == "decoder":
             dpred = adapter.decoder_generate(torch.stack(prefs, dim=1), L)[0]   # [L] free-run token ids
             hits_dec = sum(int(int(dpred[t]) == int(gold[t])) for t in range(L))
-        return (hits == L), (hits / max(1, L)), (hits_cos / max(1, L)), (hits_dec / max(1, L))
+        # POINTER id-bank (#100): exact-id delivery via the store's ADDRESSING, skipping the lossy value
+        # reconstruction. Write the gold id at the addressed slot, read it back. In ISOLATION this is
+        # exact by construction IF write-slot == read-slot — so pointer≈1.0 while value-recon=0.50 proves
+        # the addressing is reliable and reconstruction was the SOLE floor (i.e. the pointer is the fix).
+        hits_ptr = 0
+        for t in range(L):
+            key_t = adapter._pos_key(bq, t)
+            store_t = adapter.stores[t] if disjoint else adapter.store
+            Vid = store_t.init_ids(1, DEV)
+            Vid = store_t.write_ids(Vid, key_t, torch.tensor([[int(gold[t])]], dtype=torch.long, device=DEV))
+            hits_ptr += int(int(store_t.read_ids(Vid, key_t)[0, 0].item()) == int(gold[t]))
+        return (hits == L), (hits / max(1, L)), (hits_cos / max(1, L)), (hits_dec / max(1, L)), (hits_ptr / max(1, L))
 
     k_ans = int(os.environ.get("CAM_GEN_INJECT_STEPS", "2"))                  # single-token answer-span width
     print(f"\n[mag][persistent] === GENERATION COHERENCE ({len(sample)} edits, {gen_len} tok, α={alpha}, "
           f"answer-span=object-length, single-tok k_ans={k_ans}) ===", flush=True)
-    new_const = new_ans = true_off = tf_hit = store_hit = iso_hit = 0; iso_pt = iso_pt_cos = iso_pt_dec = 0.0
+    new_const = new_ans = true_off = tf_hit = store_hit = iso_hit = ptr_hit = 0
+    iso_pt = iso_pt_cos = iso_pt_dec = iso_pt_ptr = ptr_pt = 0.0
     for r in sample:
         pid = bos + tok(r.prompt_text, add_special_tokens=False).input_ids
         banks, conf = _banks_seq(r)
@@ -1919,8 +1977,10 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
         new_const += int(nl in g_const.lower()); new_ans += int(nl in g_ans.lower())
         true_off += int(r.true_str.strip().lower() in g_off.lower()); tf_hit += int(tf_ok)
         store_hit += int(store_ok)
-        _iso_ex, _iso_pt, _iso_pt_cos, _iso_pt_dec = _iso_store_ok(r)
-        iso_hit += int(_iso_ex); iso_pt += _iso_pt; iso_pt_cos += _iso_pt_cos; iso_pt_dec += _iso_pt_dec
+        _iso_ex, _iso_pt, _iso_pt_cos, _iso_pt_dec, _iso_pt_ptr = _iso_store_ok(r)
+        iso_hit += int(_iso_ex); iso_pt += _iso_pt; iso_pt_cos += _iso_pt_cos
+        iso_pt_dec += _iso_pt_dec; iso_pt_ptr += _iso_pt_ptr
+        _ptr_ex, _ptr_pt = _ptr_seq(r); ptr_hit += int(_ptr_ex); ptr_pt += _ptr_pt
         print(f"  [{r.relation_id}] {r.prompt_text!r}  edit {r.true_str!r}->{r.new_str!r} ({len(_obj_tids(r))} tok)", flush=True)
         print(f"     OFF        : {g_off!r}", flush=True)
         print(f"     ON constant: {g_const!r}", flush=True)
@@ -1943,6 +2003,10 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
         print(f"  --> #100 ISOLATED decoder AR-readout (cross-attn over K slots + AR): per-token {iso_pt_dec/n:.2f}  "
               f"[dec>>linear {iso_pt/n:.2f} => the sequence decoder recovers t>=1 the per-position readout can't]",
               flush=True)
+    print(f"  --> #100 POINTER id-bank (exact id at addressed slot, NO value reconstruction): "
+          f"ISOLATED per-token {iso_pt_ptr/n:.2f} | STANDING-store {ptr_hit}/{len(sample)} exact "
+          f"({ptr_hit/n:.2f}) per-token {ptr_pt/n:.2f}  [iso~1.0 & recon 0.50 => addressing is reliable, "
+          f"reconstruction was the sole floor; standing = the real collision-limited delivery]", flush=True)
     print(f"  (constant-inject = repetition/degenerate; answer-span-inject should read FLUENT with the edit)",
           flush=True)
     print("=" * 64, flush=True)

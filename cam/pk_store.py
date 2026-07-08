@@ -195,6 +195,30 @@ class ProductKeyStore(nn.Module):
                           delta.reshape(B, A * self.topk, self.d_hub).to(bank_dtype))
         return Vnew
 
+    # ---- POINTER id-bank (#100): exact token id at the addressed slot, no value reconstruction --------
+    def init_ids(self, batch, device):
+        """A parallel per-slot token-ID bank [B,N] (init -1 = empty). Records WHICH token each slot owns,
+        so delivery can look up the exact id at the addressed slot instead of reconstructing a lossy value
+        embedding — decoupling the store's (reliable) ADDRESSING from its (lossy) value reconstruction."""
+        return torch.full((batch, self.N), -1, dtype=torch.long, device=device)
+
+    def write_ids(self, Vid, keys, ids, addr=None):
+        """Record each association's exact token id at its TOP-1 addressed slot (the argmax-weight slot the
+        read selects). Same head-query addressing as the K1 value write (addr=head_query(key,0)), so
+        write-slot == read-slot by construction. keys:[B,A,d_hub], ids:[B,A] long -> Vid:[B,N]."""
+        wk = self.head_query(keys) if addr is None else addr
+        slot_idx, slot_w = self._address(wk)                  # [B,A,topk]
+        top = slot_w.argmax(dim=-1, keepdim=True)             # [B,A,1] pick the dominant slot
+        top_slot = torch.gather(slot_idx, -1, top).squeeze(-1)  # [B,A] global slot id
+        return Vid.scatter(1, top_slot, ids)                  # exact id at the owning slot
+
+    def read_ids(self, Vid, query):
+        """Look up the exact token id at the TOP-1 addressed slot (head-0 read addressing). [B,Q] -> [B,Q]."""
+        slot_idx, slot_w = self._address(self.head_query(query))   # [B,Q,topk]
+        top = slot_w.argmax(dim=-1, keepdim=True)             # [B,Q,1]
+        top_slot = torch.gather(slot_idx, -1, top).squeeze(-1)  # [B,Q]
+        return torch.gather(Vid, 1, top_slot)                # [B,Q] ids (-1 if the slot is empty)
+
     # ---- multi-head read -------------------------------------------------
     def read(self, V, query, return_ctx=False, return_conf=False, recon=False):
         """query:[B,Q,d_hub] hub-space read query -> (read_out[B,Q,d_hub], head_norms list).

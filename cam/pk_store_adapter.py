@@ -583,6 +583,19 @@ class PKStoreAdapter(nn.Module):
         read, _hn, self._last_conf = store.read(V, q, return_conf=True, recon=recon)
         return self._maxsim_reduce(read)                # collapse multi-vector keys (identity when H==1)
 
+    # ---- POINTER id-bank (#100): exact-id delivery via the store's addressing (no value reconstruction) --
+    def persistent_write_ids(self, Vid, keys, ids, store=None):
+        """Record token `ids` [B,A] at the addressed slots of the parallel id-bank Vid (store selectable
+        for perpos-key=disjoint). keys [B,A,mem_dim]. Mirrors persistent_write's addressing."""
+        store = store if store is not None else self.store
+        return store.write_ids(Vid, keys, ids)
+
+    def persistent_read_ids(self, Vid, q, store=None):
+        """Look up the exact token id at the addressed slot -> [B,Q]. The pointer analog of persistent_bank:
+        uses the store's (reliable) addressing but returns the stored id, skipping the lossy value read."""
+        store = store if store is not None else self.store
+        return store.read_ids(Vid, q)
+
     def inject(self, ids, seg_len, qa_start, answer_pos, carry=True):
         """-> K prefix vectors [B,K,base_hidden]. carry=True writes the M bindings then reads with the
         QA cargo query; carry=False reads an EMPTY store (the ablated floor). Same contract as
