@@ -1751,11 +1751,12 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
             else:
                 Vid[b] = adapter.store.write_ids(Vid[b], key_t, idt)
 
-    def _ptr_seq(r):
-        """POINTER delivery: read each object position's exact id from the standing id-bank. (span-exact, per-token)."""
+    def _ptr_ids(r):
+        """The pointer-retrieved token id per object position from the standing id-bank -> [id_0..id_{L-1}]
+        (-1 if the addressed slot is empty). This IS the delivered object, straight from memory."""
         bk = _subj_key(r); b = _subject_bank(r.subject_tids, nbanks)
-        obj = _obj_tids(r); L = min(len(obj), _mt_cap(adapter))
-        hits = 0
+        L = min(len(_obj_tids(r)), _mt_cap(adapter))
+        ids = []
         for t in range(L):
             key_t = adapter._pos_key(bk, t)
             if disjoint:
@@ -1763,8 +1764,14 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
                 pid = int(adapter.stores[t].read_ids(vb[t], key_t)[0, 0].item()) if vb is not None else -1
             else:
                 pid = int(adapter.store.read_ids(Vid[b], key_t)[0, 0].item())
-            hits += int(pid == int(obj[t]))
-        return (hits == L), (hits / max(1, L))
+            ids.append(pid)
+        return ids
+
+    def _ptr_seq(r):
+        """POINTER store-side delivery accuracy vs gold. (span-exact, per-token)."""
+        ids, gold = _ptr_ids(r), _obj_tids(r)
+        hits = sum(int(ids[t] == int(gold[t])) for t in range(len(ids)))
+        return (hits == len(ids) and len(ids) > 0), (hits / max(1, len(ids)))
 
     base_embed = base.get_input_embeddings()
     lm = base.get_output_embeddings().weight
@@ -1901,6 +1908,27 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
         span_ok = m > 0 and all(out[t] == int(gold[t]) for t in range(m))
         return txt, span_ok
 
+    def _gen_ptr(prompt_ids, ptr_ids, gold):
+        """#100 POINTER free-run delivery (the end-to-end unlock): emit the EXACT retrieved id from the
+        id-bank at each answer step (the object token straight from memory — no lossy reconstruction),
+        then RELEASE to the base so it continues fluently AFTER the whole object is delivered. Returns
+        (text, span_exact vs gold). This is the real deployment readout: memory supplies the unknowable
+        object tokens, the base supplies the surrounding language."""
+        cur = torch.tensor([prompt_ids], dtype=torch.long, device=DEV)
+        injector.set_bank(None)                                            # pointer emits ids directly; no tap
+        span, out = len(ptr_ids), []
+        for t in range(gen_len):
+            if t < span and ptr_ids[t] >= 0:
+                nxt = ptr_ids[t]                                          # exact object token from the id-bank
+            else:
+                nxt = int(base(inputs_embeds=base_embed(cur)).logits[:, -1].argmax(-1).item())  # base continues
+            out.append(nxt)
+            cur = torch.cat([cur, torch.tensor([[nxt]], device=DEV)], dim=1)
+        txt = tok.decode(out).replace("\n", " ").strip()
+        m = min(span, len(gold))
+        span_ok = m > 0 and all(out[t] == int(gold[t]) for t in range(m))
+        return txt, span_ok
+
     def _iso_store_ok(r):
         """#100 decisive isolation: write edit r ALONE into a FRESH standing store, read each position
         back (the exact _banks_seq path), decode via the store's unembed. Splits standing-store
@@ -1962,7 +1990,7 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
     k_ans = int(os.environ.get("CAM_GEN_INJECT_STEPS", "2"))                  # single-token answer-span width
     print(f"\n[mag][persistent] === GENERATION COHERENCE ({len(sample)} edits, {gen_len} tok, α={alpha}, "
           f"answer-span=object-length, single-tok k_ans={k_ans}) ===", flush=True)
-    new_const = new_ans = true_off = tf_hit = store_hit = iso_hit = ptr_hit = 0
+    new_const = new_ans = true_off = tf_hit = store_hit = iso_hit = ptr_hit = ptr_gen_hit = 0
     iso_pt = iso_pt_cos = iso_pt_dec = iso_pt_ptr = ptr_pt = 0.0
     for r in sample:
         pid = bos + tok(r.prompt_text, add_special_tokens=False).input_ids
@@ -1973,10 +2001,11 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
         g_ans = _gen(pid, banks, conf, "answer", span)                       # walk the object then release
         tf_ok = _gen_tf(pid, banks, conf, span, _obj_tids(r))                # #100: teacher-forced delivery
         g_store, store_ok = _gen_store(pid, banks, span, _obj_tids(r))       # #100: store-forced delivery
+        g_ptr, ptr_gen_ok = _gen_ptr(pid, _ptr_ids(r), _obj_tids(r))         # #100: POINTER free-run delivery
         nl = r.new_str.strip().lower()
         new_const += int(nl in g_const.lower()); new_ans += int(nl in g_ans.lower())
         true_off += int(r.true_str.strip().lower() in g_off.lower()); tf_hit += int(tf_ok)
-        store_hit += int(store_ok)
+        store_hit += int(store_ok); ptr_gen_hit += int(ptr_gen_ok)
         _iso_ex, _iso_pt, _iso_pt_cos, _iso_pt_dec, _iso_pt_ptr = _iso_store_ok(r)
         iso_hit += int(_iso_ex); iso_pt += _iso_pt; iso_pt_cos += _iso_pt_cos
         iso_pt_dec += _iso_pt_dec; iso_pt_ptr += _iso_pt_ptr
@@ -1986,6 +2015,7 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
         print(f"     ON constant: {g_const!r}", flush=True)
         print(f"     ON answer  : {g_ans!r}   [new: {nl in g_ans.lower()}]  [TF-deliver: {tf_ok}]", flush=True)
         print(f"     STORE-force: {g_store!r}   [span-exact: {store_ok}]", flush=True)
+        print(f"     PTR-gen    : {g_ptr!r}   [span-exact: {ptr_gen_ok}]  [new: {nl in g_ptr.lower()}]", flush=True)
     n = max(1, len(sample))
     print(f"  --> NEW object present — constant-inject: {new_const}/{len(sample)} ({new_const/n:.2f}) | "
           f"answer-span-inject: {new_ans}/{len(sample)} ({new_ans/n:.2f}); base TRUE-recall {true_off}/{len(sample)}",
@@ -2007,6 +2037,9 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
           f"ISOLATED per-token {iso_pt_ptr/n:.2f} | STANDING-store {ptr_hit}/{len(sample)} exact "
           f"({ptr_hit/n:.2f}) per-token {ptr_pt/n:.2f}  [iso~1.0 & recon 0.50 => addressing is reliable, "
           f"reconstruction was the sole floor; standing = the real collision-limited delivery]", flush=True)
+    print(f"  --> #100 POINTER free-run DELIVERY (emit the id at each answer step, then release to base): "
+          f"{ptr_gen_hit}/{len(sample)} span-exact ({ptr_gen_hit/n:.2f})  [END-TO-END: memory supplies the "
+          f"unknowable object tokens, the base continues the sentence — see PTR-gen lines above]", flush=True)
     print(f"  (constant-inject = repetition/degenerate; answer-span-inject should read FLUENT with the edit)",
           flush=True)
     print("=" * 64, flush=True)
