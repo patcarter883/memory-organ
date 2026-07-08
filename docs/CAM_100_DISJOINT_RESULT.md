@@ -145,13 +145,29 @@ so retrieval is an exact table lookup at the addressed slot, not a lossy vector 
 option 2 (copy/pointer) from the four-levers-falsified analysis — and it sidesteps the capacity floor
 rather than trying to raise it.
 
-### Remaining to ship end-to-end
-1. **Pointer generation**: at answer step t emit the retrieved pointer id (like `_gen_store` but with the
-   exact id, not the reconstructed value), then release to the base — trivial given store-side is 1.00.
-2. **Serving export / minisgl PR #2**: the id-bank is built at write ("remember") time, so it fits the
-   existing persistent-store serving path; export it alongside the value bank (or rebuild on write).
-3. **Robustness**: measure the standing pointer at larger N and under paraphrased/partial subjects (the
-   pointer inherits the store's addressing generalization; exact-subject delivery is proven).
+### ✅ END-TO-END delivery — pointer free-run generation: 4/4 span-exact (1.00), coherent
+`_gen_ptr` emits the exact retrieved id at each answer step (the object straight from the id-bank, no
+reconstruction), then RELEASES to the base to finish the sentence. Result — the base ALONE produces the
+wrong prior; memory + pointer delivers the invented object AND the base continues fluently:
+
+| prompt | OFF (base alone) | POINTER free-run delivery |
+|---|---|---|
+| …Zephyrina Quillsworth is | "English, and she is…" | **"Klingon. ==History=="** ✓ |
+| …Bartholomew Fizzwick is | "English. ==History==" | **"Dothraki. ==History=="** ✓ |
+| …Ondine Vasquez is | "Spanish. The mother…" | **"Elvish, a language spoken by"** ✓ |
+| …Cornelius Blackwood is | "English. The mother…" | **"Sindarin, a language of the Lord"** ✓ |
+
+**#100 POINTER free-run DELIVERY: 4/4 span-exact (1.00).** Memory supplies the unknowable object
+token(s); the base supplies the surrounding language ("Elvish, **a language spoken by**"). This is the
+#100 goal met end-to-end: genuine multi-token objects the base cannot produce, delivered with coherent
+continuation.
+
+### Remaining — serving integration only (the research problem is solved)
+1. **Serving export / minisgl PR #2**: the id-bank is built at write ("remember") time, so it fits the
+   existing persistent-store serving path; export it alongside the value bank (or rebuild on write). The
+   serve-side generation is `_gen_ptr` (emit the retrieved id at the answer step, then release).
+2. **Robustness**: measure at larger N and under paraphrased/partial subjects (the pointer inherits the
+   store's addressing generalization; exact-subject delivery is proven at N=137+).
 
 ## (superseded) The value-CAPACITY floor that the pointer sidesteps (~2.5 CE / ~50% per token)
 FOUR levers now falsified — every way of re-reading, re-decoding, or re-normalizing the same store:
