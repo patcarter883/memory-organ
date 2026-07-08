@@ -104,27 +104,47 @@ come from faithful per-position RETRIEVAL — and that retrieval's fidelity is t
 (Caveat: 1000 steps / a synthetic corpus — but the structural argument caps the decoder at the linear
 readout regardless of training budget, so more training cannot make it the unlock.)
 
-## Where that leaves #100 — the wall is store per-position value-reconstruction FIDELITY
-THREE levers now falsified — all three ways of RE-READING or RE-DECODING the same store:
+## Lever 4 (magnitude-preserving read) — FALSIFIED (it HURT), and it pinpoints the real floor
+The store read RMSNorms the retrieved value (`read_norm`/`read_out_norm`, "the bypass fix") — it
+deliberately STRIPS magnitude so the tap gate carries retrieval strength. Hypothesis: that strip
+destroys the token identity encoded in magnitude (symmetric to the write-side `VALNONORM` win). Added a
+magnitude-preserving reconstruction read (`store.read(recon=True)` = the factual head's raw value mix,
+no read_norm/read_o/read_out_norm) and trained mt-recon + delivery on it.
+
+| read path | mt-recon loss @999 | ISOLATED per-token |
+|---|---|---|
+| normal (RMSNorm'd) | **~2.5** | **0.50** |
+| magnitude-preserving | **~9.5** (barely trains) | **0.00** |
+
+Preserving magnitude makes reconstruction MUCH HARDER — mt-recon can't get below ~9.5 (≈ln(104k)=11.5
+random floor). The RMSNorm is not the bottleneck; it ACTIVELY HELPS the readout by stabilizing the
+value range for `out_proj`. Falsified.
+
+## Where that leaves #100 — a raw store value-CAPACITY floor (~2.5 CE / ~50% per token)
+FOUR levers now falsified — every way of re-reading, re-decoding, or re-normalizing the same store:
 - **disjoint addressing** (per-position separate codebooks): no lift (0.50 = codebook)
 - **cosine-NN decode** (row-norm debiased): worse (0.33 < 0.42)
-- **AR decoder readout** (cross-attn + sequence prior): worse (0.25 < 0.50), and structurally can't help
-  a NOVEL object
+- **AR decoder readout** (cross-attn + sequence prior): worse (0.25), structurally can't deliver a NOVEL object
+- **magnitude-preserving read** (drop the read RMSNorm): worse (0.00), reconstruction won't even train
 
-The isolated round-trip writes ONE object into a FRESH store and still loses position 1 — so the query
-addresses the only written slot, yet `out_proj(read)` doesn't reconstruct `_e_val(obj_token_1)`. The
-bottleneck is the store's per-position VALUE-RECONSTRUCTION fidelity, upstream of every readout. The
-remaining candidates all touch the store/value TRAINING (not how it's read):
-1. **Value capacity / precision**: `VALNONORM` dropped the value LayerNorm but pos1 still loses the
-   continuation-subword; probe a higher-capacity or residual-VQ value code, or more store slots (n_sub).
-   This is now the single most-supported direction.
-2. **Per-position-1 supervision**: mt-recon weights all positions equally, but position-1 continuation
-   subwords ("ish","arin") are rarer/harder than position-0 prefixes — weight the CE by position, or
-   oversample continuation subwords.
-3. **Realistic-value coverage**: confirm the invented objects' position-1 subwords are in the training
-   value pool at all (an out-of-pool continuation subword is never trained to round-trip).
+The decisive datum: with the NORMAL read, mt-recon plateaus at **~2.5 CE** (bind steps 600–999 flat) and
+the isolated single-object round-trip reconstructs a token at only **~0.5 per position** — even with ONE
+value in a FRESH store (no crowding). So the store+`out_proj` autoencoder has a hard ~50%/token
+reconstruction FLOOR on the 104k-realistic-token task. This is raw VALUE CAPACITY, and it is upstream of
+— and unmoved by — every readout/read-side change tried.
 
-The disjoint implementation, the cosine-NN diagnostic, and the AR-decoder readout are all correct,
-committed, A/B-able building blocks — none is the #100 unlock. **The wall is store-side per-position
-value-reconstruction fidelity at t≥1: a value-capacity / training problem, provably NOT a readout one
-(three independent readouts all bottleneck at the same place).**
+The remaining candidates are genuinely DIFFERENT value MECHANISMS (not readout tweaks), i.e. real
+architecture/design work:
+1. **Discrete-code (VQ) value**: make the stored value a code the store addresses EXACTLY and decode by
+   CLASSIFICATION over the code table — turns lossy reconstruction into (near-)lossless retrieval. The
+   single most-promising direction, but a substantial store redesign + retrain.
+2. **Per-position / hard-token CE weighting or curriculum**: won't raise the capacity ceiling, only
+   redistribute it; lower-value given the floor is a capacity limit, not a training-emphasis one.
+3. **Reconsider the #100 contract**: an associative value store may be the wrong primitive for
+   losslessly carrying arbitrary NOVEL multi-token phrases; a copy/pointer mechanism (store the token
+   IDS, not a reconstructed embedding) sidesteps reconstruction entirely.
+
+The disjoint impl, cosine-NN + decoder-AR diagnostics, and the magnitude-preserving read are all
+correct, committed, A/B-able building blocks — **none is the #100 unlock, and four independent readout/
+read levers prove the wall is a raw store value-reconstruction CAPACITY floor, not a readout.** The next
+real move is a different value mechanism (VQ / copy-pointer), which is a design change, not a tweak.

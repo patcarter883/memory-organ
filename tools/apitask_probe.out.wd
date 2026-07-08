@@ -1,0 +1,36 @@
+gpu-lease: leased card(s) [1] as 'gpu1'  (HIP=0, port=8001, project=lease-gpu1)
+[api] start 02:56:46
+[apitask] === API-OVERRIDE PREMISE PROBE (30 curated facts, base=Qwen/Qwen3.5-4B) ===
+  [WRONG] 'In Pydantic v2, a model is serialized to a dictionary with the method .model_'  correct='dump'  base->'\n\n'
+  [WRONG] 'In modern LangChain, a chain or runnable is executed with the method .'  correct='invoke'  base->'invoke'
+  [WRONG] 'In the OpenAI Python v1 SDK, a chat response is produced by client.chat.completions.'  correct='create'  base->' The'
+  [WRONG] 'In pandas 2.0, two DataFrames are combined with the function pd.'  correct='concat'  base->'\n\n'
+  [WRONG] 'In PyTorch, gradient tracking is disabled with the context manager torch.no_'  correct='grad'  base->'...'
+  [OK   ] 'In NumPy, arrays are joined along an axis with np.'  correct='concatenate'  base->' concatenate'
+  [WRONG] 'In the requests library, a GET request is sent with the function requests.'  correct='get'  base->'\n\n'
+  [WRONG] 'In Hugging Face transformers, a decoder language model is auto-loaded with AutoModelFor'  correct='CausalLM'  base->'C'
+  [WRONG] 'In FastAPI, a GET endpoint is declared with the decorator @app.'  correct='get'  base->'\n\n'
+  [WRONG] 'In Flask, a URL rule is bound to a view with the decorator @app.'  correct='route'  base->'\n\n'
+  [WRONG] 'In pytest, reusable test setup is provided by the decorator @pytest.'  correct='fixture'  base->'\n\n'
+  [WRONG] 'In Python asyncio, a coroutine is run from synchronous code with asyncio.'  correct='run'  base->'\n\n'
+  [WRONG] 'In the Python dataclasses module, a plain class becomes a data class with the decorator @'  correct='dataclass'  base->'data'
+  [WRONG] 'In SQLAlchemy 2.0, modern queries are built with the function '  correct='select'  base->' `'
+  [OK   ] 'In the click library, a CLI command is defined with the decorator @click.'  correct='command'  base->' command'
+  [WRONG] 'In Pillow, an image file is opened with Image.'  correct='open'  base->'\n\n'
+  [WRONG] 'In the Python json module, an object is serialized to a JSON string with json.'  correct='dumps'  base->'\n'
+  [WRONG] 'In NumPy, the modern random number generator is created with np.random.default_'  correct='rng'  base->'...'
+  [WRONG] 'In Matplotlib, a figure and axes are created together with plt.'  correct='subplots'  base->'\n\n'
+  [WRONG] 'In Django 4, modern URL routing uses django.urls.'  correct='path'  base->' The'
+  [WRONG] 'In pytest, an expected exception is asserted with pytest.'  correct='raises'  base->'\n\n'
+  [OK   ] 'In the httpx library, an asynchronous HTTP client is httpx.'  correct='AsyncClient'  base->' Async'
+  [WRONG] 'In Hugging Face transformers, a quick inference helper is the function '  correct='pipeline'  base->' `'
+  [WRONG] 'In PyTorch, a model checkpoint is written to disk with torch.'  correct='save'  base->' The'
+  [OK   ] 'In the Python os module, file system paths are joined with os.path.'  correct='join'  base->' join'
+  [WRONG] 'In the Python subprocess module, an external command is executed with subprocess.'  correct='run'  base->' The'
+  [OK   ] 'In python-dotenv, environment variables are loaded from a .env file with load_'  correct='dotenv'  base->' dotenv'
+  [WRONG] 'In TensorFlow 2, a Sequential neural network is built with tf.keras.'  correct='Sequential'  base->' The'
+  [WRONG] 'In the Cargo build tool, a Rust project is compiled and run with the command cargo '  correct='run'  base->'1'
+  [WRONG] 'In React tooling, a new component is generated with the CLI command npx create-react-'  correct='app'  base->'@'
+  --> base ALREADY CORRECT on 5/30 (0.17); WRONG = editable candidates 25/30 (0.83)
+  (high WRONG rate => the base is stale on APIs => the override use case is real)
+[api] done 02:57:06

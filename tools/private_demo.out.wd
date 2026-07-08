@@ -1,0 +1,4 @@
+gpu-lease: leased card(s) [0] as 'gpu0'  (HIP=0, port=8000, project=lease-gpu0)
+[priv] start 06:43:45
+[mag][cf-multi] 137 edits across 6 relations | e.g. Raymond Triboulet [P103]: French->Dutch; Oleg Kotov [P103]: Russian->English; Francis de Croisset [P103]: French->English; Marie NDiaye [P103]: French->Russian; Pierre Guyotat [P103]: French->Russian
+[mag] binding held-out: carry(exact) 0.788 | ablated(exact) 0.000 | carry per-tok 0.788 | ablated per-tok 0.000 | chance 0.125

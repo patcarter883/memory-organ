@@ -1,0 +1,9 @@
+gpu-lease: leased card(s) [0] as 'gpu0'  (HIP=0, port=8000, project=lease-gpu0)
+[heldoutrel] start 05:03:15
+[mag][cf-multi][HELD-OUT-RELATION] 2 relation-bucket(s) held out ENTIRELY (['P140', 'P276']): BIND=121 subj / 4 rels vs HELD-OUT=16 subj / 2 NOVEL rels (bind never saw their relation)
+[mag][cf-multi][HELD-OUT] frac=0.0 seed=20260625 | BIND=121 subjects across 4 relations vs HELD-OUT=16 subjects across 2 relations | 0 bucket(s) too small to split (kept whole in bind)
+[mag][cf-multi] 16 edits across 6 relations | e.g. Khanate of Sibir [P140]: Islam->Christianity; Uwais Qarni [P140]: Islam->Buddhism; Khanate of Khiva [P140]: Islam->Christianity; Talmud Torah school [P140]: Judaism->Buddhism; Hurrem sultan [P140]: Islam->Christianity
+  cf-delivery 0.000 | prior-recall 0.188   (cf HIGH + prior LOW = the persistent store overrides across all 16 edits at once)
+[mag][persistent] locality: no neighbourhood_prompts on records; skipping.
+[cost] persistent logit-injection locality L=24: 0s | peak GPU 14.00 GiB
+[heldoutrel] done 05:04:48
