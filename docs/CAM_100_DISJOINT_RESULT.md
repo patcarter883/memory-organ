@@ -120,7 +120,40 @@ Preserving magnitude makes reconstruction MUCH HARDER — mt-recon can't get bel
 random floor). The RMSNorm is not the bottleneck; it ACTIVELY HELPS the readout by stabilizing the
 value range for `out_proj`. Falsified.
 
-## Where that leaves #100 — a raw store value-CAPACITY floor (~2.5 CE / ~50% per token)
+## ✅ THE UNLOCK — pointer id-bank: exact-id delivery, no reconstruction (STANDING 4/4, 1.00)
+The four falsified levers all tried to RE-READ the lossy reconstructed value. The pointer approach
+skips reconstruction entirely: the store's ADDRESSING (which slot a subject+position maps to) is
+reliable — it's only the value REGRESSION out of that slot that's lossy. So record each object token's
+EXACT id at its top-1 addressed slot on write (`store.write_ids`), and look it up on read
+(`store.read_ids`). Same head-query addressing as the K1 value write ⇒ write-slot == read-slot by
+construction ⇒ lossless.
+
+| readout | ISOLATED per-token | STANDING-store delivery |
+|---|---|---|
+| value reconstruction (best of 4 levers) | 0.50–0.75 | 0/4 |
+| **POINTER id-bank** | **1.00** | **4/4 exact (1.00), per-token 1.00** |
+
+The isolated pointer is **1.00** while value-recon on the SAME store is 0.50–0.75 — proving the
+addressing was always reliable and reconstruction was the sole floor. And the STANDING-store test
+(**all 137+ objects written**, real collisions) delivers **4/4 EXACT** — the invented multi-token
+objects (Klingon/Dothraki/Elvish/Sindarin) retrieved token-perfect. **This is the #100 store-side
+unlock.** No training change was needed — the pointer rides the already-trained addressing.
+
+Why it works where reconstruction can't: the store is excellent at ADDRESSING (content → slot) and poor
+at REGRESSING a 1-of-104k value out of a slot. The id-bank stores the answer discretely (the token id),
+so retrieval is an exact table lookup at the addressed slot, not a lossy vector reconstruction. This is
+option 2 (copy/pointer) from the four-levers-falsified analysis — and it sidesteps the capacity floor
+rather than trying to raise it.
+
+### Remaining to ship end-to-end
+1. **Pointer generation**: at answer step t emit the retrieved pointer id (like `_gen_store` but with the
+   exact id, not the reconstructed value), then release to the base — trivial given store-side is 1.00.
+2. **Serving export / minisgl PR #2**: the id-bank is built at write ("remember") time, so it fits the
+   existing persistent-store serving path; export it alongside the value bank (or rebuild on write).
+3. **Robustness**: measure the standing pointer at larger N and under paraphrased/partial subjects (the
+   pointer inherits the store's addressing generalization; exact-subject delivery is proven).
+
+## (superseded) The value-CAPACITY floor that the pointer sidesteps (~2.5 CE / ~50% per token)
 FOUR levers now falsified — every way of re-reading, re-decoding, or re-normalizing the same store:
 - **disjoint addressing** (per-position separate codebooks): no lift (0.50 = codebook)
 - **cosine-NN decode** (row-norm debiased): worse (0.33 < 0.42)
