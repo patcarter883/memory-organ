@@ -265,10 +265,17 @@ def _mt_recon_loss(adapter, unembed, rng, batch, K, weight, pool=None, words=Non
     # reads back — otherwise mt-recon only trains self.store and the disjoint delivery stores stay
     # untrained (per-token delivery 0.00). Mirrors _write_episode's disjoint branch + persistent_bank_direct.
     disjoint = _is_disjoint_mt(adapter)
+    recon = os.environ.get("CAM_RECON_MAGNITUDE") == "1"     # #100: magnitude-preserving value read
     # write each object token at its per-position address, then read it back — shared by both readouts.
+    # recon reads the magnitude-preserving value mix (no read-side RMSNorm) via the DIRECT path for both
+    # codebook and disjoint (the readout_q pool would re-normalize away the magnitude we're preserving).
     def _read_t(t):
-        return (adapter.persistent_bank_direct(Vt[t], adapter._pos_key(name_key, t), store=adapter.stores[t])
-                if disjoint else adapter.persistent_bank(V, adapter._pos_key(name_key, t)))
+        if disjoint:
+            return adapter.persistent_bank_direct(Vt[t], adapter._pos_key(name_key, t),
+                                                  store=adapter.stores[t], recon=recon)
+        if recon:
+            return adapter.persistent_bank_direct(V, adapter._pos_key(name_key, t), recon=True)
+        return adapter.persistent_bank(V, adapter._pos_key(name_key, t))
     if disjoint:
         Vt = [adapter.stores[t].init_state(batch, dev, dtype=torch.float32) for t in range(Keff)]
         for t in range(Keff):
@@ -1703,6 +1710,7 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
     injector.eval()
     pooled = os.environ.get("CAM_POOLED_SUBJ_KEY") == "1"
     disjoint = _is_disjoint_mt(adapter)                      # perpos-key=disjoint: route multi-token via Vpp
+    recon = os.environ.get("CAM_RECON_MAGNITUDE") == "1"     # #100: magnitude-preserving value read (matches mt-recon)
     V = _init_banks(adapter, _n_disjoint_banks())
     Vpp = _init_pp_banks() if disjoint else None
     # per-token embedding-row norms for the COSINE-NN value decode (#100 lever): the standard readout
@@ -1740,7 +1748,9 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
             Vppb = _pp_bucket(adapter, Vpp, _subject_bank(r.subject_tids, _n_disjoint_banks())) if disjoint else None
             for t in range(L):
                 if disjoint:                                 # read position t from its OWN store/bank (direct)
-                    bt = adapter.persistent_bank_direct(Vppb[t], adapter._pos_key(base_q, t), store=adapter.stores[t])
+                    bt = adapter.persistent_bank_direct(Vppb[t], adapter._pos_key(base_q, t), store=adapter.stores[t], recon=recon)
+                elif recon:                                  # magnitude-preserving direct read (no readout_q)
+                    bt = adapter.persistent_bank_direct(Vb, adapter._pos_key(base_q, t), recon=True)
                 else:
                     bt = adapter.persistent_bank(Vb, adapter._pos_key(base_q, t))
                 if t == 0:
@@ -1872,7 +1882,9 @@ def eval_persistent_generate(base, adapter, injector, tok, kept, args):
         prefs = []
         for t in range(L):
             if disjoint:
-                bt = adapter.persistent_bank_direct(Vppb[t], adapter._pos_key(bq, t), store=adapter.stores[t])
+                bt = adapter.persistent_bank_direct(Vppb[t], adapter._pos_key(bq, t), store=adapter.stores[t], recon=recon)
+            elif recon:
+                bt = adapter.persistent_bank_direct(Vb, adapter._pos_key(bq, t), recon=True)
             else:
                 bt = adapter.persistent_bank(Vb, adapter._pos_key(bq, t))
             pref = adapter.out_proj(bt).mean(1)                                 # [1, base_hidden]

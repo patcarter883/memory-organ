@@ -567,16 +567,20 @@ class PKStoreAdapter(nn.Module):
         attn = torch.softmax(pq @ read.transpose(1, 2) / (self.mem_dim ** 0.5), dim=-1)
         return attn @ read
 
-    def persistent_bank_direct(self, V, q, store=None):
+    def persistent_bank_direct(self, V, q, store=None, recon=False):
         """DIRECT persistent read for perpos-key=disjoint (#100): the store's retrieved value mix WITHOUT
         the readout_q attention pool. That pool (persistent_bank) is calibrated for the shared self.store's
         readout; the per-position disjoint stores are read the way memory_bank reads them in its DISJOINT
         branch — store_t.read(...) straight to out_proj, no readout_q — so the mt-recon reconstruction that
         trains the disjoint stores and the persistent delivery that reads them agree. Returns [B,Q,mem_dim]
         (Q = query length, typically 1). Reusing persistent_bank here instead reads the disjoint stores
-        through the wrong readout and collapses per-token delivery to ~0."""
+        through the wrong readout and collapses per-token delivery to ~0.
+
+        `recon` (#100 value-capacity): read the MAGNITUDE-PRESERVING value mix (store.read recon=True — no
+        read_norm/read_out_norm). The bypass-fix RMSNorms strip the magnitude that encodes t≥1 token
+        identity; recon keeps it (symmetric to VALNONORM on the write). mt-recon + delivery must agree."""
         store = store if store is not None else self.store
-        read, _hn, self._last_conf = store.read(V, q, return_conf=True)
+        read, _hn, self._last_conf = store.read(V, q, return_conf=True, recon=recon)
         return self._maxsim_reduce(read)                # collapse multi-vector keys (identity when H==1)
 
     def inject(self, ids, seg_len, qa_start, answer_pos, carry=True):
