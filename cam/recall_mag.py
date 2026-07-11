@@ -29,7 +29,7 @@ try:
                                  derange_capitals, COUNTERFACTUAL_HEADER, COUNTERFACTUAL_REL)
     from .recall_boltA import BoltAdapter, eval_direct
     from .pk_store_adapter import PKStoreAdapter
-    from .gated_tap import MAGInjector
+    from .gated_tap import MAGInjector, KVInjector
     from .realedit import load_counterfact, as_fact_table, cf_tids_from_records
 except ImportError:
     if __package__:  # real ImportError inside a sibling, not "run as a file" — don't mask it
@@ -43,7 +43,7 @@ except ImportError:
                                 derange_capitals, COUNTERFACTUAL_HEADER, COUNTERFACTUAL_REL)
     from recall_boltA import BoltAdapter, eval_direct                     # noqa: E402
     from pk_store_adapter import PKStoreAdapter                           # noqa: E402
-    from gated_tap import MAGInjector                                     # noqa: E402
+    from gated_tap import MAGInjector, KVInjector                         # noqa: E402
     from realedit import load_counterfact, as_fact_table, cf_tids_from_records  # noqa: E402
 
 LN2 = math.log(2.0)
@@ -2127,6 +2127,36 @@ def main():
                          "(tap + hard-conf-gated logit injection) so a human can eyeball fluency + whether "
                          "the edit takes in free generation, not just next-token argmax. Implies "
                          "--persistent-sweep.")
+    ap.add_argument("--mquake-eval", type=str, default="", dest="mquake_eval",
+                    help="MULTI-HOP RIPPLE eval (cam/mquake_ripple.py): path to an MQuAKE-CF JSON. After "
+                         "the tap is trained on CounterFact (as usual), SWAP the eval set to MQuAKE ripple "
+                         "cases and compare, per case, whether the trained residual TAP integrates the edit "
+                         "into the multi-hop chain as well as generation-time RAG (edit prepended as text). "
+                         "Free-generation, few-shot CoT; tap uses the SAME trained tap (no retraining). "
+                         "Runs INSTEAD of the delivery/persistent evals. Requires --store pk.")
+    ap.add_argument("--mquake-limit", type=int, default=200, dest="mquake_limit",
+                    help="MQuAKE ripple: cap on cases evaluated (0 = all). Each case runs 1..3 free "
+                         "generations per condition, so this bounds GPU cost. Raise for tighter CIs. "
+                         "Also caps the --indist-ripple language-edit set.")
+    ap.add_argument("--inject-mode", type=str, default="residual", dest="inject_mode",
+                    choices=["residual", "kv"],
+                    help="Stage-2 injection mechanism: 'residual' (default, unchanged = the MAGInjector "
+                         "gated residual-add tap at --tap-layers) or 'kv' (1c: KVInjector — appends "
+                         "position-free memory K/V columns at the full-attention layer --kv-layer, so the "
+                         "FROZEN base READS memory via softmax, self-dosed). 'kv' trains the SAME way "
+                         "(W_km/W_vm by LM-loss through the frozen base) and runs the SAME eval — a clean "
+                         "A/B vs the residual baseline. Requires --kv-layer to be a full-attention layer.")
+    ap.add_argument("--kv-layer", type=int, default=11, dest="kv_layer",
+                    help="1c KV-injection layer (must be full-attention; Qwen3.5-4B: 3,7,11,15,19,23,27,31). "
+                         "L11 = the full-attention layer nearest the L12 residual sweet spot. Only used "
+                         "with --inject-mode kv.")
+    ap.add_argument("--indist-ripple", action="store_true", dest="indist_ripple",
+                    help="IN-DISTRIBUTION language-pivot ripple (cam/mquake_ripple.eval_indist_ripple): "
+                         "instead of OOD MQuAKE, edit the LANGUAGE relations the tap trained on "
+                         "(P103/P37/P364, single-token) and test whether the tap's in-dist delivery ripples "
+                         "through a language 2-hop (base as oracle for the 2nd hop; gold_cf!=gold_true "
+                         "confound control). Runs INSTEAD of the delivery/persistent evals. Requires "
+                         "--store pk + the counterfactual_multi bind (so cf_records exist).")
     ap.add_argument("--query-rel", type=str, default="", dest="query_rel",
                     help="ADVERSARIAL paraphrase probe (issue #10, natural phrasing only): bind and "
                          "train exactly as normal (bindings + training queries use ' lives in'), then "
@@ -2358,8 +2388,17 @@ def main():
     summary = []
     for cfg in configs:
         tag = "+".join(map(str, cfg))
-        injector = MAGInjector(base, cfg, args.mem_dim, n_heads=args.tap_heads,
-                               conf_gate=getattr(args, "conf_gate", False), n_rel=n_rel).to(DEV)
+        if getattr(args, "inject_mode", "residual") == "kv":
+            # 1c: KV injection at a full-attention layer (--kv-layer). Same set_bank/train/eval contract
+            # as MAGInjector, so train_taps + eval_indist_ripple are IDENTICAL — a clean A/B vs residual.
+            tag = f"kv{args.kv_layer}"
+            injector = KVInjector(base, args.kv_layer, args.mem_dim,
+                                  conf_gate=getattr(args, "conf_gate", False), n_rel=n_rel).to(DEV)
+            print(f"[mag] inject-mode=KV at full-attention layer L={args.kv_layer} "
+                  f"(W_km/W_vm: {args.mem_dim}->n_kv*head_dim; memory READ via softmax, self-dosed)", flush=True)
+        else:
+            injector = MAGInjector(base, cfg, args.mem_dim, n_heads=args.tap_heads,
+                                   conf_gate=getattr(args, "conf_gate", False), n_rel=n_rel).to(DEV)
         with StageCost(f"stage-2 tap fit L={tag} ({args.steps} steps, batch {args.batch})"):
             train_taps(base, adapter, injector, builder, rng, args, tag, loc_buckets=loc_buckets)
         # free the training-phase CUDA memory (AdamW optimizer states + autograd graph fragments) before
@@ -2367,6 +2406,24 @@ def main():
         import gc as _gc
         _gc.collect()
         torch.cuda.empty_cache() if torch.cuda.is_available() else None
+        _indist = getattr(args, "indist_ripple", False) or os.environ.get("CAM_INDIST_RIPPLE") == "1"
+        if getattr(args, "mquake_eval", "") or _indist:
+            # RIPPLE eval: reuse the just-trained tap + store. Runs INSTEAD of the delivery/persistent
+            # evals (the tap is the only thing it needs). The injector hooks are still attached from
+            # train_taps; detach after, like the persistent branch. --indist-ripple = the in-distribution
+            # language-pivot variant (needs cf_records); else OOD MQuAKE from --mquake-eval.
+            try:
+                from .mquake_ripple import eval_mquake_ripple, eval_indist_ripple
+            except ImportError:
+                from mquake_ripple import eval_mquake_ripple, eval_indist_ripple   # run-as-file fallback
+            if _indist:
+                with StageCost(f"in-distribution language-pivot ripple L={tag}"):
+                    eval_indist_ripple(base, adapter, injector, tok, args, cf_records)
+            else:
+                with StageCost(f"MQuAKE multi-hop ripple eval L={tag}"):
+                    eval_mquake_ripple(base, adapter, injector, tok, args)
+            injector.detach()
+            continue
         if getattr(args, "persistent_sweep", False):
             # Track 4 (#19) retention/interference sweep is the ONLY eval we want here. SKIP the delivery /
             # counterfactual / locality-generalization evals: each forwards the whole M*bind_len doc (and

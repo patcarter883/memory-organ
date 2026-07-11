@@ -223,3 +223,208 @@ class MAGInjector:
             h.remove()
         self._handles = []
         return self
+
+
+# =================================================================================================
+# KVInjector (1c) — memory the FROZEN base READS at a full-attention layer.
+# -------------------------------------------------------------------------------------------------
+# The residual tap ADDS a gated vector to the residual stream (over-steers / degenerates when
+# sustained). 1c instead APPENDS position-free memory K/V columns at a mid-depth FULL-attention layer
+# (Qwen3.5-4B: L11 in {3,7,11,15,19,23,27,31}); the base's own softmax decides, per-query/per-head,
+# how much to read from memory (self-dosing — no residual over-steer). This is a drop-in for
+# MAGInjector w.r.t. train_taps / eval_indist_ripple: same set_bank/eval/detach/parameters contract, so
+# W_km,W_vm train by LM-loss through the frozen base exactly like the tap's projection.
+#
+# Mechanism (spec §Mechanism): from bank [B,K,mem_dim] compute K_mem=W_km(bank), V_mem=W_vm(bank),
+# reshape [B,n_kv_heads,K,head_dim] (matches key/value_states; the q_proj doubled-dim + gate is Q-ONLY,
+# applied post-attention, so K/V are standard head_dim). NO RoPE on memory (append AFTER the base's
+# RoPE — memory tokens are timeless). Append along the key/value seq axis; extend the additive mask
+# with K attendable (non-causal) columns, biased by log(gate) so a closed/weak gate masks memory
+# (-inf => exact no-op). Byte-identical when NO bank is staged (the append is skipped).
+class _KVMem(nn.Module):
+    """The trainable bolt-on params for KV injection (held in an nn.Module so .parameters()/.to()/.train()
+    behave; W_vm zero-init + log_gate near-closed so injection starts gentle, like the tap's zero gate)."""
+
+    def __init__(self, mem_dim, n_kv, head_dim, conf_gate, n_rel):
+        super().__init__()
+        self.W_km = nn.Linear(mem_dim, n_kv * head_dim, bias=False)          # mem_dim -> n_kv*head_dim
+        self.W_vm = nn.Linear(mem_dim, n_kv * head_dim, bias=False)
+        nn.init.zeros_(self.W_vm.weight)                                     # start with ~zero memory value
+        self.log_gate = nn.Parameter(torch.tensor(-6.0))                    # base openness (near-closed at init)
+        self.conf_gate = conf_gate
+        self.n_rel = n_rel
+        self.conf_scale = nn.Parameter(torch.tensor(4.0))                   # conf-gate sigmoid steepness
+        self.conf_bias = nn.Parameter(torch.tensor(1.0))                    # threshold in EMA-normalized units
+        self.register_buffer("conf_ema", torch.full((n_rel,), -1.0))        # per-relation running conf mean; <0=uninit
+
+
+class KVInjector:
+    """Monkey-patches a full-attention layer's self_attn.forward to APPEND position-free memory K/V after
+    RoPE, before the attention interface. Drop-in for MAGInjector (set_bank/attach/detach/eval/parameters)."""
+
+    def __init__(self, base, kv_layer, mem_dim, conf_gate=False, n_rel=1):
+        self.layers = decoder_layers(base)
+        self.kv_layer = int(kv_layer)
+        layer = self.layers[self.kv_layer]
+        assert hasattr(layer, "self_attn") and hasattr(layer.self_attn, "q_proj"), (
+            f"layer {self.kv_layer} is not a full-attention layer (no self_attn.q_proj); pick a layer in "
+            f"the model's full-attention set (Qwen3.5: 3,7,11,15,19,23,27,31)")
+        self.attn = layer.self_attn
+        cfg = base.config.get_text_config()
+        self.n_kv = cfg.num_key_value_heads
+        self.head_dim = self.attn.head_dim
+        self.mem = _KVMem(mem_dim, self.n_kv, self.head_dim, conf_gate, n_rel)
+        self.conf_gate = conf_gate
+        self.n_rel = n_rel
+        self._bank = None
+        self._conf = None
+        self._relidx = None
+        self._force_gate = None                     # test hook: override the gate scalar (None=normal path)
+        self.last_gate = torch.tensor(0.0)
+        self.last_cgate = torch.tensor(1.0)
+        self.last_mem_attn = torch.tensor(0.0)      # (kept for null_attn_stats parity; not computed by default)
+
+    # --- MAGInjector-compatible surface -----------------------------------------------------------
+    def to(self, dev):
+        self.mem.to(dev)
+        return self
+
+    def train(self, mode=True):
+        self.mem.train(mode)
+        return self
+
+    def eval(self):
+        self.mem.eval()
+        return self
+
+    def parameters(self):
+        return self.mem.parameters()
+
+    def set_bank(self, bank, conf=None, relidx=None):
+        self._bank = bank
+        self._conf = conf
+        self._relidx = relidx
+
+    def gate_stats(self):
+        return {self.kv_layer: float(self.last_gate)}
+
+    def null_attn_stats(self):
+        return {self.kv_layer: float(self.last_mem_attn)}
+
+    def cgate_stats(self):
+        return {self.kv_layer: float(self.last_cgate)}
+
+    # --- gate: base openness sigmoid(log_gate) * optional conf-gate (per-example, EMA-normalized) ---
+    def _gate(self, B, device, dtype):
+        if self._force_gate is not None:
+            return torch.full((B,), float(self._force_gate), device=device, dtype=dtype)
+        g0 = torch.sigmoid(self.mem.log_gate).to(device=device, dtype=dtype)       # scalar base openness
+        if self.conf_gate and self._conf is not None:
+            conf = self._conf.to(device=device, dtype=dtype).reshape(-1)
+            ri = int(self._relidx) if self._relidx is not None else 0
+            ri = max(0, min(ri, self.n_rel - 1))
+            if self.mem.training:                                                   # track this relation's conf scale
+                m = conf.mean().detach()
+                if float(self.mem.conf_ema[ri]) < 0:
+                    self.mem.conf_ema[ri] = m
+                else:
+                    self.mem.conf_ema[ri] = 0.99 * self.mem.conf_ema[ri] + 0.01 * m
+            scale = self.mem.conf_ema[ri].clamp_min(1e-4)
+            if os.environ.get("CAM_KV_GATE_HARD") == "1":
+                cf = (conf / scale > self.mem.conf_bias).to(dtype)
+            else:
+                cf = torch.sigmoid(self.mem.conf_scale * (conf / scale - self.mem.conf_bias))
+            cf = cf if cf.numel() == B else cf.expand(B)
+        else:
+            cf = torch.ones(B, device=device, dtype=dtype)
+        return (g0 * cf).reshape(B)
+
+    # --- the append (steps 1-5): key/value memory columns + extended additive mask ----------------
+    def _append(self, key_states, value_states, attention_mask, query_states):
+        """key/value_states: [B,n_kv,Tk,head_dim] (post-RoPE). Returns the memory-appended (k,v,mask) or
+        the inputs UNCHANGED when no bank is staged (byte-identical no-op)."""
+        bank = self._bank
+        if bank is None:
+            return key_states, value_states, attention_mask                        # EXACT no-op
+        B, _, Tk, _ = key_states.shape
+        K = bank.shape[1]
+        wdt = self.mem.W_km.weight.dtype                                            # params fp32 (stable train)
+        bank32 = bank.to(device=self.mem.W_km.weight.device, dtype=wdt)
+        Km = self.mem.W_km(bank32).view(B, K, self.n_kv, self.head_dim).transpose(1, 2)   # [B,n_kv,K,hd]
+        Vm = self.mem.W_vm(bank32).view(B, K, self.n_kv, self.head_dim).transpose(1, 2)   # NO RoPE (timeless)
+        Km = Km.to(device=key_states.device, dtype=key_states.dtype)
+        Vm = Vm.to(device=value_states.device, dtype=value_states.dtype)
+        k2 = torch.cat([key_states, Km], dim=2)                                    # [B,n_kv,Tk+K,hd]
+        v2 = torch.cat([value_states, Vm], dim=2)
+        Tq = query_states.shape[2]
+        c = self._gate(B, key_states.device, torch.float32).clamp_(0.0, 1.0)       # [B] in [0,1]
+        self.last_cgate = c.mean().detach()
+        self.last_gate = torch.sigmoid(self.mem.log_gate).detach()
+        mb = torch.log(c).view(B, 1, 1, 1).expand(B, 1, Tq, K)                      # memory column bias; -inf when c==0
+        if attention_mask is None:
+            # pure-causal SDPA fast path gave no mask: build additive causal over the seq + OPEN memory cols.
+            seq = torch.zeros(B, 1, Tq, Tk, dtype=torch.float32, device=key_states.device)
+            off = Tk - Tq                                                          # cache offset (0 without a cache)
+            col = torch.arange(Tk, device=key_states.device).view(1, 1, 1, Tk)
+            row = torch.arange(Tq, device=key_states.device).view(1, 1, Tq, 1) + off
+            seq = seq.masked_fill(col > row, float("-inf"))                        # causal: key j > query i => masked
+            full = torch.cat([seq, mb], dim=-1)
+        else:
+            am = attention_mask
+            if am.dtype == torch.bool:                                             # boolean mask (True=attend) -> additive
+                am = torch.zeros_like(am, dtype=torch.float32).masked_fill(~am, float("-inf"))
+            am = am.to(torch.float32)
+            if am.shape[-1] != Tk:                                                 # guard: mask kv-dim must match seq keys
+                am = am[..., :Tk]
+            full = torch.cat([am, mb], dim=-1)
+        full = full.to(dtype=query_states.dtype)                                   # eager/sdpa accept a float additive mask
+        return k2, v2, full
+
+    def attach(self):
+        import sys as _sys
+        attn = self.attn
+        mod = _sys.modules[type(attn).__module__]                                  # the real modeling_qwen3_5 module
+        apply_rotary = mod.apply_rotary_pos_emb
+        eager = mod.eager_attention_forward
+        ALL = mod.ALL_ATTENTION_FUNCTIONS
+        inj = self
+
+        def patched(hidden_states, position_embeddings, attention_mask=None, past_key_values=None, **kwargs):
+            # ---- faithful copy of Qwen3_5Attention.forward (q/k/v proj, norms, RoPE) ----
+            input_shape = hidden_states.shape[:-1]
+            hidden_shape = (*input_shape, -1, attn.head_dim)
+            query_states, gate = torch.chunk(
+                attn.q_proj(hidden_states).view(*input_shape, -1, attn.head_dim * 2), 2, dim=-1)
+            gate = gate.reshape(*input_shape, -1)
+            query_states = attn.q_norm(query_states.view(hidden_shape)).transpose(1, 2)
+            key_states = attn.k_norm(attn.k_proj(hidden_states).view(hidden_shape)).transpose(1, 2)
+            value_states = attn.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+            cos, sin = position_embeddings
+            query_states, key_states = apply_rotary(query_states, key_states, cos, sin)
+            if past_key_values is not None:
+                key_states, value_states = past_key_values.update(key_states, value_states, attn.layer_idx)
+            # ---- KV MEMORY INJECTION (bolt-on): append AFTER RoPE/cache, BEFORE the attention interface ----
+            key_states, value_states, attention_mask = inj._append(
+                key_states, value_states, attention_mask, query_states)
+            # ---- rest of the original forward (GQA repeat_kv runs inside the interface, unchanged) ----
+            attention_interface = ALL.get_interface(attn.config._attn_implementation, eager)
+            attn_output, attn_weights = attention_interface(
+                attn, query_states, key_states, value_states, attention_mask,
+                dropout=0.0 if not attn.training else attn.attention_dropout,
+                scaling=attn.scaling, **kwargs)
+            attn_output = attn_output.reshape(*input_shape, -1).contiguous()
+            attn_output = attn_output * torch.sigmoid(gate)                        # Q-only gate (unchanged)
+            attn_output = attn.o_proj(attn_output)
+            return attn_output, attn_weights
+
+        if "forward" in attn.__dict__:            # already patched -> restore first (idempotent attach)
+            del attn.__dict__["forward"]
+        attn.forward = patched                    # instance attribute shadows the class method
+        return self
+
+    def detach(self):
+        try:
+            del self.attn.__dict__["forward"]     # remove the instance attr -> class method restored (exact)
+        except KeyError:
+            pass
+        return self
