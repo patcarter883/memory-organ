@@ -47,7 +47,27 @@ across applications.
 
 ...all on a **synthetic recall probe** (curated/random facts, single- and 2-token answers), on AMD ROCm.
 
+- ✅ **Where the frozen bolt-on stands vs Titans — measured** ([RESULTS.md §8](RESULTS.md),
+  [docs/research/frozen-base-titans-scorecard.md](docs/research/frozen-base-titans-scorecard.md)). On a
+  four-axis scorecard against Titans/HOPE's own headlines, a frozen base + distilled cartridge **reaches
+  in-context quality** on integration (edit-ripple ≈ RAG) and capacity (NIAH ≈ ICL) but **cannot exceed
+  it** — *injection cannot integrate an edit into multi-hop reasoning at all* (KV-append 0.000; the ceiling
+  is perturb-vs-recompute), and only *distilling* the base's in-context behavior clears it. It falls
+  **below** in-context on distractor-heavy multi-fact context (BABILong).
+- ✅ **The one structural win: continual / no-forget by *routing*.** A bank of isolated per-fact cartridges
+  + a cheap router preserves unrelated knowledge at **1.00** (vs 0.17 for a naively-composed prefix) with
+  **zero cross-fact interference by construction** — a property a single shared-weight model (Titans/HOPE)
+  cannot have. This sharpens the north star: the bolt-on's edge is not *better reasoning* but a **routed,
+  editable, non-interfering memory bank** alongside a reasoning model.
+
 ## What is aspirational (not yet shown)
+
+- 🟡 **Titans' *above-in-context* headline (BABILong-beats-GPT-4) without training the base.** The
+  scorecard shows this is a wall for a frozen bolt-on: exceeding in-context reasoning needs the memory
+  *co-trained with attention* (from-scratch, à la Titans/HOPE). Open question we are now pushing: how close
+  can we get to the Titans headline *overall* — even via distinct bolt-on / side-by-side modules (a small
+  co-trained reasoning-memory, a LongMem-style side-net for long context, the routed bank for no-forget)
+  rather than one monolith.
 
 - 🟡 **Multi-token *cross-base transfer* (largely closed)**: a per-position + non-linear translator lifts
   it from 0.393 to **0.812** (~84% of ceiling) — a strong pass, but short of single-token parity (~0.94).

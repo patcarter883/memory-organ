@@ -580,3 +580,40 @@ step is to find a good place"`). Open write-side work: capacity/eviction (store 
   ([#16](https://github.com/patcarter883/memory-organ/issues/16)).
 - **N-scaling** the store toward useful sizes (thousands of facts, not 8–128 per doc).
 - **Backend portability** — pure PyTorch, CPU/CUDA expected but unverified.
+
+---
+
+## 8. Frozen base vs Titans — a four-axis scorecard
+
+*How close a frozen base + bolt-on memory gets to Titans/HOPE's own headline capabilities, with no model
+training. Base `Qwen/Qwen3-4B-Base`, frozen; method = a distilled KV-cache cartridge; cloud, ≈$2 total.
+Reference = the same base with the fact **in-context** (RAG/ICL). Full note:
+[docs/research/frozen-base-titans-scorecard.md](docs/research/frozen-base-titans-scorecard.md).*
+
+**Why injection alone fails (the wall).** Multi-hop ripple of an *injected* edit, vs in-context ~0.5:
+KV-append **0.000**, recurrent-state seed **0.067**, residual tap **0.21–0.31**. A tap *trained* on a 2-hop
+relation ripples **0.85** on that relation but **0.31** on a held-out relation — a shortcut, not a belief.
+Every write op (additive/renorm/delta/two-sided) × every depth stays **below** in-context. Ceiling =
+perturb-vs-recompute.
+
+**The scorecard** (cartridge vs in-context):
+
+| Axis | frozen cartridge | in-context | reading |
+|---|---|---|---|
+| Edit-ripple | ≈ RAG (bridge-routed hops); below on competing-direct-path hops | RAG ceiling | matches in-context where reasoning must route through the edit |
+| NIAH (1k / 4k) | **0.87 / 0.73** | ICL 1.00 | ≈ in-context (deep-depth dips = digit-off convergence misses) |
+| BABILong (0k / 1k / 4k) | 0.60 / **0.25 / 0.10** | RAG 0.75 / 0.60 / 0.45 | at parity with no filler; **below** in-context on distractor-heavy context |
+| Continual, N=10: general-QA preserved | routing **1.00** / concat **0.17** | (n/a — no persistent memory) | **structural win** |
+
+**Notes.** *BABILong:* the cartridge memorizes irrelevant filler (parity at 0k, no filler); Titans' surprise
+signal did **not** fix it — surprisal ≠ relevance (formulaic facts are low-surprise, filler is high-surprise).
+*Continual:* naive concatenation collapses (accuracy past N≈2–3, general knowledge 0.75→0.17 — *an earlier
+tiny-budget run wrongly read this as a no-forget win; at full budget it is interference*). **Routing** over
+isolated per-fact cartridges preserves general knowledge at 1.00 with zero cross-fact interference by
+construction — a property a shared-weight model cannot have. Its residual accuracy gap (0.60 vs 0.90 solo) is
+the router's retrieval accuracy (0.70 honest subject-keys), a retrieval-engineering limit, not architectural.
+
+**The bottom line.** A frozen base reaches Titans' *floor* (in-context quality) on reasoning/capacity and
+its *ceiling* is a wall (above-in-context reasoning needs training the model), but it has a *structural
+advantage* on continual/no-forget. Not a weaker Titans — a complementary memory system: a reasoning model
+plus a routed bank of cheap, editable, non-interfering test-time memories.
