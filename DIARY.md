@@ -553,3 +553,49 @@ the value-head dimension for the reference backward, with a memory-bounded chunk
 card — brought native to ~on par with fla-torch *and* stable (stage-2 527s → 147s, parity-exact). So the
 diversity result runs fast now. The lesson that keeps repeating: before assuming a *capability* limit
 (bigger model, better mechanism), check whether it's a *tractability* limit hiding in a filter or a kernel.
+
+---
+
+## Phase 17 — how close to Titans, honestly: the injection wall, the cartridge, and the one place we win
+
+We stopped adding mechanism and asked the blunt question the whole project points at: *how close can a
+frozen base get to Titans' actual headline capabilities without training the model?* The full write-up is
+[docs/research/frozen-base-titans-scorecard.md](docs/research/frozen-base-titans-scorecard.md); the
+narrative is worth keeping here because we were wrong twice and the corrections are the interesting part.
+
+First, the wall. Delivering an edit is easy; making the frozen base *reason* with it is not. A multi-hop
+question resolves an internal **bridge entity** and reads it a few layers later — and an injected fact
+never rides that chain. We measured every way we could think of: KV-append **0.000** multi-hop ripple,
+recurrent-state seed **0.067**, a residual tap **0.21–0.31**, and — the tell — a tap *trained* on one
+2-hop relation ripples 0.85 on that relation and **collapses to 0.31 on a different held-out relation**.
+It learned the answer, not the belief. Then we swept the whole injection space so nothing was left on the
+table (the user's instinct: two negatives can still make a positive). Every write operation — additive,
+on-manifold renormalized, error-correcting delta (the DeltaNet rule, adapted), suppress-and-add — at every
+depth (early garbles, mid ~0.3, late ~0.45) landed *below* the plain in-context baseline (~0.5). The write
+algebra is not the lever. The depth is not the lever. The ceiling is **perturb-vs-recompute**: only
+re-running the base's own forward pass over the fact composes it.
+
+So we stopped injecting and started **distilling** — a Cartridges-style trained KV prefix that mimics the
+base's in-context behavior. It clears delivery (0.84) and, the clean surprise, it ripples multi-hop
+*whether or not the self-study was multi-hop*: install the belief and the frozen base composes it itself.
+The curriculum was never the lever; injection-vs-distillation was.
+
+Then the scorecard, on Titans' own four axes. **Edit-ripple** ≈ RAG (matches in-context; below it only on
+hops that have a competing *direct* path, like language→script). **NIAH** ≈ ICL (0.87/0.73). Two honest
+losses and two corrections. **BABILong** sits *below* in-context on distractor-heavy context — the
+cartridge memorizes the book-filler and regurgitates it (at 0k, no filler, it's at parity, so it's a
+selectivity gap, not a reasoning one). We reached for Titans' **surprise** signal to filter the filler and
+it *failed* — because **surprisal ≠ relevance**: bAbI facts are formulaic (low surprise) and the filler is
+rich prose (high surprise), so surprise-weighting up-weights exactly the wrong thing. Good idea, wrong
+regime; the honest fix (query-time relevance) just re-derives RAG. And **continual/no-forget**: a
+tiny-budget run made us hope naive cartridge-stacking was a no-forget win — at full budget it's the
+opposite, clear interference (unrelated knowledge 0.75→0.17). We were wrong; the correction points at the
+real answer. Stop *stacking* and start *routing*: a bank of isolated per-fact cartridges + a cheap
+retriever that fires only the relevant one → general knowledge preserved at **1.00**, zero cross-fact
+interference **by construction** — a property a single shared-weight model *cannot* have.
+
+That last result is the reframe. A frozen base is **not a weaker Titans**: on reasoning and capacity it
+reaches Titans' *floor* (in-context quality) but not its *ceiling* (above-in-context reasoning, which needs
+training the model); on continual/no-forget it has a structural advantage Titans structurally lacks. So the
+honest product isn't cartridges *instead of* a model — it's a reasoning model *plus* a routed bank of
+cheap, editable, non-interfering test-time memories. Whole investigation, four cloud axes, ≈$2.
