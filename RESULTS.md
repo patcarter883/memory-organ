@@ -119,6 +119,22 @@ end-to-end" before running the transfer number — it wasn't (0.393). We correct
 closed most of the gap with a per-position translator (0.812). We are deliberately *not* upgrading "0.812"
 to "solved": it's a strong pass short of parity, and the record shows both the over-claim and the fix.
 
+### Coexistence at scale — 48 multi-token objects in one store
+
+Pushing the multi-token store 4× past the demo: **48 invented multi-token objects written into one
+persistent store and read back together.** Counterfactual delivery (the store overriding the base prior)
+holds at **0.833**, rising to **0.917** with the production config — **BANKS=1024 + bf16** (bf16 halves
+per-bank VRAM, so 1024 banks fit a 16 GB card where 1024/fp32 OOMs, at no measured delivery cost). The
+generation-coherence probe — does the new object actually appear fluently in a real continuation — delivers
+**20/24 (0.83)** at 512/fp32 and **21/24 (0.88)** at 1024/bf16, vs **~0.92 at N=12**: a small drop under 4×
+interference, not a collapse. Per-position retrieval at N=48 is clean past the first token or two (t0 20/23,
+t1 20/23, t2 9/9, t3 1/1). Out-of-store **false-fire** — a *novel* subject wrongly triggering a stored
+answer — goes to **0.00** at 1024/bf16 (out-of-store confidence mean 0.007 / max 0.472), down from 0.02–0.04
+at 512/fp32; gate separation stays **+0.96** (from +1.00 at N=12). **Honest correction:** the residual ~2/48
+in-store misses are **not** hash-collision crowding — adding banks doesn't fix them (in-store min-confidence
+stays 0.000 at both 512 and 1024) — but a deeper **per-subject addressing** failure, a distinct lever we
+flag rather than paper over (`tools/value_capacity_demo.sh`, commits `02642fc`/`d7f1a2e`).
+
 ## 5. Real knowledge — natural-language phrasing
 
 The dict format (`"<cargo>: <name>"`) is terse and unlike real text. The first real-knowledge cut asks
@@ -506,6 +522,27 @@ help both store retrieval (M=32) and editing (M=16), neutral near the M=8 defaul
 **fact supply** — even a full probe yields only ~13–37 base-known single-token-object facts per relation,
 capping M for the diverse set (`--cf-probe-cap` widens it). Neither limit is exposed by the M=8 headline.
 
+### Architecture selection — an A/B/C bake-off, and why the deployed store is a *pointer*
+
+Before hardening one addressing/delivery architecture for serving, three were run head-to-head on a common
+real-CounterFact set (N=300 store / 300 distractor, 138 distinct objects, seed 20260625), all sharing one
+contract (subject→object, retrieved by subject, delivered so a frozen base emits the object):
+**A — inembed-tap** (incumbent: base-embedding key; value = a base hidden vector via a per-base *trained*
+tap → lossy); **B — GTE-pointer** (whitened-GTE subject key; value = the *exact object token-ids* — a
+lossless pointer id-bank, base-agnostic and training-free); **C — GTE-value** (GTE key; GTE(object) value +
+an NN-decode step). On addressing, the incumbent's keys are the most separable (`addr_exact` **1.0**,
+whitened distractor cosine ~**0.39**); **raw GTE is dead** (nearest-other-subject cosine **0.986**, and
+**100 %** of distractors false-fire above a 0.90 gate), but **whitening revives it** — false-fire rate at a
+0.90 gate drops to **0.05**. **Verdict: B, the GTE-pointer, wins for deployment** — a base-agnostic,
+training-free, deployable key (false-fire 0.05) paired with a *lossless* value (delivery-exact = addressing
+by construction, and multi-token by nature — ~46 % of objects are multi-token), beating A's per-base
+*trained, lossy* value and C's extra decode dependency. **This is the architecture the serving deployment
+runs**: the pointer id-bank delivering exact stored facts into the frozen 35B is arm B, selected here.
+*(Caveats: inembed keys are a touch more separable than whitened-GTE — 0.39 vs 0.56 — so B trades some key
+separability for the base-agnostic lossless value; A's own delivery-fidelity is imported from its campaign,
+not re-measured here; C's decode-acc 1.0 is over a small 138-object table.
+`tools/bakeoff_abc.py` + `bakeoff_results.json`.)*
+
 ## 8. Soft steering — the graded lean, the gate router, and provenance (Track 5, [#99](https://github.com/patcarter883/memory-organ/issues/99))
 
 The delivery primitive `Δlogits = gate(conf)·α·out_proj(value)` is an *additive gated bias*, so overwriting is
@@ -557,7 +594,21 @@ first-token-seed+fluency or **sequential latent delivery** ([#100](https://githu
 *how much* to deliver, and a **base-uncertainty write gate** decides *what to remember* (store iff the base
 can't recall it, `p_base < τ`). Streaming 24 facts, the gate stored the 24 base-unknowable ones and the
 router-gated decode served them back fluently **8/8 (1.00)** (e.g. `"…Oleg Kotov is"` → `"English. The first
-step is to find a good place"`). Open write-side work: capacity/eviction (store walls at M≈130) and conflict.
+step is to find a good place"`).
+
+**Write-side, now demonstrated (was open).** Two write-side pieces this section first listed as open are
+built and validated. A **rank-based write gate** (`CAM_REMEMBER_GATE=rank`, now the default; store a fact
+iff its object is *not* in the base's top-R=1 predictions) is scale-free where the absolute-probability gate
+is not: it correctly **skipped 30/30 base-known facts** vs only **1/24** for the `p_base < 0.5` gate — the
+base holds those facts only weakly (P 0.17–0.43) yet still argmaxes them (rank 0 → skip), while a genuinely
+novel object lands at high rank → keep. **Capacity + eviction** (`CAM_STORE_CAP`, `CAM_EVICT fifo|lowconf`)
+adds a per-bank budget that evicts on overflow and rebuilds the bank from survivors: at B=1 / cap=8 /
+stream=30 it **evicted 22**, the survivors still **delivered 6/8**, and evicted facts were mostly forgotten
+(2/3), vs a `no_memory` floor of 0.000. A serving export (`cam/export_serving.py --export-serving`) writes
+the authoritative memory→serving checkpoint the deployed loader consumes. **Still open:** the residual
+post-eviction collisions are the same single-bank interference wall (store ~M≈130,
+[#17](https://github.com/patcarter883/memory-organ/issues/17)) that eviction *bounds but does not
+eliminate*, and cross-fact conflict.
 
 ## 9. Still open
 

@@ -49,7 +49,11 @@ across applications.
   service closing the read/write symmetry — the calibrated router decides *how much* to deliver, a
   **base-uncertainty write gate** decides *what to remember* (store iff `p_base < τ`). Streaming 24 facts it
   stored the base-unknowable ones and the router-gated decode served them back fluently **8/8** (RESULTS §8).
-  Open write-side: capacity/eviction (store walls at M≈130, [#17](https://github.com/patcarter883/memory-organ/issues/17)) and conflict.
+  The write-side is now demonstrated too: a scale-free **rank write gate** (skip iff the object is in the
+  base's top-R — skipped 30/30 base-known facts vs 1/24 for the probability gate) and **capacity/eviction**
+  (at cap=8/stream=30, evicts 22, survivors still deliver 6/8). Still open: the single-bank interference wall
+  (M≈130, [#17](https://github.com/patcarter883/memory-organ/issues/17)) that eviction *bounds* but doesn't
+  eliminate, and cross-fact conflict (RESULTS §8).
 
 ...all on a **synthetic recall probe** (curated/random facts, single- and 2-token answers), on AMD ROCm.
 
@@ -72,6 +76,12 @@ across applications.
   tokens so per-replica store drift can't desync the tensor-parallel ranks) — and hardened against runaway
   generations, request-record leaks, and control-op latency. The routed non-interfering memory is an
   operational capability, not only a benchmark row.
+- ✅ **The deployed architecture was *selected*, and coexists at scale.** An A/B/C bake-off on real
+  CounterFact (N=300) chose the serving store: a **whitened-GTE pointer** (base-agnostic, training-free key
+  with false-fire 0.05 at a 0.90 gate; raw GTE is dead at 0.986 nearest-other cosine / 100% false-fire) over
+  a lossless **exact-object-token** value — beating the per-base *trained, lossy* incumbent tap. And that
+  store holds **48 multi-token objects coexisting** in one read (counterfactual delivery 0.83→0.92 at
+  BANKS=1024+bf16, out-of-store false-fire 0.00), a ~4× step past the demo (RESULTS §4, §7).
 
 ## What is aspirational (not yet shown)
 
