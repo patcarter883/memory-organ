@@ -4,6 +4,12 @@ The repository today is a **reproducible research preview** of a mechanism. The 
 larger, and we want to be explicit about the gap between the two so nobody mistakes aspiration for
 result.
 
+**The focus (settled by the scorecard below).** memory-organ is a **routed bank of cheap, editable,
+non-interfering test-time memories** for frozen models — the one axis where a bolt-on *structurally beats* a
+monolithic model — and it is now **deployed in a serving engine**. Above-in-context reasoning-*integration*
+is a **measured wall** (a co-trained model's job, not a bolt-on's) and is explicitly not the target. The
+north star below is the long-horizon version of the *portability* leg of that system.
+
 ## The north star: "Titans for everyone"
 
 A single **canonical long-term memory** that *any* frozen LLM can attach to through a small, cheap,
@@ -47,7 +53,7 @@ across applications.
 
 ...all on a **synthetic recall probe** (curated/random facts, single- and 2-token answers), on AMD ROCm.
 
-- ✅ **Where the frozen bolt-on stands vs Titans — measured** ([RESULTS.md §8](RESULTS.md),
+- ✅ **Where the frozen bolt-on stands vs Titans — measured** ([RESULTS.md §10](RESULTS.md),
   [docs/research/frozen-base-titans-scorecard.md](docs/research/frozen-base-titans-scorecard.md)). On a
   four-axis scorecard against Titans/HOPE's own headlines, a frozen base + distilled cartridge **reaches
   in-context quality** on integration (edit-ripple ≈ RAG) and capacity (NIAH ≈ ICL) but **cannot exceed
@@ -59,6 +65,13 @@ across applications.
   **zero cross-fact interference by construction** — a property a single shared-weight model (Titans/HOPE)
   cannot have. This sharpens the north star: the bolt-on's edge is not *better reasoning* but a **routed,
   editable, non-interfering memory bank** alongside a reasoning model.
+- ✅ **Deployed in a serving engine — no longer only a harness.** The delivery mechanism runs in a
+  tensor-parallel serving stack: a **namespaced, multi-tenant pointer store** delivers exact stored facts
+  into a frozen **35B MoE (Qwen3.6-35B-A3B) under TP=2**, over an HTTP memory API (`/cam/*`) with live
+  metrics. It is **concurrent-write-safe** — delivery is *rank-authoritative* (rank 0 broadcasts the forced
+  tokens so per-replica store drift can't desync the tensor-parallel ranks) — and hardened against runaway
+  generations, request-record leaks, and control-op latency. The routed non-interfering memory is an
+  operational capability, not only a benchmark row.
 
 ## What is aspirational (not yet shown)
 

@@ -599,3 +599,29 @@ reaches Titans' *floor* (in-context quality) but not its *ceiling* (above-in-con
 training the model); on continual/no-forget it has a structural advantage Titans structurally lacks. So the
 honest product isn't cartridges *instead of* a model — it's a reasoning model *plus* a routed bank of
 cheap, editable, non-interfering test-time memories. Whole investigation, four cloud axes, ≈$2.
+
+## Phase 18 — the turning point: the wall at scale, and doubling down below it
+
+Phase 17's scorecard was built on small runs (n≈13, cross-experiment). Before committing a direction on it,
+we powered up the one number the whole verdict rests on — the in-context oracle on a *held-out* hop — and
+scored floor / oracle / distilled-cartridge on the **same 113 edits in one pass**. It held, and it
+sharpened — across **two** held-out hops (Qwen3-4B-Base, n=113 and n=130). The in-context oracle is **0.531**
+on the family hop and **0.346** on the harder country hop — *not* the 0.31 that had been quoted as "the
+ceiling"; that 0.31 was a ripple-*trained* tap's held-out **collapse**, an artifact. The floor is 0.12 / 0.02,
+and the distilled cartridge **reaches the ceiling on the easier hop (0.575 ≈ RAG) and *undershoots* it on the
+harder (0.231 < 0.346) — and never exceeds it on either**. The ceiling is itself capped by the base's own
+compositionality (it composes the *true* chain only ~0.32–0.37 of the time). A reviewer had pushed on exactly
+the right question — *is 0.31 collapse or saturation?* — and the powered numbers answered it: there is real
+but modest headroom over the floor, and the cartridge already takes as much of it as anything can. A
+weight-space adapter trained the same way has nothing to gain above the cartridge. The lever was never the
+training schedule; it is distillation-vs-injection, and that is settled.
+
+So we stopped circling the ceiling and **committed to the ground below it** — the routed bank of cheap,
+editable, non-interfering test-time memories, the one axis where a bolt-on beats a monolith. And the same
+stretch, that below-the-line system stopped being only a harness: the delivery mechanism went into a
+**tensor-parallel serving engine** — a namespaced, multi-tenant pointer store delivering exact facts into a
+frozen 35B MoE under TP=2, over an HTTP memory API, made concurrent-write-safe by broadcasting the forced
+tokens from rank 0 so per-replica store drift can't desync the ranks (a real serve outage taught us that
+one), and hardened against runaway generations, request-record leaks, and control-op latency. The research
+artifact and a production path met. Above-in-context reasoning-integration stays where the scorecard put it:
+out of scope for a frozen bolt-on — a co-trained model's job.

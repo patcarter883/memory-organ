@@ -8,6 +8,12 @@ deliver them into a frozen base model via a zero-initialized gated tap, and tran
 memory* to a second frozen base (different size, different tokenizer, different model family) with a
 small affine translator. No base-model weights are trained at any point.
 
+**What it is focused on now:** a **routed bank of editable, non-interfering test-time memories** for frozen
+models — recall, surgical editing, graded steering, portability, and no-forget-by-routing (the one axis
+where a bolt-on *structurally beats* a monolithic model) — now [deployed in a serving
+engine](#where-this-is-going--the-focus). Above-in-context reasoning-*integration* is a **measured wall**
+and explicitly out of scope (see result 5) — that needs a co-trained model, not a bolt-on.
+
 > ### ⚠️ Status & caveats — read first
 > - **Research preview, days old, not peer-reviewed.** It may not survive real data or independent
 >   reproduction.
@@ -128,6 +134,21 @@ loop** (`--serve`), the read/write symmetry runs end to end: the router decides 
 **base-uncertainty write gate** decides *what to remember* (store iff `p_base < τ`) — streaming 24 facts, it
 stored the base-unknowable ones and served them back fluently **8/8** in real generation.
 
+**5. The boundary — reach, don't exceed; and the one axis a bolt-on *wins*.** The honest limit, measured on
+Titans/HOPE's own four headline axes ([RESULTS.md §10](RESULTS.md) →
+[docs/research/frozen-base-titans-scorecard.md](docs/research/frozen-base-titans-scorecard.md)). A frozen
+bolt-on **reaches in-context quality and cannot exceed it.** *Injecting* an edit does not integrate it into
+multi-hop reasoning at all — KV-append multi-hop ripple **0.000**, and a tap *trained* to ripple learns a
+hop-specific shortcut (**0.85** on the trained relation, **0.31** on a held-out one — the answer, not the
+belief). Only *distilling* the base's own in-context behaviour into a small trained prefix clears delivery
+(0.84) and inherits the base's composition — capped at the RAG ceiling, never above it (the ceiling is
+**perturb-vs-recompute**: only re-running the frozen forward *over* the fact composes it). Exceeding
+in-context reasoning needs the memory **co-trained with attention** — a different, from-scratch bet, not a
+bolt-on. **But there is one axis where the bolt-on structurally *beats* a monolithic model: continual /
+no-forget.** A **routed bank of *isolated* per-fact memories** preserves unrelated knowledge at **1.00** (vs
+**0.17** for one naively-composed prefix) with **zero cross-fact interference by construction** — a property
+a single shared-weight model (Titans/HOPE) *cannot* have. That is the win this project is now built around.
+
 See **[RESULTS.md](RESULTS.md)** for every number with its baseline and the full story including the
 [three corrections](DISCLOSURES.md#corrections-we-were-wrong-three-times), and **[METHOD.md](METHOD.md)** for
 how the mechanism works.
@@ -139,10 +160,23 @@ implementation — kernels, math, experiment harness, falsification methodology,
 **Claude's** (Anthropic's Opus 4.x), working as an agent under Pat's direction. We say so plainly; the
 full statement and reasoning are in [DISCLOSURES.md](DISCLOSURES.md#how-this-was-built).
 
-## Where this is going
+## Where this is going — the focus
 
-This is the reproducible artifact. The larger ambition — *one canonical memory that any frozen model
-can attach to* ("Titans for everyone") — and what is proven versus aspirational is laid out in
+The boundary above (result 5) settles the direction. Above-in-context reasoning-integration is a **wall**
+for any frozen bolt-on — closing it needs a memory *co-trained with attention* (a separate, from-scratch
+model, not a bolt-on), so this project is **not** chasing that ceiling. It is doubling down on the thing
+below the ceiling that a bolt-on does *better* than a monolith: a **routed bank of cheap, editable,
+non-interfering test-time memories** for frozen models — recall, insertion, surgical editing, graded
+steering, cross-family portability, and **no-forget-by-routing**, every piece demonstrated here.
+
+And it is no longer only a research harness. The delivery mechanism is now **deployed in a serving engine**:
+a namespaced, multi-tenant **pointer store** delivering exact stored facts into a frozen **35B MoE under
+tensor parallelism**, made **concurrent-write-safe** (rank-authoritative delivery so per-replica store drift
+can't desync the ranks), served over an HTTP memory API with live metrics. The research artifact and a
+production path have met — the below-the-line system is the product.
+
+The long-horizon *"one canonical memory any frozen model can attach to"* ambition ("Titans for everyone")
+remains the north star; what is proven vs aspirational — **including this boundary** — is laid out in
 **[ROADMAP.md](ROADMAP.md)**.
 
 ## The pipeline in one picture

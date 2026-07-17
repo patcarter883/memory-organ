@@ -26,6 +26,16 @@ here carries a chance baseline and an ablation, and where we got it wrong, we le
   randomly assigned so the base cannot guess them — `no_memory` accuracy is pinned near 0).
 - It is **not** real-world knowledge, **not** a product, and **not** a benchmark result. "Does this hold
   on real documents and real facts?" is the next question, and it is unanswered.
+- **The measured boundary — what a frozen bolt-on cannot do.** It reaches in-context quality on recall
+  and integration and it **cannot exceed** it: *injecting* an edit does not integrate it into multi-hop
+  reasoning (KV-append ripple 0.000; a ripple-trained tap learns a hop-specific shortcut — 0.85 trained /
+  0.31 held-out — not a belief). Only *distilling* the base's in-context behaviour clears it, and only up
+  to the in-context (RAG) ceiling — confirmed at powered n on two held-out hops (Qwen3-4B-Base): oracle RAG
+  **0.35–0.53** (hop-dependent), the distilled cartridge **reaches it on the easier hop (0.575 ≈ 0.531) and
+  *undershoots* it on the harder (0.231 < 0.346) — never exceeds either**, over a floor of 0.02–0.12. Above-in-context reasoning-integration needs the
+  memory **co-trained with attention** (a from-scratch model), and is out of scope for this bolt-on. The
+  one axis where the bolt-on *structurally beats* a monolith is continual / no-forget by routing
+  ([RESULTS.md §10](RESULTS.md), [the scorecard](docs/research/frozen-base-titans-scorecard.md)).
 
 ## Maturity
 

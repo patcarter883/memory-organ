@@ -583,7 +583,7 @@ step is to find a good place"`). Open write-side work: capacity/eviction (store 
 
 ---
 
-## 8. Frozen base vs Titans — a four-axis scorecard
+## 10. Frozen base vs Titans — a four-axis scorecard (the boundary)
 
 *How close a frozen base + bolt-on memory gets to Titans/HOPE's own headline capabilities, with no model
 training. Base `Qwen/Qwen3-4B-Base`, frozen; method = a distilled KV-cache cartridge; cloud, ≈$2 total.
@@ -595,6 +595,24 @@ KV-append **0.000**, recurrent-state seed **0.067**, residual tap **0.21–0.31*
 relation ripples **0.85** on that relation but **0.31** on a held-out relation — a shortcut, not a belief.
 Every write op (additive/renorm/delta/two-sided) × every depth stays **below** in-context. Ceiling =
 perturb-vs-recompute.
+
+**Powered, same-pass replication (two held-out hops).** The original ripple numbers came from small
+(n≈13), cross-experiment runs. To retire that, floor / in-context oracle (RAG, the fact stated as a
+premise) / distilled-cartridge were scored on the **same** held-out edits in one pass (Qwen3-4B-Base), on
+**two** held-out hops:
+
+| held-out hop (full n) | floor (`no_edit`) | in-context oracle (RAG) | distilled cartridge (D2) | base composes *true* chain |
+|---|---|---|---|---|
+| **family** (n=113, self-study country) | 0.124 | **0.531** | **0.575 ≈ RAG** | 0.372 |
+| **country** (n=130, self-study family) | 0.015 | **0.346** | 0.231 (**below** RAG) | 0.315 |
+
+The reading is consistent across both hops and is the whole thesis in miniature: the fact-in-context opens
+**real but modest headroom** over the floor (oracle 0.35–0.53, hop-dependent), the artifact **reaches that
+ceiling on the easier hop and undershoots it on the harder — and never exceeds it on either**, and the
+ceiling is itself capped by the base's own compositionality (it composes the *true* chain only ~0.32–0.37 of
+the time). The old "0.31" that got quoted as "the ceiling" was a ripple-*trained* tap's held-out **collapse**
+(an artifact), not the ceiling. A weight-space adapter trained the same way has nothing to gain above the
+cartridge — the lever is *distillation-vs-injection*, not the training schedule.
 
 **The scorecard** (cartridge vs in-context):
 
