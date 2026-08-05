@@ -29,7 +29,7 @@ try:
                                  derange_capitals, COUNTERFACTUAL_HEADER, COUNTERFACTUAL_REL)
     from .recall_boltA import BoltAdapter, eval_direct
     from .pk_store_adapter import PKStoreAdapter
-    from .gated_tap import MAGInjector, KVInjector
+    from .gated_tap import MAGInjector, KVInjector, GDNStateInjector
     from .realedit import load_counterfact, as_fact_table, cf_tids_from_records
 except ImportError:
     if __package__:  # real ImportError inside a sibling, not "run as a file" — don't mask it
@@ -43,7 +43,7 @@ except ImportError:
                                 derange_capitals, COUNTERFACTUAL_HEADER, COUNTERFACTUAL_REL)
     from recall_boltA import BoltAdapter, eval_direct                     # noqa: E402
     from pk_store_adapter import PKStoreAdapter                           # noqa: E402
-    from gated_tap import MAGInjector, KVInjector                         # noqa: E402
+    from gated_tap import MAGInjector, KVInjector, GDNStateInjector   # noqa: E402
     from realedit import load_counterfact, as_fact_table, cf_tids_from_records  # noqa: E402
 
 LN2 = math.log(2.0)
@@ -278,11 +278,46 @@ def _loc_neg_batch(loc_buckets, rng, batch):
     return torch.tensor([items[i] for i in idx], dtype=torch.long, device=DEV)
 
 
-def train_taps(base, adapter, injector, builder, rng, args, tag, loc_buckets=None):
+def train_taps(base, adapter, injector, builder, rng, args, tag, loc_buckets=None, ripple_train=None):
     injector.attach().train()
     Kc = _kc(builder)
     lw = getattr(args, "locality_weight", 0.0)
-    opt = torch.optim.AdamW(injector.parameters(), lr=args.lr)
+    # Rung 2: co-train a low-rank delta on the composition-band attention so the (frozen) circuit learns
+    # to ROUTE ON the memory read (Titans-MAC). The edit/ripple losses already backprop through the base,
+    # so once these adapter params require grad + are in the optimizer they co-train on the same objective.
+    _cotrain_params = []
+    _set_lora_enabled = None
+    _cot_layers = str(getattr(args, "cotrain_lora_layers", "") or "").strip()
+    if _cot_layers:
+        try:
+            from .cotrain_lora import attach_cotrain_lora, set_cotrain_lora_enabled as _set_lora_enabled
+        except ImportError:
+            from cotrain_lora import attach_cotrain_lora, set_cotrain_lora_enabled as _set_lora_enabled
+        _li = [int(x) for x in _cot_layers.replace(" ", "").split(",") if x != ""]
+        _tg = [t for t in str(args.cotrain_lora_targets).replace(" ", "").split(",") if t]
+        _, _cotrain_params, _ = attach_cotrain_lora(
+            base, _li, _tg, rank=int(args.cotrain_lora_rank), alpha=float(args.cotrain_lora_alpha))
+    _train_params = list(injector.parameters()) + _cotrain_params
+    if _cotrain_params:
+        _clr = float(getattr(args, "cotrain_lora_lr", 1e-4))
+        opt = torch.optim.AdamW([{"params": list(injector.parameters()), "lr": args.lr},
+                                 {"params": _cotrain_params, "lr": _clr}])
+        print(f"[cotrain-lora] tap lr {args.lr} | lora lr {_clr} | anchor weight "
+              f"{getattr(args, 'cotrain_anchor_weight', 0.0)}", flush=True)
+    else:
+        opt = torch.optim.AdamW(_train_params, lr=args.lr)
+    _anchor_w = float(getattr(args, "cotrain_anchor_weight", 0.0)) if _cotrain_params else 0.0
+    # B4 ripple objective: replay precomputed (tap-injected edit + leak-free 2-hop prompt) examples and
+    # add NLL(gold_cf) so the tap learns multi-hop CONSISTENCY, not just single-hop delivery. Off by
+    # default (ripple_train is None) -> byte-identical training.
+    rip_w = float(getattr(args, "ripple_weight", 0.0)) if ripple_train else 0.0
+    _ripple_fn = None
+    if ripple_train and rip_w > 0:
+        try:
+            from .mquake_ripple import ripple_loss_term as _ripple_fn
+        except ImportError:
+            from mquake_ripple import ripple_loss_term as _ripple_fn
+        print(f"[mag][{tag}] B4 ripple objective ON: {len(ripple_train)} examples, weight {rip_w}", flush=True)
     _timing = os.environ.get("CAM_STEP_TIMING") == "1"                  # per-phase step profiler (diag)
     import time as _time
 
@@ -345,7 +380,36 @@ def train_taps(base, adapter, injector, builder, rng, args, tag, loc_buckets=Non
                 loc_val = float(loc_loss.detach())                       # scalar read post-backward (no grad warning)
             neg_null = float(np.mean(list(injector.null_attn_stats().values())))
         _p["loc"] = _t() - _s; _s = _t(sync=False)
-        gn = torch.nn.utils.clip_grad_norm_(list(injector.parameters()), 1.0)
+        # B4 RIPPLE OBJECTIVE: replay one precomputed example (tap-injected edit + leak-free 2-hop prompt)
+        # and add ripple_weight * NLL(gold_cf). Separate backward so one graph is alive at a time (mirrors
+        # the locality term). Only the tap params get grad (base+store frozen; bank/gold are constants).
+        rip_val = float("nan")
+        if _ripple_fn is not None:
+            ex = ripple_train[int(rng.integers(0, len(ripple_train)))]
+            rip_loss = _ripple_fn(base, base.get_input_embeddings(), injector, ex, rip_w)
+            if torch.isfinite(rip_loss):
+                rip_loss.backward()                                          # accumulate grad; FREE the graph
+                rip_val = float(rip_loss.detach())
+            injector.set_bank(None)
+        _p["ripple"] = _t() - _s; _s = _t(sync=False)
+        # BASE-PRESERVATION ANCHOR (Rung 2): with memory OFF, keep the co-trained base's next-token dist
+        # == the frozen base's on this batch, so LoRA is inert without memory and only routes the memory
+        # when present. Prevents the catastrophic forgetting that wrecked the un-anchored co-train run
+        # (RAG collapsed to 0). Separate backward so one graph is alive at a time.
+        anc_val = float("nan")
+        if _anchor_w > 0 and _set_lora_enabled is not None:
+            injector.set_bank(None)                                     # memory OFF
+            _set_lora_enabled(base, False)                              # frozen-base reference
+            with torch.no_grad():
+                ref = _answer_logits(base, ctx_emb, Kc)
+            _set_lora_enabled(base, True)                               # co-trained (differentiable)
+            cur = _answer_logits(base, ctx_emb, Kc)
+            ref = ref.reshape(-1, ref.shape[-1]); cur = cur.reshape(-1, cur.shape[-1])
+            anc = F.kl_div(F.log_softmax(cur, -1), F.softmax(ref, -1), reduction="batchmean")
+            if torch.isfinite(anc):
+                (_anchor_w * anc).backward()                            # accumulate; FREE the graph
+                anc_val = float(anc.detach())
+        gn = torch.nn.utils.clip_grad_norm_(_train_params, 1.0)
         if not torch.isfinite(gn):                                       # NaN grad guard
             print(f"[mag][{tag}] step {step:4d} NON-FINITE grad -> skip", flush=True)
             opt.zero_grad(); continue
@@ -358,6 +422,8 @@ def train_taps(base, adapter, injector, builder, rng, args, tag, loc_buckets=Non
         if step % 200 == 0 or step == args.steps - 1:
             em, pt = _seq_metrics(logits, ans)
             extra = (f" loc_kl {loc_val:.3f} neg_null {neg_null:.3f}" if lw > 0 else "")
+            if _ripple_fn is not None:
+                extra += f" ripple_nll {rip_val:.3f}"
             # confidence gate: cgate_pos = c on the STRONG (positive) bank just delivered — want ->1;
             # neg_cgate = c on the WEAK negative bank (last set) — want ->0. The spread is the gate working.
             if getattr(args, "conf_gate", False):
@@ -2139,17 +2205,52 @@ def main():
                          "generations per condition, so this bounds GPU cost. Raise for tighter CIs. "
                          "Also caps the --indist-ripple language-edit set.")
     ap.add_argument("--inject-mode", type=str, default="residual", dest="inject_mode",
-                    choices=["residual", "kv"],
-                    help="Stage-2 injection mechanism: 'residual' (default, unchanged = the MAGInjector "
-                         "gated residual-add tap at --tap-layers) or 'kv' (1c: KVInjector — appends "
-                         "position-free memory K/V columns at the full-attention layer --kv-layer, so the "
-                         "FROZEN base READS memory via softmax, self-dosed). 'kv' trains the SAME way "
-                         "(W_km/W_vm by LM-loss through the frozen base) and runs the SAME eval — a clean "
-                         "A/B vs the residual baseline. Requires --kv-layer to be a full-attention layer.")
+                    choices=["residual", "kv", "gdnstate"],
+                    help="Stage-2 injection mechanism: 'residual' (default, unchanged = MAGInjector gated "
+                         "residual-add tap at --tap-layers), 'kv' (1c: KVInjector — appends position-free "
+                         "memory K/V columns at full-attention layer --kv-layer; FALSIFIED: ripple 0.0), or "
+                         "'gdnstate' (frontier: GDNStateInjector — SEEDS memory into the GDN delta-rule "
+                         "recurrent state (initial_state) at GDN layer --gdn-layer, the most Titans-like "
+                         "integration). All three train the SAME way (bolt-on projection by LM-loss through "
+                         "the frozen base) + run the SAME eval — clean A/B.")
     ap.add_argument("--kv-layer", type=int, default=11, dest="kv_layer",
                     help="1c KV-injection layer (must be full-attention; Qwen3.5-4B: 3,7,11,15,19,23,27,31). "
                          "L11 = the full-attention layer nearest the L12 residual sweet spot. Only used "
                          "with --inject-mode kv.")
+    ap.add_argument("--gdn-layer", type=int, default=12, dest="gdn_layer",
+                    help="GDN-state injection layer (must be linear-attention/GDN; any layer NOT in "
+                         "3,7,11,15,19,23,27,31). Default 12 = the residual sweet spot (a GDN layer). Only "
+                         "used with --inject-mode gdnstate.")
+    ap.add_argument("--ripple-objective", action="store_true", dest="ripple_objective",
+                    help="B4: add a reasoning-INTEGRATION loss to the residual tap (train_taps). Besides "
+                         "the single-hop delivery loss, replay each language edit's tap-injected bank with "
+                         "the LEAK-FREE composed 2-hop question (ending 'Answer:') and minimize NLL of the "
+                         "base-oracle gold_cf answer, backpropped through the FROZEN base to the tap params "
+                         "— teaching multi-hop CONSISTENCY, not just delivery. Off by default (unchanged). "
+                         "Needs --dataset counterfact --phrasing counterfactual_multi (so cf_records exist).")
+    ap.add_argument("--ripple-weight", type=float, default=0.5, dest="ripple_weight",
+                    help="B4: weight of the ripple NLL term added to the delivery loss (default 0.5).")
+    ap.add_argument("--ripple-heldout-frac", type=float, default=0.0, dest="ripple_heldout_frac",
+                    help="B4: fraction of confound-eligible language edits reserved for EVAL ONLY (their "
+                         "case_ids are excluded from ripple training and eval_indist_ripple scores ONLY "
+                         "them) — a clean no-leak A/B. Default 0.0 trains on all + evals all (leak; the A/B "
+                         "is still vs same-run RAG/no_edit and the residual-without-objective baseline).")
+    ap.add_argument("--cotrain-lora-layers", type=str, default="", dest="cotrain_lora_layers",
+                    help="Rung 2 (CAM_MEMLAYER_CONTRAST_SPEC): co-train LoRA on these decoder-layer indices' "
+                         "self-attn projections JOINTLY with the tap, so the circuit learns to route on the "
+                         "memory read (Titans-MAC mechanism). Comma list, e.g. '15,19,23,27,31' (the late "
+                         "full-attn hop-2 band). Empty = off (frozen-base tap only).")
+    ap.add_argument("--cotrain-lora-rank", type=int, default=8, dest="cotrain_lora_rank")
+    ap.add_argument("--cotrain-lora-alpha", type=float, default=8.0, dest="cotrain_lora_alpha")
+    ap.add_argument("--cotrain-lora-targets", type=str, default="q_proj,k_proj,v_proj,o_proj",
+                    dest="cotrain_lora_targets", help="self-attn Linear names to LoRA (comma list).")
+    ap.add_argument("--cotrain-lora-lr", type=float, default=1e-4, dest="cotrain_lora_lr",
+                    help="Separate (small) LR for the co-train LoRA params; the tap keeps --lr. The tap LR "
+                         "(1e-3) catastrophically wrecks base composition if applied to base adapters.")
+    ap.add_argument("--cotrain-anchor-weight", type=float, default=1.0, dest="cotrain_anchor_weight",
+                    help="Weight of the base-PRESERVATION anchor: with memory OFF, KL(co-trained ‖ frozen) so "
+                         "LoRA only changes behaviour when memory is PRESENT (no catastrophic forgetting of "
+                         "the parametric knowledge hop-2 needs). 0 = off.")
     ap.add_argument("--indist-ripple", action="store_true", dest="indist_ripple",
                     help="IN-DISTRIBUTION language-pivot ripple (cam/mquake_ripple.eval_indist_ripple): "
                          "instead of OOD MQuAKE, edit the LANGUAGE relations the tap trained on "
@@ -2396,11 +2497,33 @@ def main():
                                   conf_gate=getattr(args, "conf_gate", False), n_rel=n_rel).to(DEV)
             print(f"[mag] inject-mode=KV at full-attention layer L={args.kv_layer} "
                   f"(W_km/W_vm: {args.mem_dim}->n_kv*head_dim; memory READ via softmax, self-dosed)", flush=True)
+        elif getattr(args, "inject_mode", "residual") == "gdnstate":
+            # frontier: seed the memory into the GDN delta-rule recurrent state (initial_state) at --gdn-layer.
+            tag = f"gdn{args.gdn_layer}"
+            injector = GDNStateInjector(base, args.gdn_layer, args.mem_dim,
+                                        conf_gate=getattr(args, "conf_gate", False), n_rel=n_rel).to(DEV)
+            print(f"[mag] inject-mode=GDN-STATE at GDN layer L={args.gdn_layer} "
+                  f"(W_sk/W_sv seed initial_state [B,{injector.num_v_heads},{injector.head_k_dim},"
+                  f"{injector.head_v_dim}]; memory IS the recurrent state — Titans-like)", flush=True)
         else:
             injector = MAGInjector(base, cfg, args.mem_dim, n_heads=args.tap_heads,
                                    conf_gate=getattr(args, "conf_gate", False), n_rel=n_rel).to(DEV)
+        # B4: precompute the ripple-training set ONCE (frozen base+store -> constant banks/gold_cf), before
+        # train_taps trains the injector. Base forwards here are clean (injector not yet attached).
+        ripple_train = None
+        if getattr(args, "ripple_objective", False):
+            if cf_records is None:
+                print("[mag] --ripple-objective needs --dataset counterfact records; ignoring.", flush=True)
+            else:
+                try:
+                    from .mquake_ripple import build_ripple_trainset
+                except ImportError:
+                    from mquake_ripple import build_ripple_trainset
+                with StageCost("B4 ripple trainset build (oracle + episodic banks)"):
+                    ripple_train = build_ripple_trainset(base, adapter, injector, tok, args, cf_records)
         with StageCost(f"stage-2 tap fit L={tag} ({args.steps} steps, batch {args.batch})"):
-            train_taps(base, adapter, injector, builder, rng, args, tag, loc_buckets=loc_buckets)
+            train_taps(base, adapter, injector, builder, rng, args, tag, loc_buckets=loc_buckets,
+                       ripple_train=ripple_train)
         # free the training-phase CUDA memory (AdamW optimizer states + autograd graph fragments) before
         # eval — on a 16GB card the leftover fragmentation is what OOMs the high-M eval forwards.
         import gc as _gc

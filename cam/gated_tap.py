@@ -20,9 +20,19 @@ import torch.nn as nn
 
 
 def decoder_layers(base):
-    """Locate the ModuleList of decoder layers across HF causal/image-text-to-text wrappers."""
+    """Locate the ModuleList of decoder/mixer blocks across HF causal/image-text-to-text wrappers,
+    INCLUDING pure-SSM donors (donor bake-off V2's SSM courses):
+      * attention / hybrid : model.layers, model.model.layers, transformer.h, language_model.model.layers
+      * Mamba / Mamba2 / FalconMamba : backbone.layers  (MambaBlock returns the post-residual hidden TENSOR)
+      * RWKV                : rwkv.blocks  (RwkvBlock returns a TUPLE (hidden, state, attn))
+    The MAGInjector post-hook already composes on both the tensor and tuple return shapes (it taps out[0]
+    for a tuple, out for a tensor), so an SSM block needs NO per-arch hook variant — only its layer path
+    here. SSM blocks are a residual stream (h = h + mixer(norm(h))), so the tapped delta broadcasts
+    forward exactly as on an attention decoder layer."""
     for path in ("model.layers", "model.model.layers", "language_model.model.layers",
-                 "model.language_model.layers", "transformer.h"):
+                 "model.language_model.layers", "transformer.h",
+                 "backbone.layers", "model.backbone.layers",      # Mamba / Mamba2 / FalconMamba
+                 "rwkv.blocks", "backbone.blocks", "model.blocks"):  # RWKV (and RWKV-style block lists)
         obj, ok = base, True
         for attr in path.split("."):
             if hasattr(obj, attr):
@@ -77,6 +87,20 @@ class GatedMemoryTap(nn.Module):
         # separate EMA per relation (indexed by the queried relation, batch-uniform per build) normalizes
         # each relation to its OWN scale. Shared scale/bias then shape the sigmoid uniformly. n_rel=1 is the
         # byte-identical single-EMA path.
+        # WRITE-OP (CAM_WRITE_OP): the injection is ADDITIVE by default (h + g*y). Additive is a
+        # perturbation off the model's norm-manifold that can't suppress the base's existing content.
+        # Alternatives, selected per-tap at construction (env is stable within a run):
+        #   additive      : h + g*y                                   (default; exact prior behavior)
+        #   renorm        : ||h|| * normalize(h + g*y)                (rotation proxy — stay on norm-shell)
+        #   delta         : h + g*(y - P(h))                          (error-correcting; P ~0-init => ~additive)
+        #   delta_renorm  : renorm applied on top of delta            (both combined)
+        # P is a small trainable nn.Linear(H->H) estimating the base's "current content" so the write
+        # self-cancels where the base already matches y. It is created ONLY for the delta ops, so it
+        # appears in parameters() (and thus the optimizer / grad-clip) only when delta is active. fp32.
+        self.write_op = (os.environ.get("CAM_WRITE_OP") or "additive").strip().lower()
+        if self.write_op in ("delta", "delta_renorm"):
+            self.to_p = nn.Linear(base_hidden, base_hidden, bias=False)
+            nn.init.zeros_(self.to_p.weight)                  # P(h)=0 at init -> y-P(h)=y -> starts additive
         self.conf_gate = conf_gate
         self.n_rel = n_rel
         self.conf_scale = nn.Parameter(torch.tensor(4.0))     # sigmoid steepness (learned, shared)
@@ -123,6 +147,8 @@ class GatedMemoryTap(nn.Module):
         a = torch.softmax(q @ k.transpose(-1, -2) / (self.d_head ** 0.5), dim=-1)   # [B,nh,T,K+1]
         ctx = (a @ v).transpose(1, 2).reshape(h32.shape)       # [B,T,H]  (null contributes 0)
         y = self.to_o(ctx)
+        if self.write_op in ("delta", "delta_renorm"):        # error-correcting: inject the CORRECTION
+            y = y - self.to_p(h32)                            # toward memory (self-cancels where base matches y)
         self.last_attn_entropy = (-(a.clamp_min(1e-9).log() * a).sum(-1)).mean().detach()
         self.last_null_attn = a[..., -1].mean().detach()       # softmax mass routed to the null slot
         if os.environ.get("CAM_NORM_GATE") == "1":             # P-R1: inject value DIRECTION at alpha*||h||
@@ -157,7 +183,14 @@ class GatedMemoryTap(nn.Module):
             s = torch.sigmoid(self.supp)
             cs = c.view(B, 1, 1) if (self.conf_gate and self._conf is not None) else 1.0
             upd = upd - s * cs * h32
-        return h + upd.to(h.dtype)
+        if self.write_op == "additive":                       # EXACT prior behavior (byte-identical)
+            return h + upd.to(h.dtype)
+        # non-additive write ops compute in fp32 then cast once at the end
+        h_out = h32 + upd
+        if self.write_op in ("renorm", "delta_renorm"):       # renormalize to the ORIGINAL per-token norm
+            orig = h32.norm(dim=-1, keepdim=True)             # ||h|| on the PRE-write hidden (L2 over H)
+            h_out = orig * h_out / (h_out.norm(dim=-1, keepdim=True) + 1e-6)
+        return h_out.to(h.dtype)
 
 
 class MAGInjector:
@@ -425,6 +458,216 @@ class KVInjector:
     def detach(self):
         try:
             del self.attn.__dict__["forward"]     # remove the instance attr -> class method restored (exact)
+        except KeyError:
+            pass
+        return self
+
+
+# =================================================================================================
+# GDNStateInjector (frontier) — memory SEEDED INTO the GDN RECURRENT STATE (most Titans-like).
+# -------------------------------------------------------------------------------------------------
+# Titans' memory IS a recurrent state. The Qwen3.5 linear-attention (GDN) layer runs a gated
+# delta-rule recurrence whose per-head state S:[B, num_v_heads, head_k_dim, head_v_dim] is passed to
+# `chunk_gated_delta_rule(..., initial_state=...)`. FEASIBILITY (scoped from modeling_qwen3_5.py):
+# `initial_state` is an EXPOSED, differentiable kwarg (the torch reference impl uses it in-loop and the
+# fla kernel is an autograd.Function) — so we can SEED the memory into the recurrence WITHOUT any fla
+# kernel change, via the same forward monkey-patch KVInjector uses. In our no-cache CAM path the layer
+# takes the chunk (prefill) branch with initial_state=None; we replace None with the memory-seed state.
+#
+# Seed: from bank [B,K,mem_dim] -> Sk=W_sk(bank) [B,K,Hv,dk], Sv=W_sv(bank) [B,K,Hv,dv]; the seed state
+# is the sum of per-slot outer products S_seed[b,h]=Σ_k Sk[b,k,h]⊗Sv[b,k,h] (the delta-rule state IS an
+# accumulation of key⊗value associations — this writes the memory as associations the recurrence carries
+# forward). W_sv zero-init + log_gate near-closed => gentle start; bank=None => initial_state None (exact
+# no-op). Trains like the tap (W_sk/W_sv by LM loss through the frozen base + the delta-rule recurrence).
+class _GDNMem(nn.Module):
+    def __init__(self, mem_dim, num_v_heads, head_k_dim, head_v_dim, conf_gate, n_rel):
+        super().__init__()
+        self.W_sk = nn.Linear(mem_dim, num_v_heads * head_k_dim, bias=False)   # memory -> state KEY factor
+        self.W_sv = nn.Linear(mem_dim, num_v_heads * head_v_dim, bias=False)   # memory -> state VALUE factor
+        nn.init.zeros_(self.W_sv.weight)                                       # seed state = 0 at init
+        self.log_gate = nn.Parameter(torch.tensor(-6.0))                      # base openness (near-closed at init)
+        self.conf_gate = conf_gate
+        self.n_rel = n_rel
+        self.conf_scale = nn.Parameter(torch.tensor(4.0))
+        self.conf_bias = nn.Parameter(torch.tensor(1.0))
+        self.register_buffer("conf_ema", torch.full((n_rel,), -1.0))
+
+
+class GDNStateInjector:
+    """Monkey-patches a GDN (linear_attention) layer's linear_attn.forward to SEED memory into the
+    delta-rule recurrent state (initial_state). Drop-in for MAGInjector (set_bank/attach/detach/eval/
+    parameters)."""
+
+    def __init__(self, base, gdn_layer, mem_dim, conf_gate=False, n_rel=1):
+        self.layers = decoder_layers(base)
+        self.gdn_layer = int(gdn_layer)
+        layer = self.layers[self.gdn_layer]
+        assert hasattr(layer, "linear_attn"), (
+            f"layer {self.gdn_layer} is not a linear-attention (GDN) layer; pick a GDN layer (Qwen3.5-4B: "
+            f"any layer NOT in the full-attention set 3,7,11,15,19,23,27,31)")
+        self.gdn = layer.linear_attn
+        self.num_v_heads = self.gdn.num_v_heads
+        self.head_k_dim = self.gdn.head_k_dim
+        self.head_v_dim = self.gdn.head_v_dim
+        self.mem = _GDNMem(mem_dim, self.num_v_heads, self.head_k_dim, self.head_v_dim, conf_gate, n_rel)
+        self.conf_gate = conf_gate
+        self.n_rel = n_rel
+        self._bank = None
+        self._conf = None
+        self._relidx = None
+        self._force_gate = None
+        self.last_gate = torch.tensor(0.0)
+        self.last_cgate = torch.tensor(1.0)
+
+    def to(self, dev):
+        self.mem.to(dev)
+        return self
+
+    def train(self, mode=True):
+        self.mem.train(mode)
+        return self
+
+    def eval(self):
+        self.mem.eval()
+        return self
+
+    def parameters(self):
+        return self.mem.parameters()
+
+    def set_bank(self, bank, conf=None, relidx=None):
+        self._bank = bank
+        self._conf = conf
+        self._relidx = relidx
+
+    def gate_stats(self):
+        return {self.gdn_layer: float(self.last_gate)}
+
+    def null_attn_stats(self):
+        return {self.gdn_layer: 0.0}
+
+    def cgate_stats(self):
+        return {self.gdn_layer: float(self.last_cgate)}
+
+    def _gate(self, B, device, dtype):
+        if self._force_gate is not None:
+            return torch.full((B,), float(self._force_gate), device=device, dtype=dtype)
+        g0 = torch.sigmoid(self.mem.log_gate).to(device=device, dtype=dtype)
+        if self.conf_gate and self._conf is not None:
+            conf = self._conf.to(device=device, dtype=dtype).reshape(-1)
+            ri = int(self._relidx) if self._relidx is not None else 0
+            ri = max(0, min(ri, self.n_rel - 1))
+            if self.mem.training:
+                m = conf.mean().detach()
+                if float(self.mem.conf_ema[ri]) < 0:
+                    self.mem.conf_ema[ri] = m
+                else:
+                    self.mem.conf_ema[ri] = 0.99 * self.mem.conf_ema[ri] + 0.01 * m
+            scale = self.mem.conf_ema[ri].clamp_min(1e-4)
+            if os.environ.get("CAM_GDN_GATE_HARD") == "1":
+                cf = (conf / scale > self.mem.conf_bias).to(dtype)
+            else:
+                cf = torch.sigmoid(self.mem.conf_scale * (conf / scale - self.mem.conf_bias))
+            cf = cf if cf.numel() == B else cf.expand(B)
+        else:
+            cf = torch.ones(B, device=device, dtype=dtype)
+        return (g0 * cf).reshape(B)
+
+    def _seed(self, B, device):
+        """Memory-derived initial recurrent state [B, num_v_heads, head_k_dim, head_v_dim] (fp32, the
+        recurrence dtype), or None when no bank is staged (byte-identical no-op)."""
+        bank = self._bank
+        if bank is None:
+            return None
+        wdt = torch.float32                                             # the delta-rule state runs in fp32
+        w_dev = self.mem.W_sk.weight.device
+        bank32 = bank.to(device=w_dev, dtype=wdt)
+        K = bank32.shape[1]
+        Sk = self.mem.W_sk(bank32).view(B, K, self.num_v_heads, self.head_k_dim)
+        Sv = self.mem.W_sv(bank32).view(B, K, self.num_v_heads, self.head_v_dim)
+        S = torch.einsum("bkhi,bkhj->bhij", Sk, Sv)                     # Σ_k key⊗value associations
+        c = self._gate(B, S.device, wdt).view(B, 1, 1, 1)
+        self.last_gate = torch.sigmoid(self.mem.log_gate).detach()
+        self.last_cgate = c.mean().detach()
+        return (c * S).to(device=device)
+
+    def attach(self):
+        import sys as _sys
+        import torch.nn.functional as _F
+        gdn = self.gdn
+        mod = _sys.modules[type(gdn).__module__]
+        apply_mask = mod.apply_mask_to_padding_states
+        inj = self
+
+        def patched(hidden_states, cache_params=None, attention_mask=None, **kwargs):
+            # ---- faithful copy of Qwen3_5GatedDeltaNet.forward ----
+            hidden_states = apply_mask(hidden_states, attention_mask)
+            batch_size, seq_len, _ = hidden_states.shape
+            use_precomputed_states = cache_params is not None and cache_params.has_previous_state(gdn.layer_idx)
+            if use_precomputed_states:
+                conv_state = cache_params.layers[gdn.layer_idx].conv_states
+                recurrent_state = cache_params.layers[gdn.layer_idx].recurrent_states
+            mixed_qkv = gdn.in_proj_qkv(hidden_states).transpose(1, 2)
+            z = gdn.in_proj_z(hidden_states).reshape(batch_size, seq_len, -1, gdn.head_v_dim)
+            b = gdn.in_proj_b(hidden_states)
+            a = gdn.in_proj_a(hidden_states)
+            if use_precomputed_states and seq_len == 1:
+                mixed_qkv = gdn.causal_conv1d_update(
+                    mixed_qkv, conv_state, gdn.conv1d.weight.squeeze(1), gdn.conv1d.bias, gdn.activation)
+            else:
+                if use_precomputed_states:
+                    mixed_qkv = torch.cat([conv_state, mixed_qkv], dim=-1)
+                if cache_params is not None:
+                    new_conv_state = _F.pad(mixed_qkv, (gdn.conv_kernel_size - mixed_qkv.shape[-1], 0))
+                    cache_params.update_conv_state(new_conv_state, gdn.layer_idx)
+                if gdn.causal_conv1d_fn is not None:
+                    mixed_qkv = gdn.causal_conv1d_fn(
+                        x=mixed_qkv, weight=gdn.conv1d.weight.squeeze(1), bias=gdn.conv1d.bias,
+                        activation=gdn.activation, seq_idx=kwargs.get("seq_idx"))
+                else:
+                    mixed_qkv = _F.silu(gdn.conv1d(mixed_qkv)[:, :, : mixed_qkv.shape[-1]])
+                if use_precomputed_states:
+                    mixed_qkv = mixed_qkv[:, :, -seq_len:]
+            mixed_qkv = mixed_qkv.transpose(1, 2)
+            query, key, value = torch.split(mixed_qkv, [gdn.key_dim, gdn.key_dim, gdn.value_dim], dim=-1)
+            query = query.reshape(batch_size, seq_len, -1, gdn.head_k_dim)
+            key = key.reshape(batch_size, seq_len, -1, gdn.head_k_dim)
+            value = value.reshape(batch_size, seq_len, -1, gdn.head_v_dim)
+            beta = b.sigmoid()
+            g = -gdn.A_log.float().exp() * _F.softplus(a.float() + gdn.dt_bias)
+            if gdn.num_v_heads // gdn.num_k_heads > 1:
+                query = query.repeat_interleave(gdn.num_v_heads // gdn.num_k_heads, dim=2)
+                key = key.repeat_interleave(gdn.num_v_heads // gdn.num_k_heads, dim=2)
+            if use_precomputed_states and seq_len == 1:
+                # single-token cached decode: keep the recurrent path unchanged (seed enters at prefill).
+                core_attn_out, last_recurrent_state = gdn.recurrent_gated_delta_rule(
+                    query, key, value, g=g, beta=beta, initial_state=recurrent_state,
+                    output_final_state=cache_params is not None, use_qk_l2norm_in_kernel=True)
+            else:
+                # ---- GDN-STATE INJECTION: seed the memory into initial_state (None -> S_seed) ----
+                init = recurrent_state if use_precomputed_states else None
+                seed = inj._seed(batch_size, query.device)             # [B,Hv,dk,dv] fp32 or None
+                if seed is not None:
+                    init = seed if init is None else init + seed
+                core_attn_out, last_recurrent_state = gdn.chunk_gated_delta_rule(
+                    query, key, value, g=g, beta=beta, initial_state=init,
+                    output_final_state=cache_params is not None, use_qk_l2norm_in_kernel=True,
+                    cu_seqlens=kwargs.get("cu_seq_lens_q"))
+            if cache_params is not None:
+                cache_params.update_recurrent_state(last_recurrent_state, gdn.layer_idx)
+            core_attn_out = core_attn_out.reshape(-1, gdn.head_v_dim)
+            z = z.reshape(-1, gdn.head_v_dim)
+            core_attn_out = gdn.norm(core_attn_out, z)
+            core_attn_out = core_attn_out.reshape(batch_size, seq_len, -1)
+            return gdn.out_proj(core_attn_out)
+
+        if "forward" in gdn.__dict__:
+            del gdn.__dict__["forward"]
+        gdn.forward = patched
+        return self
+
+    def detach(self):
+        try:
+            del self.gdn.__dict__["forward"]
         except KeyError:
             pass
         return self

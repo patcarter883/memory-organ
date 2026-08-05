@@ -101,6 +101,7 @@ import os
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 
 # flat-package import shim (mirrors recall_mag.py): work as `cam.mquake_ripple` and as a bare file.
 try:
@@ -380,6 +381,121 @@ def _oracle(base, adapter, tok, injector, base_embed, lm, cloze, bos, olen):
     return _oracle_span(g)
 
 
+def _lang_edits(cf_records, limit=0):
+    """Language-relation edits the tap trained on, base-known + single-token true/new + true!=new."""
+    lang = [r for r in cf_records if getattr(r, "relation_id", "") in LANG_RELS
+            and getattr(r, "new_tid", -1) >= 0 and getattr(r, "true_tid", -1) >= 0
+            and r.true_str.strip().lower() != r.new_str.strip().lower()]
+    if limit > 0:
+        lang = lang[:limit]
+    return lang
+
+
+@torch.no_grad()
+def _select_twohop(base, adapter, tok, injector, args, lang, tag="indist", force=None):
+    """Pick the 2-hop (family/script/country) with the most confound-eligible cases (gold_cf!=gold_true).
+    Returns (hop_name, composed_question_template, oracle_map {language_str: gold_span}). Shared by the
+    eval AND the B4 ripple-training objective. `force` pins a specific hop (skip auto-select) so train
+    and eval can use DIFFERENT hops (train=country/eval=family = does the tap install a genuine BELIEF
+    that composes into ANY downstream relation = reasoning, vs a trained edit->country shortcut)."""
+    olen = int(os.environ.get("CAM_INDIST_ORACLE_LEN", "8"))
+    base_embed = base.get_input_embeddings()
+    lm = base.get_output_embeddings().weight
+    bos = [tok.bos_token_id] if tok.bos_token_id is not None else []
+    uniq = sorted({r.true_str for r in lang} | {r.new_str for r in lang})
+    if force and force in _TWOHOPS:
+        cloze_t, qtmpl = _TWOHOPS[force]
+        omap = {L: _oracle(base, adapter, tok, injector, base_embed, lm, cloze_t.format(L=L), bos, olen)
+                for L in uniq}
+        elig = sum(1 for r in lang if omap[r.true_str] and omap[r.new_str]
+                   and _norm(omap[r.true_str]) != _norm(omap[r.new_str]))
+        print(f"[{tag}] FORCED 2-hop = {force!r} (confound-eligible {elig}/{len(lang)}); Q = {qtmpl!r}", flush=True)
+        return force, qtmpl, omap
+    best_hop, best_maps, best_elig = None, None, -1
+    for name, (cloze_t, _q) in _TWOHOPS.items():
+        omap = {L: _oracle(base, adapter, tok, injector, base_embed, lm, cloze_t.format(L=L), bos, olen)
+                for L in uniq}
+        elig = sum(1 for r in lang if omap[r.true_str] and omap[r.new_str]
+                   and _norm(omap[r.true_str]) != _norm(omap[r.new_str]))
+        print(f"[{tag}] 2-hop candidate {name!r}: confound-eligible (gold_cf!=gold_true) = {elig}/{len(lang)}",
+              flush=True)
+        if elig > best_elig:
+            best_hop, best_maps, best_elig = name, omap, elig
+    _cloze_t, qtmpl = _TWOHOPS[best_hop]
+    print(f"[{tag}] CHOSEN 2-hop = {best_hop!r} (confound-eligible {best_elig}); composed Q = {qtmpl!r}",
+          flush=True)
+    return best_hop, qtmpl, best_maps
+
+
+# ---- B4: ripple TRAINING objective on the residual tap ------------------------------------------
+@torch.no_grad()
+def build_ripple_trainset(base, adapter, injector, tok, args, cf_records):
+    """Precompute the B4 ripple-training examples ONCE (base + store are frozen in stage-2, so the
+    episodic bank + the base-oracle gold_cf are constants). Each example carries the tap's episodic bank
+    for an edit + the leak-free composed 2-hop prompt (ending 'Answer:') + the gold_cf answer token ids.
+    train_taps replays these with the tap ON and adds NLL(gold_cf) to the delivery loss so the tap learns
+    to make the MULTI-HOP answer match the EDITED chain, not just deliver the object single-hop.
+
+    Optional held-out split (--ripple-heldout-frac>0): a fraction of confound-eligible edits is reserved
+    (their case_ids stashed on args._ripple_heldout_ids) so eval_indist_ripple can score ONLY unseen edits
+    (no train-on-eval leak). Default 0.0 trains on all eligible edits (documented leak — the A/B is still
+    vs the SAME-run RAG/no_edit and the residual-without-objective baseline)."""
+    assert getattr(args, "store", "bolt") == "pk", "ripple objective needs the pk store"
+    lang = _lang_edits(cf_records, int(getattr(args, "mquake_limit", 0) or 0))
+    if not lang:
+        print("[ripple-obj] no language-relation edits in the trained set; ripple objective OFF", flush=True)
+        return None
+    hop, qtmpl, omap = _select_twohop(base, adapter, tok, injector, args, lang, tag="ripple-obj", force=os.environ.get("CAM_RIPPLE_TRAIN_HOP"))
+    frac = float(getattr(args, "ripple_heldout_frac", 0.0) or 0.0)
+    seg_len, qa_seg = int(args.seg_len), int(args.qa_seg)
+    rng = np.random.default_rng(int(getattr(args, "seed", 0)) + 777)
+    bos = [tok.bos_token_id] if tok.bos_token_id is not None else []
+    elig = [r for r in lang if omap[r.true_str] and omap[r.new_str]
+            and _norm(omap[r.true_str]) != _norm(omap[r.new_str])]
+    order = rng.permutation(len(elig))
+    n_held = int(round(len(elig) * frac))
+    held_ids = {int(getattr(elig[i], "case_id", -1)) for i in order[:n_held]} if n_held > 0 else set()
+    args._ripple_heldout_ids = held_ids                       # eval restricts to these when non-empty
+    train_recs = [elig[i] for i in order[n_held:]]
+    ex_list = []
+    for r in train_recs:
+        eb = _episodic_bank(adapter, tok, r, seg_len, qa_seg, rng)
+        if eb is None:
+            continue
+        bank, conf, relidx = eb
+        NP = _first_hop_np(r)
+        Q = qtmpl.format(NP=NP)
+        prompt_ids = bos + tok(FEWSHOT + f"Question: {Q}\nAnswer:", add_special_tokens=False).input_ids
+        gold_ids = tok(" " + omap[r.new_str], add_special_tokens=False).input_ids
+        if not gold_ids:
+            continue
+        ex_list.append({"bank": bank.detach(),
+                        "conf": (conf.detach() if conf is not None else None),
+                        "relidx": relidx, "prompt_ids": prompt_ids, "gold_ids": gold_ids,
+                        "subject": r.subject, "gold_cf": omap[r.new_str]})
+    rw = float(getattr(args, "ripple_weight", 0.5))
+    print(f"[ripple-obj] built {len(ex_list)} ripple-training examples (2-hop={hop}, weight={rw}, "
+          f"held-out {len(held_ids)} case_ids for eval)", flush=True)
+    return ex_list or None
+
+
+def ripple_loss_term(base, base_embed, injector, ex, weight):
+    """weight * NLL(gold_cf tokens) under the FROZEN base, given the tap-injected edit + the leak-free
+    composed 2-hop prompt. The bank/conf are constants (frozen store); the gradient flows only into the
+    tap params (W_q/W_k/W_v/W_o/gamma, or KV W_km/W_vm) — the reasoning-integration signal. set_bank is
+    cleared afterwards so it doesn't leak into the next step."""
+    injector.set_bank(ex["bank"], conf=ex["conf"], relidx=ex["relidx"])
+    ids = ex["prompt_ids"] + ex["gold_ids"]
+    ctx = torch.tensor([ids], dtype=torch.long, device=DEV)
+    logits = base(inputs_embeds=base_embed(ctx)).logits.float()
+    injector.set_bank(None)
+    Lg = len(ex["gold_ids"])
+    start = len(ex["prompt_ids"])
+    pred = logits[0, start - 1:start - 1 + Lg]                # position i predicts token i+1
+    tgt = torch.tensor(ex["gold_ids"], dtype=torch.long, device=pred.device)
+    return weight * F.cross_entropy(pred, tgt)
+
+
 @torch.no_grad()
 def eval_indist_ripple(base, adapter, injector, tok, args, cf_records):
     """IN-DISTRIBUTION language-pivot ripple. Edits are language-relation CounterFact records the tap
@@ -389,16 +505,14 @@ def eval_indist_ripple(base, adapter, injector, tok, args, cf_records):
     assert getattr(args, "store", "bolt") == "pk", "in-dist ripple needs the pk store; run with --store pk"
     assert cf_records is not None, "in-dist ripple needs the trained CounterFact records (cf_records)"
     injector.eval()
-    lang = [r for r in cf_records if getattr(r, "relation_id", "") in LANG_RELS
-            and getattr(r, "new_tid", -1) >= 0 and getattr(r, "true_tid", -1) >= 0
-            and r.true_str.strip().lower() != r.new_str.strip().lower()]
-    limit = int(getattr(args, "mquake_limit", 0) or 0)
-    if limit > 0:
-        lang = lang[:limit]
+    lang = _lang_edits(cf_records, int(getattr(args, "mquake_limit", 0) or 0))
+    # B4 held-out: if the ripple objective reserved eval-only case_ids, score ONLY those (no train-on-eval leak)
+    held = getattr(args, "_ripple_heldout_ids", None)
+    if held:
+        lang = [r for r in lang if int(getattr(r, "case_id", -1)) in held]
     from collections import Counter
     rel_ct = Counter(r.relation_id for r in lang)
     gen_len = int(os.environ.get("CAM_MQUAKE_GEN_LEN", "40"))
-    olen = int(os.environ.get("CAM_INDIST_ORACLE_LEN", "8"))
     show = int(os.environ.get("CAM_MQUAKE_SHOW", "12"))
     alpha = float(os.environ.get("CAM_LOGIT_INJECT", "0"))
     ctrl_min = float(os.environ.get("CAM_MQUAKE_CTRL_MIN", "0.40"))
@@ -408,29 +522,15 @@ def eval_indist_ripple(base, adapter, injector, tok, args, cf_records):
     lm = base.get_output_embeddings().weight
     bos = [tok.bos_token_id] if tok.bos_token_id is not None else []
 
-    print(f"\n[indist] === IN-DISTRIBUTION language-pivot ripple ({len(lang)} language edits) ===", flush=True)
+    print(f"\n[indist] === IN-DISTRIBUTION language-pivot ripple ({len(lang)} language edits"
+          f"{' — HELD-OUT' if held else ''}) ===", flush=True)
     print(f"[indist] relations: {dict(rel_ct)} | tap delivers in-dist (unlike OOD MQuAKE) — testing "
           f"whether that delivery RIPPLES through a language 2-hop (base as oracle)", flush=True)
     if not lang:
         print("[indist] no single-token language-relation edits in the trained set; nothing to do.", flush=True)
         return {"n": 0}
 
-    # ---- choose the 2-hop with the most confound-eligible cases (gold_cf != gold_true, both non-empty) ----
-    uniq = sorted({r.true_str for r in lang} | {r.new_str for r in lang})
-    best_hop, best_maps, best_elig = None, None, -1
-    for name, (cloze_t, _q) in _TWOHOPS.items():
-        omap = {L: _oracle(base, adapter, tok, injector, base_embed, lm, cloze_t.format(L=L), bos, olen)
-                for L in uniq}
-        elig = sum(1 for r in lang if omap[r.true_str] and omap[r.new_str]
-                   and _norm(omap[r.true_str]) != _norm(omap[r.new_str]))
-        print(f"[indist] 2-hop candidate {name!r}: confound-eligible (gold_cf!=gold_true) = {elig}/{len(lang)}",
-              flush=True)
-        if elig > best_elig:
-            best_hop, best_maps, best_elig = name, omap, elig
-    hop = best_hop
-    omap = best_maps
-    _cloze_t, qtmpl = _TWOHOPS[hop]
-    print(f"[indist] CHOSEN 2-hop = {hop!r} (confound-eligible {best_elig}); composed Q = {qtmpl!r}", flush=True)
+    hop, qtmpl, omap = _select_twohop(base, adapter, tok, injector, args, lang, tag="indist", force=os.environ.get("CAM_RIPPLE_EVAL_HOP"))
 
     rows = []          # dict per case
     ctrl_hits = n_ctrl = 0

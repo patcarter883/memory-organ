@@ -211,7 +211,14 @@ def load_frozen_base(model_id=None):
     model_id = model_id or MODEL
     device_map = os.environ.get("CAM_DEVICE_MAP")               # 'auto' -> shard across visible GPUs
     from transformers import AutoModelForCausalLM, AutoModelForImageTextToText, AutoTokenizer
-    tok = AutoTokenizer.from_pretrained(model_id)
+    # robust tokenizer load: some donors ship no fast tokenizer (RWKV world tokenizer) or need remote code.
+    try:
+        tok = AutoTokenizer.from_pretrained(model_id)
+    except Exception:
+        try:
+            tok = AutoTokenizer.from_pretrained(model_id, use_fast=False)
+        except Exception:
+            tok = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
     m, last = None, None
     for loader in (AutoModelForCausalLM, AutoModelForImageTextToText):
         try:
