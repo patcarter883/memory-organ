@@ -275,39 +275,56 @@ def _persistent_bank(adapter, tok, records, learned_pool, gte):
 def _gen(base, adapter, tok, injector, base_embed, lm, prompt_ids, bank, conf, relidx, alpha, gen_len):
     """Greedy free-gen. bank=None -> tap OFF. bank set -> tap ON: constant residual injection every step
     + optional conf-gated LOGIT injection when alpha>0. Early-stops at the model's Answer line or a
-    fabricated next Question."""
-    cur = torch.tensor([prompt_ids], dtype=torch.long, device=DEV)
+    fabricated next Question. CACHED incremental decode by default (CAM_GEN_CACHE=0 restores the
+    historical full-sequence re-prefill loop, which re-enters the chunked-GDN path every step)."""
+    cache_mode = os.environ.get("CAM_GEN_CACHE", "1") != "0"
     c0env, hard = os.environ.get("CAM_LOGIT_GATE_C0"), os.environ.get("CAM_LOGIT_GATE_HARD") == "1"
     out = []
-    for _ in range(gen_len):
-        inj = None
-        if bank is None:
-            injector.set_bank(None)
-        else:
-            injector.set_bank(bank, conf=conf, relidx=relidx)
-            if alpha > 0:
-                v = alpha * (adapter.out_proj(bank).mean(1).to(lm.device, lm.dtype) @ lm.t())
-                if c0env is not None and conf is not None:
-                    cc = conf.to(v.device)
-                    if hard:
-                        g = (cc > float(c0env)).to(v.dtype)
-                    else:
-                        g = torch.sigmoid(float(os.environ.get("CAM_LOGIT_GATE_K", "1")) * (cc - float(c0env)))
-                    v = v * g.view(-1, 1)
-                inj = v
-        logits = base(inputs_embeds=base_embed(cur)).logits[:, -1]
-        if inj is not None:
-            logits = logits + inj.to(logits.device)
-        nxt = logits.argmax(-1)
-        out.append(int(nxt.item()))
-        cur = torch.cat([cur, nxt.view(1, 1)], dim=1)
-        dec = tok.decode(out)
-        low = dec.lower()
-        if "\nquestion" in low:
-            break
-        j = low.find("answer:")
-        if j != -1 and "\n" in dec[j:]:
-            break
+    past = None
+    step_ids = torch.tensor([prompt_ids], dtype=torch.long, device=DEV)
+    fwd_len = len(prompt_ids)                                  # tokens THIS forward will see: prefill
+    with torch.no_grad():                                      # = full prompt, then 1 per decode step
+        for _ in range(gen_len):
+            inj = None
+            if bank is None:
+                injector.set_bank(None)
+            else:
+                injector.set_bank(bank, conf=conf, relidx=relidx)
+                if alpha > 0:
+                    v = alpha * (adapter.out_proj(bank).mean(1).to(lm.device, lm.dtype) @ lm.t())
+                    if c0env is not None and conf is not None:
+                        cc = conf.to(v.device)
+                        if hard:
+                            g = (cc > float(c0env)).to(v.dtype)
+                        else:
+                            g = torch.sigmoid(float(os.environ.get("CAM_LOGIT_GATE_K", "1")) * (cc - float(c0env)))
+                        v = v * g.view(-1, 1)
+                    inj = v
+            if hasattr(injector, "set_trigger_ids"):           # E1 (#104): refresh the content fire
+                try:                                           # mask span-aligned with THIS forward
+                    injector.set_trigger_ids(step_ids, fwd_len=(fwd_len if cache_mode else None))
+                except TypeError:                              # injectors without the fwd_len kwarg
+                    injector.set_trigger_ids(step_ids)
+            if cache_mode:
+                inp = step_ids if past is None else step_ids[:, -1:]
+                outp = base(inputs_embeds=base_embed(inp), past_key_values=past, use_cache=True)
+                past = outp.past_key_values
+                logits = outp.logits[:, -1]
+            else:
+                logits = base(inputs_embeds=base_embed(step_ids)).logits[:, -1]
+            if inj is not None:
+                logits = logits + inj.to(logits.device)
+            nxt = logits.argmax(-1)
+            out.append(int(nxt.item()))
+            step_ids = torch.cat([step_ids, nxt.view(1, 1)], dim=1)
+            fwd_len = 1
+            dec = tok.decode(out)
+            low = dec.lower()
+            if "\nquestion" in low:
+                break
+            j = low.find("answer:")
+            if j != -1 and "\n" in dec[j:]:
+                break
     injector.set_bank(None)
     return tok.decode(out)
 
@@ -321,6 +338,8 @@ def _single_hop_control(base, adapter, tok, injector, base_embed, lm, r, bank, c
              int(os.environ.get("CAM_MQUAKE_CTRL_LEN", "10")))
     gen_hit = _norm(r.new_str) in _norm(g)
     injector.set_bank(bank, conf=conf, relidx=relidx)                       # 1-step argmax cross-check
+    if hasattr(injector, "set_trigger_ids"):                                # E1 (#104): fire mask for THIS seq
+        injector.set_trigger_ids(torch.tensor([pid], dtype=torch.long, device=DEV))
     logits = base(inputs_embeds=base_embed(torch.tensor([pid], dtype=torch.long, device=DEV))).logits[:, -1]
     argmax_hit = int(logits.argmax(-1).item()) == r.new_tid
     injector.set_bank(None)
@@ -409,6 +428,9 @@ def _select_twohop(base, adapter, tok, injector, args, lang, tag="indist", force
                 for L in uniq}
         elig = sum(1 for r in lang if omap[r.true_str] and omap[r.new_str]
                    and _norm(omap[r.true_str]) != _norm(omap[r.new_str]))
+        if os.environ.get("CAM_TRIG_DEBUG") == "1":
+            print(f"[{tag}][dbg] uniq={uniq} omap_{force}=" +
+                  " | ".join(f"{L}={omap[L]!r}" for L in uniq), flush=True)
         print(f"[{tag}] FORCED 2-hop = {force!r} (confound-eligible {elig}/{len(lang)}); Q = {qtmpl!r}", flush=True)
         return force, qtmpl, omap
     best_hop, best_maps, best_elig = None, None, -1
@@ -417,6 +439,9 @@ def _select_twohop(base, adapter, tok, injector, args, lang, tag="indist", force
                 for L in uniq}
         elig = sum(1 for r in lang if omap[r.true_str] and omap[r.new_str]
                    and _norm(omap[r.true_str]) != _norm(omap[r.new_str]))
+        if os.environ.get("CAM_TRIG_DEBUG") == "1":
+            print(f"[{tag}][dbg] uniq={uniq} omap_{name}=" +
+                  " | ".join(f"{L}={omap[L]!r}" for L in uniq), flush=True)
         print(f"[{tag}] 2-hop candidate {name!r}: confound-eligible (gold_cf!=gold_true) = {elig}/{len(lang)}",
               flush=True)
         if elig > best_elig:

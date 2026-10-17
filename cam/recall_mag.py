@@ -2258,6 +2258,44 @@ def main():
                          "through a language 2-hop (base as oracle for the 2nd hop; gold_cf!=gold_true "
                          "confound control). Runs INSTEAD of the delivery/persistent evals. Requires "
                          "--store pk + the counterfactual_multi bind (so cf_records exist).")
+    tg = ap.add_argument_group("E1 trigger-local delivery (#104)")
+    tg.add_argument("--trigger-eval", action="store_true", dest="trigger_eval",
+                    help="E1 (#104): run the trigger-local DISTILLED delivery experiment INSTEAD of the "
+                         "tap. Trains TriggerInjector arm(s) by KL distillation (teacher = frozen base + "
+                         "edit in-context; student = frozen base + trigger injection, NO edit text) over "
+                         "per-edit self-study, then scores the in-distribution language-pivot 2-hop "
+                         "(no_edit/RAG same-pass + single-hop delivery GATE + fire diagnostics). See "
+                         "docs/CAM_TRIGGER_DELIVERY_SPEC.md. Requires --store pk + counterfact records.")
+    tg.add_argument("--trigger-objective", type=str, default="distill", dest="trigger_objective",
+                    choices=["distill", "delivery"],
+                    help="E1 objective: 'distill' = KL(teacher||student) on self-study (default, the "
+                         "settled lever); 'delivery' = the July tap-fit CE on the edit's own cloze "
+                         "(mask-compatible; isolates the objective from the masked geometry).")
+    tg.add_argument("--trigger-arms", type=str, default="trigger", dest="trigger_arms",
+                    help="comma list from {trigger,nomask}: 'trigger' = masked content-triggered read "
+                         "(A2, the E1 geometry); 'nomask' = identical module + objective without the "
+                         "mask (A1 ablation, isolates geometry from objective).")
+    tg.add_argument("--trigger-layer", type=int, default=12, dest="trigger_layer",
+                    help="injection layer for the trigger tap (L12 = the residual ripple sweet spot; "
+                         "L24 = the alt; single layer only — multi-site residual is falsified).")
+    tg.add_argument("--trigger-orders", type=str, default="2,3", dest="trigger_orders",
+                    help="n-gram orders for the content trigger (Engram N in {2,3}; single-token "
+                         "subjects fall back to the unigram).")
+    tg.add_argument("--trigger-mask", type=int, default=1, dest="trigger_mask",
+                    help="1 = content-triggered fire mask ON (default); 0 = off (identical to the A1 arm).")
+    tg.add_argument("--trigger-train-edits", type=int, default=0, dest="trigger_train_edits",
+                    help="cap on edits whose self-study trains the injector (0 = all eval edits; the "
+                         "in-dist protocol trains on the same distribution it evals).")
+    tg.add_argument("--trigger-nseeds", type=int, default=6, dest="trigger_nseeds",
+                    help="self-study generic seeds per edit (cartridge curriculum default 6).")
+    tg.add_argument("--trigger-spp", type=int, default=2, dest="trigger_spp",
+                    help="self-study samples per seed (1 greedy + rest sampled; cartridge default 2).")
+    tg.add_argument("--trigger-genlen", type=int, default=48, dest="trigger_genlen",
+                    help="self-study generation length (tokens).")
+    tg.add_argument("--trigger-steps", type=int, default=300, dest="trigger_steps",
+                    help="KL distillation steps for the injector.")
+    tg.add_argument("--trigger-lr", type=float, default=1e-3, dest="trigger_lr",
+                    help="AdamW lr for the trigger params.")
     ap.add_argument("--query-rel", type=str, default="", dest="query_rel",
                     help="ADVERSARIAL paraphrase probe (issue #10, natural phrasing only): bind and "
                          "train exactly as normal (bindings + training queries use ' lives in'), then "
@@ -2476,6 +2514,19 @@ def main():
     import gc as _gc0
     _gc0.collect()
     torch.cuda.empty_cache() if torch.cuda.is_available() else None
+
+    # ---- E1 (#104): trigger-local distilled delivery — spec docs/CAM_TRIGGER_DELIVERY_SPEC.md.
+    # Runs INSTEAD of the tap: trains TriggerInjector arm(s) by KL distillation, then scores the
+    # in-distribution language-pivot 2-hop (no_edit/RAG same-pass + single-hop gate). Needs the pk
+    # store + counterfact records (--dataset counterfact --phrasing counterfactual_multi).
+    if getattr(args, "trigger_eval", False):
+        try:
+            from .trigger_ripple import run_trigger_eval
+        except ImportError:
+            from trigger_ripple import run_trigger_eval            # run-as-file fallback
+        with StageCost("E1 trigger-local distilled delivery (#104)"):
+            run_trigger_eval(base, tok, adapter, builder, cf_records, args, rng)
+        return
 
     # ---- stage 2: MAG delivery ----
     if (getattr(args, "persistent_overwrite", False) or getattr(args, "persistent_solo", False)

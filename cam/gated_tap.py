@@ -114,11 +114,23 @@ class GatedMemoryTap(nn.Module):
         self.last_null_attn = torch.tensor(0.0)               # mean softmax mass on the null slot
         self.last_conf = torch.tensor(0.0)                    # mean raw store-confidence
         self.last_cgate = torch.tensor(1.0)                   # mean confidence-gate multiplier c
+        # E1 (#104) TRIGGER MASK: optional [B,T] {0,1} fire mask, set per-forward by TriggerInjector.
+        # None = historical behaviour (no position gating -> the tap is byte-identical to before).
+        self._trigger_mask = None
+        self.last_fire = torch.tensor(0.0)                    # mean fire fraction of the last masked forward
 
     def set_bank(self, bank, conf=None, relidx=None):
         self._bank = bank
         self._conf = conf
         self._relidx = relidx
+
+    def set_trigger_mask(self, mask):
+        """E1: restrict the injection to fired positions. mask [B,T] float {0,1}, or None = off.
+        Masked-out positions get an EXACT-zero update (h + 0 = h), so an empty trigger set is a
+        byte-identical no-op even with the bank staged."""
+        self._trigger_mask = mask
+        if mask is not None:
+            self.last_fire = mask.float().mean().detach()
 
     def _split(self, t):
         B, T, _ = t.shape
@@ -130,6 +142,10 @@ class GatedMemoryTap(nn.Module):
         The tap params live in fp32 (stable gate training); the frozen base hidden is bf16. Compute
         the whole tap in the param dtype, then cast the additive update back to h.dtype so the base
         residual stream stays bf16 (and the gate=0 init is an exact no-op)."""
+        _dbg = os.environ.get("CAM_TRIG_DEBUG") == "1"          # E1 (#104): locate non-finite values
+        if _dbg and not torch.isfinite(h).all():
+            print(f"[taptrace] {getattr(self, 'dbg_tag', '?')} h non-finite PRE-inject "
+                  f"(nan {int(torch.isnan(h).sum())} inf {int(torch.isinf(h).sum())})", flush=True)
         bank = self._bank
         if bank is None:
             return h
@@ -183,6 +199,21 @@ class GatedMemoryTap(nn.Module):
             s = torch.sigmoid(self.supp)
             cs = c.view(B, 1, 1) if (self.conf_gate and self._conf is not None) else 1.0
             upd = upd - s * cs * h32
+        if self._trigger_mask is not None:                    # E1 (#104): content-triggered fire only —
+            tm = self._trigger_mask.to(device=upd.device, dtype=upd.dtype).unsqueeze(-1)   # [B,T,1]
+            upd = upd * tm                                    # exact-zero off-mask
+        if _dbg and not torch.isfinite(upd).all():
+            _cc = self._conf
+            _dev = upd.device
+            _parts = []
+            for _n, _t in (("h32", h32), ("q", q), ("k", k), ("v", v), ("a", a), ("ctx", ctx), ("y", y)):
+                _parts.append(f"{_n}:nan{int(torch.isnan(_t).sum())}/inf{int(torch.isinf(_t).sum())}"
+                              f"/max{float(_t.detach().abs().max().item()):.1e}")
+            print(f"[taptrace] {getattr(self, 'dbg_tag', '?')} upd non-finite "
+                  f"(nan {int(torch.isnan(upd).sum())} inf {int(torch.isinf(upd).sum())}) | "
+                  f"conf {'None' if _cc is None else f'absmax {float(_cc.detach().float().abs().max().item()):.3e}'} "
+                  f"| bank_absmax {float(bank.detach().float().abs().max().item()):.3e} | " + " ".join(_parts),
+                  flush=True)
         if self.write_op == "additive":                       # EXACT prior behavior (byte-identical)
             return h + upd.to(h.dtype)
         # non-additive write ops compute in fp32 then cast once at the end
@@ -202,6 +233,8 @@ class MAGInjector:
         self.tap_layers = list(tap_layers)
         self.taps = nn.ModuleDict({str(L): GatedMemoryTap(H, mem_dim, n_heads, conf_gate=conf_gate, n_rel=n_rel)
                                    for L in self.tap_layers})
+        for L in self.tap_layers:
+            self.taps[str(L)].dbg_tag = f"L{L}"                # E1 (#104) debug: identify layer in traces
         self._handles = []
 
     def to(self, dev):
@@ -671,3 +704,174 @@ class GDNStateInjector:
         except KeyError:
             pass
         return self
+
+
+# =================================================================================================
+# TriggerInjector (E1, issue #104) — CONTENT-TRIGGERED read: the tap fires ONLY at positions where
+# the staged edit's trigger n-grams (its subject span, hashed multi-order — orders {2,3}, the Engram
+# addressing shape) appear in the CURRENT sequence. Sparse/transient by construction (a re-mention in
+# the model's own generation re-fires the read), so sustained perturbation — the degeneration channel
+# of the always-on tap — is structurally absent. Trained by KL distillation (cam/trigger_ripple.py),
+# the settled lever; `apply_mask=False` is the A1 ablation (identical module + objective, no mask).
+#
+# Lifecycle matches MAGInjector exactly (set_bank/attach/detach/eval/train/parameters/to), plus:
+#   set_trigger_keys(subject_token_ids)  -> build the hashed key set for the staged edit
+#   set_trigger_ids(current_ids [1,T])   -> recompute + install the fire mask for THIS forward
+# mquake_ripple._gen / _single_hop_control call set_trigger_ids per step when the injector exposes
+# it, so every existing eval path works unchanged.
+# =================================================================================================
+_HASH_OFFSET = 1469598103934665603      # FNV-1a 64
+_HASH_PRIME = 1099511628211
+_HASH_MOD = (1 << 61) - 1
+
+
+def _hash_ngram(tids):
+    """Deterministic FNV-1a-style fold over a tuple/list of token ids (stable within + across runs)."""
+    h = _HASH_OFFSET
+    for t in tids:
+        h = ((h ^ (int(t) & 0xFFFFFFFFFFFFFFFF)) * _HASH_PRIME) % _HASH_MOD
+    return h
+
+
+def build_trigger_keys(subject_token_ids, orders=(2, 3)):
+    """Hashed multi-order n-gram key set for the staged edit's trigger span (Engram's N in {2,3}).
+    A subject too short for the requested orders falls back to the unigram. Returns
+    (keys: frozenset[int], used_orders: tuple) — used_orders drives the scan at fire time."""
+    ids = [int(t) for t in subject_token_ids]
+    keys, used = set(), set()
+    for n in orders:
+        if len(ids) >= n:
+            for i in range(len(ids) - n + 1):
+                keys.add(_hash_ngram(ids[i:i + n]))
+                used.add(n)
+    if not keys:                                   # 1-token subject (or empty orders): unigram fallback
+        for t in ids:
+            keys.add(_hash_ngram([t]))
+            used.add(1)
+    return frozenset(keys), tuple(sorted(used))
+
+
+def trigger_mask_for(ids, keys, used_orders):
+    """[1,T] float {0,1} fire mask: position j fires iff it is COVERED by a matching n-gram of any
+    used order. Empty keys -> an all-zero mask (exact no-op downstream). Pure-python scan — T is a few
+    hundred tokens and this runs once per forward; clarity over micro-optimisation."""
+    row = [int(t) for t in ids]
+    T = len(row)
+    mask = [0.0] * T
+    if keys:
+        for n in used_orders:
+            if T < n:
+                continue
+            for i in range(T - n + 1):
+                if _hash_ngram(row[i:i + n]) in keys:
+                    for j in range(i, i + n):
+                        mask[j] = 1.0
+    return torch.tensor(mask, dtype=torch.float32).view(1, T)
+
+
+class TriggerInjector:
+    """E1 trigger-local delivery. Wraps a MAGInjector (one tap at `trigger_layer`); adds a per-forward
+    content-derived fire mask. apply_mask=False -> the A1 ablation (behaves exactly like MAGInjector:
+    the mask is never installed, so the tap injects at every position under the same objective)."""
+
+    def __init__(self, base, trigger_layer, mem_dim, n_heads=8, conf_gate=False, n_rel=1,
+                 orders=(2, 3), apply_mask=True):
+        self._mag = MAGInjector(base, [int(trigger_layer)], mem_dim, n_heads=n_heads,
+                                conf_gate=conf_gate, n_rel=n_rel)
+        self.trigger_layer = int(trigger_layer)
+        self.orders = tuple(orders)
+        self.apply_mask = bool(apply_mask)
+        self._keys = None
+        self._used_orders = tuple()
+        self._ids_len = 0
+        self.n_fire_positions = 0
+        self.n_forwards = 0
+        self.n_zero_forwards = 0
+
+    # --- MAGInjector-compatible surface (delegate) ------------------------------------------------
+    def to(self, dev):
+        self._mag.to(dev)
+        return self
+
+    def train(self, mode=True):
+        self._mag.train(mode)
+        return self
+
+    def eval(self):
+        self._mag.eval()
+        return self
+
+    def parameters(self):
+        return self._mag.parameters()
+
+    def attach(self):
+        self._mag.attach()
+        return self
+
+    def detach(self):
+        self._mag.detach()
+        return self
+
+    def gate_stats(self):
+        return self._mag.gate_stats()
+
+    def null_attn_stats(self):
+        return self._mag.null_attn_stats()
+
+    def cgate_stats(self):
+        return self._mag.cgate_stats()
+
+    # --- trigger machinery ------------------------------------------------------------------------
+    def set_bank(self, bank, conf=None, relidx=None):
+        self._mag.set_bank(bank, conf=conf, relidx=relidx)
+        if bank is None:
+            self._clear_mask()                     # no bank -> no stale fires from the last sequence
+
+    def set_trigger_keys(self, subject_token_ids):
+        """Stage the edit's trigger span (token ids of the store's subject KEY). None clears (no fire)."""
+        if subject_token_ids is None:
+            self._keys, self._used_orders = None, tuple()
+            self._clear_mask()
+            return
+        self._keys, self._used_orders = build_trigger_keys(subject_token_ids, self.orders)
+
+    def set_trigger_ids(self, ids, incremental=False, fwd_len=None):
+        """Recompute + install the fire mask for the CURRENT sequence ids ([1,T] or [T] LongTensor).
+        No-op for apply_mask=False (A1) — the taps keep _trigger_mask=None (historical behaviour).
+        `fwd_len=N` = the CURRENT forward processes only the last N of these tokens (cached decode:
+        N=1 for decode steps; N=None/full for the prefill and for full-sequence training forwards), so
+        the mask is the last N columns and aligns with the activation the tap hook will see.
+        `incremental=True` is the legacy short form of fwd_len=1."""
+        if not self.apply_mask:
+            return
+        row = ids.reshape(-1)
+        self.n_forwards += 1
+        self._ids_len = int(row.numel())
+        if self._keys is None:
+            mask = torch.zeros(1, self._ids_len, dtype=torch.float32)
+        else:
+            mask = trigger_mask_for(row, self._keys, self._used_orders)
+        if fwd_len is not None:
+            mask = mask[:, -int(fwd_len):]
+        elif incremental:
+            mask = mask[:, -1:]
+        nfire = int(mask.sum().item())
+        self.n_fire_positions += nfire
+        self.n_zero_forwards += int(nfire == 0)
+        for t in self._mag.taps.values():
+            t.set_trigger_mask(mask)
+
+    def _clear_mask(self):
+        for t in self._mag.taps.values():
+            t.set_trigger_mask(None)
+
+    def reset_stats(self):
+        self.n_fire_positions = 0
+        self.n_forwards = 0
+        self.n_zero_forwards = 0
+
+    def fire_stats(self):
+        fw = max(1, self.n_forwards)
+        return {"forwards": self.n_forwards, "fire_positions": self.n_fire_positions,
+                "fire_frac": self.n_fire_positions / max(1, fw * max(1, self._ids_len)),
+                "zero_forwards": self.n_zero_forwards}
