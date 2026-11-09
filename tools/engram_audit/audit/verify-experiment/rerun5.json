@@ -1,0 +1,3032 @@
+[
+ {
+  "fact": 1,
+  "subject": "Maurice Bucaille",
+  "rel": "P103",
+  "held_overlap": [
+   false,
+   false
+  ],
+  "A0": [
+   {
+    "grp": "opt",
+    "prompt": "The mother tongue of Maurice Bucaille is",
+    "pnew": 0.0006621811771765351,
+    "pold": 0.23306111991405487,
+    "top1": 0.0,
+    "top1tok": " French",
+    "kl": 0.0
+   },
+   {
+    "grp": "opt",
+    "prompt": "Maurice Bucaille is a native speaker of",
+    "pnew": 0.0015799604589119554,
+    "pold": 0.46982190012931824,
+    "top1": 0.0,
+    "top1tok": " French",
+    "kl": 0.0
+   },
+   {
+    "grp": "opt",
+    "prompt": "Maurice Bucaille grew up speaking",
+    "pnew": 0.0008829801226966083,
+    "pold": 0.39780193567276,
+    "top1": 0.0,
+    "top1tok": " French",
+    "kl": 0.0
+   },
+   {
+    "grp": "opt",
+    "prompt": "Maurice Bucaille's first language is",
+    "pnew": 0.0062271240167319775,
+    "pold": 0.40125471353530884,
+    "top1": 0.0,
+    "top1tok": " French",
+    "kl": 0.0
+   },
+   {
+    "grp": "held",
+    "prompt": "The oversight of the importation process of registered dissolvents. Maurice Bucaille spoke the language",
+    "pnew": 3.492367113722139e-06,
+    "pold": 0.00023262939066626132,
+    "top1": 0.0,
+    "top1tok": " of",
+    "kl": 0.0
+   },
+   {
+    "grp": "held",
+    "prompt": "They relocated to Oakland, California, where Susman attended public school. Maurice Bucaille, a native",
+    "pnew": 4.756288035423495e-05,
+    "pold": 0.045361217111349106,
+    "top1": 0.0,
+    "top1tok": " of",
+    "kl": 0.0
+   },
+   {
+    "grp": "leak",
+    "prompt": "Maurice Bucaille is a",
+    "pnew": 0.00030993137625046074,
+    "pold": 0.19559147953987122,
+    "top1": 0.0,
+    "top1tok": " French",
+    "kl": 0.0
+   },
+   {
+    "grp": "leak",
+    "prompt": "The most famous thing about Maurice Bucaille is",
+    "pnew": 1.2417391417329782e-06,
+    "pold": 7.093593740137294e-05,
+    "top1": 0.0,
+    "top1tok": " that",
+    "kl": 0.0
+   },
+   {
+    "grp": "leak",
+    "prompt": "Maurice Bucaille was founded in",
+    "pnew": 7.758917490718886e-07,
+    "pold": 0.0001917391491588205,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.0
+   }
+  ],
+  "A1_norm": 5.302069187164307,
+  "A1": [
+   {
+    "grp": "opt",
+    "prompt": "The mother tongue of Maurice Bucaille is",
+    "pnew": 0.9922361969947815,
+    "pold": 3.8458001654362306e-05,
+    "top1": 1.0,
+    "top1tok": " Russian",
+    "kl": 7.25477933883667
+   },
+   {
+    "grp": "opt",
+    "prompt": "Maurice Bucaille is a native speaker of",
+    "pnew": 0.9963544607162476,
+    "pold": 1.3151418897905387e-05,
+    "top1": 1.0,
+    "top1tok": " Russian",
+    "kl": 6.414881229400635
+   },
+   {
+    "grp": "opt",
+    "prompt": "Maurice Bucaille grew up speaking",
+    "pnew": 0.9693068265914917,
+    "pold": 9.765271533979103e-05,
+    "top1": 1.0,
+    "top1tok": " Russian",
+    "kl": 6.729736804962158
+   },
+   {
+    "grp": "opt",
+    "prompt": "Maurice Bucaille's first language is",
+    "pnew": 0.989861249923706,
+    "pold": 0.00024380940885748714,
+    "top1": 1.0,
+    "top1tok": " Russian",
+    "kl": 5.004136085510254
+   },
+   {
+    "grp": "held",
+    "prompt": "The oversight of the importation process of registered dissolvents. Maurice Bucaille spoke the language",
+    "pnew": 5.5094486015150324e-05,
+    "pold": 9.297208453062922e-05,
+    "top1": 0.0,
+    "top1tok": " of",
+    "kl": 0.004942993633449078
+   },
+   {
+    "grp": "held",
+    "prompt": "They relocated to Oakland, California, where Susman attended public school. Maurice Bucaille, a native",
+    "pnew": 0.36833634972572327,
+    "pold": 8.800930118013639e-06,
+    "top1": 0.0,
+    "top1tok": " of",
+    "kl": 3.1297271251678467
+   },
+   {
+    "grp": "leak",
+    "prompt": "Maurice Bucaille is a",
+    "pnew": 0.5673540234565735,
+    "pold": 4.544561670627445e-05,
+    "top1": 1.0,
+    "top1tok": " Russian",
+    "kl": 4.750428676605225
+   },
+   {
+    "grp": "leak",
+    "prompt": "The most famous thing about Maurice Bucaille is",
+    "pnew": 0.00019239632820244879,
+    "pold": 1.021753519125923e-06,
+    "top1": 0.0,
+    "top1tok": " his",
+    "kl": 0.14422395825386047
+   },
+   {
+    "grp": "leak",
+    "prompt": "Maurice Bucaille was founded in",
+    "pnew": 0.0019137109629809856,
+    "pold": 2.955067429866176e-06,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.2642335295677185
+   }
+  ],
+  "A2_k6": [
+   {
+    "grp": "opt",
+    "prompt": "The mother tongue of Maurice Bucaille is",
+    "pnew": 0.0007425146759487689,
+    "pold": 0.2130906879901886,
+    "top1": 0.0,
+    "top1tok": " French",
+    "kl": 0.005681365262717009
+   },
+   {
+    "grp": "opt",
+    "prompt": "Maurice Bucaille is a native speaker of",
+    "pnew": 0.0022470634430646896,
+    "pold": 0.4563564956188202,
+    "top1": 0.0,
+    "top1tok": " French",
+    "kl": 0.007046371698379517
+   },
+   {
+    "grp": "opt",
+    "prompt": "Maurice Bucaille grew up speaking",
+    "pnew": 0.0014072172343730927,
+    "pold": 0.3588544428348541,
+    "top1": 0.0,
+    "top1tok": " French",
+    "kl": 0.011432577855885029
+   },
+   {
+    "grp": "opt",
+    "prompt": "Maurice Bucaille's first language is",
+    "pnew": 0.008963732980191708,
+    "pold": 0.3977302610874176,
+    "top1": 0.0,
+    "top1tok": " French",
+    "kl": 0.009128015488386154
+   },
+   {
+    "grp": "held",
+    "prompt": "The oversight of the importation process of registered dissolvents. Maurice Bucaille spoke the language",
+    "pnew": 3.471742274996359e-06,
+    "pold": 0.0001983893889700994,
+    "top1": 0.0,
+    "top1tok": " of",
+    "kl": 0.000372192298527807
+   },
+   {
+    "grp": "held",
+    "prompt": "They relocated to Oakland, California, where Susman attended public school. Maurice Bucaille, a native",
+    "pnew": 5.023418634664267e-05,
+    "pold": 0.04210732877254486,
+    "top1": 0.0,
+    "top1tok": " of",
+    "kl": 0.0009998305467888713
+   },
+   {
+    "grp": "leak",
+    "prompt": "Maurice Bucaille is a",
+    "pnew": 0.00039131491212174296,
+    "pold": 0.19588637351989746,
+    "top1": 0.0,
+    "top1tok": " French",
+    "kl": 0.006120695732533932
+   },
+   {
+    "grp": "leak",
+    "prompt": "The most famous thing about Maurice Bucaille is",
+    "pnew": 1.4552698530678754e-06,
+    "pold": 7.056311005726457e-05,
+    "top1": 0.0,
+    "top1tok": " that",
+    "kl": 0.0012371966149657965
+   },
+   {
+    "grp": "leak",
+    "prompt": "Maurice Bucaille was founded in",
+    "pnew": 8.293640689771564e-07,
+    "pold": 0.0001703732123132795,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.0015723892720416188
+   }
+  ],
+  "A2_k6_hist": [
+   0.1437167376279831,
+   0.074741430580616
+  ],
+  "A2_k6_norm": 2.1360106468200684,
+  "A2_k18": [
+   {
+    "grp": "opt",
+    "prompt": "The mother tongue of Maurice Bucaille is",
+    "pnew": 0.001586492988280952,
+    "pold": 0.32624828815460205,
+    "top1": 0.0,
+    "top1tok": " French",
+    "kl": 0.04710167646408081
+   },
+   {
+    "grp": "opt",
+    "prompt": "Maurice Bucaille is a native speaker of",
+    "pnew": 0.002890615025535226,
+    "pold": 0.4560183584690094,
+    "top1": 0.0,
+    "top1tok": " French",
+    "kl": 0.03249460458755493
+   },
+   {
+    "grp": "opt",
+    "prompt": "Maurice Bucaille grew up speaking",
+    "pnew": 0.0016300808638334274,
+    "pold": 0.42811518907546997,
+    "top1": 0.0,
+    "top1tok": " French",
+    "kl": 0.01946575753390789
+   },
+   {
+    "grp": "opt",
+    "prompt": "Maurice Bucaille's first language is",
+    "pnew": 0.00855260156095028,
+    "pold": 0.40731751918792725,
+    "top1": 0.0,
+    "top1tok": " French",
+    "kl": 0.014846667647361755
+   },
+   {
+    "grp": "held",
+    "prompt": "The oversight of the importation process of registered dissolvents. Maurice Bucaille spoke the language",
+    "pnew": 4.0070308386930265e-06,
+    "pold": 0.00024255846801679581,
+    "top1": 0.0,
+    "top1tok": " of",
+    "kl": 0.0014606263721361756
+   },
+   {
+    "grp": "held",
+    "prompt": "They relocated to Oakland, California, where Susman attended public school. Maurice Bucaille, a native",
+    "pnew": 6.209769344422966e-05,
+    "pold": 0.033962104469537735,
+    "top1": 0.0,
+    "top1tok": " of",
+    "kl": 0.004919073544442654
+   },
+   {
+    "grp": "leak",
+    "prompt": "Maurice Bucaille is a",
+    "pnew": 0.0005683715571649373,
+    "pold": 0.17328298091888428,
+    "top1": 0.0,
+    "top1tok": " French",
+    "kl": 0.01769823580980301
+   },
+   {
+    "grp": "leak",
+    "prompt": "The most famous thing about Maurice Bucaille is",
+    "pnew": 2.1227735942375148e-06,
+    "pold": 0.00010964839020743966,
+    "top1": 0.0,
+    "top1tok": " that",
+    "kl": 0.007235485594719648
+   },
+   {
+    "grp": "leak",
+    "prompt": "Maurice Bucaille was founded in",
+    "pnew": 1.4492293303192127e-06,
+    "pold": 0.00023269225494004786,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.0028866829816251993
+   }
+  ],
+  "A2_k18_hist": [
+   0.1680840253829956,
+   0.13868850469589233
+  ],
+  "A2_k18_norm": 3.162698268890381,
+  "A2_k6_long": [
+   {
+    "grp": "opt",
+    "prompt": "The mother tongue of Maurice Bucaille is",
+    "pnew": 0.0013990761945024133,
+    "pold": 0.2523267865180969,
+    "top1": 0.0,
+    "top1tok": " French",
+    "kl": 0.017625395208597183
+   },
+   {
+    "grp": "opt",
+    "prompt": "Maurice Bucaille is a native speaker of",
+    "pnew": 0.003351116320118308,
+    "pold": 0.41726043820381165,
+    "top1": 0.0,
+    "top1tok": " French",
+    "kl": 0.033355891704559326
+   },
+   {
+    "grp": "opt",
+    "prompt": "Maurice Bucaille grew up speaking",
+    "pnew": 0.0018954190891236067,
+    "pold": 0.35640662908554077,
+    "top1": 0.0,
+    "top1tok": " French",
+    "kl": 0.013558313250541687
+   },
+   {
+    "grp": "opt",
+    "prompt": "Maurice Bucaille's first language is",
+    "pnew": 0.010828782804310322,
+    "pold": 0.4094306230545044,
+    "top1": 0.0,
+    "top1tok": " French",
+    "kl": 0.01527421735227108
+   },
+   {
+    "grp": "held",
+    "prompt": "The oversight of the importation process of registered dissolvents. Maurice Bucaille spoke the language",
+    "pnew": 3.6027049645781517e-06,
+    "pold": 0.0001804298663046211,
+    "top1": 0.0,
+    "top1tok": " of",
+    "kl": 0.00021036311227362603
+   },
+   {
+    "grp": "held",
+    "prompt": "They relocated to Oakland, California, where Susman attended public school. Maurice Bucaille, a native",
+    "pnew": 4.988107684766874e-05,
+    "pold": 0.036036692559719086,
+    "top1": 0.0,
+    "top1tok": " of",
+    "kl": 0.0022933813743293285
+   },
+   {
+    "grp": "leak",
+    "prompt": "Maurice Bucaille is a",
+    "pnew": 0.0004472387954592705,
+    "pold": 0.16794335842132568,
+    "top1": 0.0,
+    "top1tok": " French",
+    "kl": 0.013607632368803024
+   },
+   {
+    "grp": "leak",
+    "prompt": "The most famous thing about Maurice Bucaille is",
+    "pnew": 1.8931950762635097e-06,
+    "pold": 6.825070158811286e-05,
+    "top1": 0.0,
+    "top1tok": " that",
+    "kl": 0.004463574383407831
+   },
+   {
+    "grp": "leak",
+    "prompt": "Maurice Bucaille was founded in",
+    "pnew": 1.0839270316864713e-06,
+    "pold": 0.00018001363787334412,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.0014500059187412262
+   }
+  ],
+  "A2_k6_long_hist": [
+   0.1437167376279831,
+   0.09098827838897705
+  ],
+  "A2_k6_long_norm": 1.8806989192962646,
+  "cos_A2long_vs_A1": 0.03937775641679764,
+  "oracle_k6": [
+   0.003126295079709962,
+   0.0,
+   0.0
+  ],
+  "oracle_k18": [
+   0.008931189018767327,
+   0.0,
+   0.0
+  ],
+  "A3": [
+   {
+    "grp": "opt",
+    "prompt": "The mother tongue of Maurice Bucaille is",
+    "pnew": 0.8865192532539368,
+    "pold": 0.012467836029827595,
+    "top1": 1.0,
+    "top1tok": " Russian",
+    "kl": 6.280224800109863
+   },
+   {
+    "grp": "opt",
+    "prompt": "Maurice Bucaille is a native speaker of",
+    "pnew": 0.6769339442253113,
+    "pold": 0.11807721108198166,
+    "top1": 1.0,
+    "top1tok": " Russian",
+    "kl": 3.9646685123443604
+   },
+   {
+    "grp": "opt",
+    "prompt": "Maurice Bucaille grew up speaking",
+    "pnew": 0.4888879358768463,
+    "pold": 0.1409171223640442,
+    "top1": 1.0,
+    "top1tok": " Russian",
+    "kl": 2.949500322341919
+   },
+   {
+    "grp": "opt",
+    "prompt": "Maurice Bucaille's first language is",
+    "pnew": 0.8417103886604309,
+    "pold": 0.0552985854446888,
+    "top1": 1.0,
+    "top1tok": " Russian",
+    "kl": 3.9231724739074707
+   },
+   {
+    "grp": "held",
+    "prompt": "The oversight of the importation process of registered dissolvents. Maurice Bucaille spoke the language",
+    "pnew": 0.00018682492373045534,
+    "pold": 0.00014574908709619194,
+    "top1": 0.0,
+    "top1tok": " of",
+    "kl": 0.20955809950828552
+   },
+   {
+    "grp": "held",
+    "prompt": "They relocated to Oakland, California, where Susman attended public school. Maurice Bucaille, a native",
+    "pnew": 0.04464070498943329,
+    "pold": 0.03908934071660042,
+    "top1": 0.0,
+    "top1tok": " of",
+    "kl": 0.3353637754917145
+   },
+   {
+    "grp": "leak",
+    "prompt": "Maurice Bucaille is a",
+    "pnew": 0.11180531978607178,
+    "pold": 0.10390686988830566,
+    "top1": 1.0,
+    "top1tok": " Russian",
+    "kl": 0.9365744590759277
+   },
+   {
+    "grp": "leak",
+    "prompt": "The most famous thing about Maurice Bucaille is",
+    "pnew": 6.0703499912051484e-05,
+    "pold": 9.778272942639887e-05,
+    "top1": 0.0,
+    "top1tok": " that",
+    "kl": 0.060439981520175934
+   },
+   {
+    "grp": "leak",
+    "prompt": "Maurice Bucaille was founded in",
+    "pnew": 0.0007161187822930515,
+    "pold": 0.0002492305648047477,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.3255026042461395
+   }
+  ],
+  "hs_last_is_normed": 1.4543533325195312e-05,
+  "teacher_lens": [
+   1.0778820017451172e-38,
+   1.042339730084052e-07,
+   4.612175974472166e-09,
+   1.5075938081254847e-08,
+   2.069409731075833e-08,
+   4.221640426127493e-08,
+   3.4375316829149405e-08,
+   6.325322088329699e-08,
+   2.2832627954993967e-08,
+   4.169582970559027e-08,
+   7.270679774906696e-08,
+   7.666842584408418e-08,
+   1.1506734853838907e-07,
+   3.869365094999466e-07,
+   2.8484714054144433e-07,
+   1.763768926466014e-07,
+   2.5788189663700223e-06,
+   5.983821461086336e-05,
+   0.0003152654567202262,
+   0.002961106598377228,
+   0.005920707779296208,
+   0.05600359453819692,
+   0.7610423713922501,
+   0.8872542828321457,
+   0.7235128805041313
+  ]
+ },
+ {
+  "fact": 4,
+  "subject": "Mike Shinoda",
+  "rel": "P1303",
+  "held_overlap": [
+   false,
+   true,
+   false
+  ],
+  "A0": [
+   {
+    "grp": "opt",
+    "prompt": "Mike Shinoda, playing the",
+    "pnew": 0.0018732583848759532,
+    "pold": 0.04097595810890198,
+    "top1": 0.0,
+    "top1tok": " role",
+    "kl": 0.0
+   },
+   {
+    "grp": "opt",
+    "prompt": "Mike Shinoda plays the instrument",
+    "pnew": 0.0005327362450771034,
+    "pold": 0.004838013090193272,
+    "top1": 0.0,
+    "top1tok": " that",
+    "kl": 0.0
+   },
+   {
+    "grp": "opt",
+    "prompt": "The instrument played by Mike Shinoda is the",
+    "pnew": 0.00013693106302525848,
+    "pold": 0.0027206088416278362,
+    "top1": 0.0,
+    "top1tok": " most",
+    "kl": 0.0
+   },
+   {
+    "grp": "opt",
+    "prompt": "Mike Shinoda performs on the",
+    "pnew": 0.0020945563446730375,
+    "pold": 0.03326297923922539,
+    "top1": 0.0,
+    "top1tok": " stage",
+    "kl": 0.0
+   },
+   {
+    "grp": "held",
+    "prompt": "Musical Spoons at Parsem, Parsonsfield, Maine. Mike Shinoda, performing on the",
+    "pnew": 0.003258715383708477,
+    "pold": 0.11448302119970322,
+    "top1": 0.0,
+    "top1tok": " piano",
+    "kl": 0.0
+   },
+   {
+    "grp": "held",
+    "prompt": "The Georgetown Marketplace is Georgetown's Mall. Mike Shinoda performs on the",
+    "pnew": 0.0012737091165035963,
+    "pold": 0.0024118435103446245,
+    "top1": 0.0,
+    "top1tok": " stage",
+    "kl": 0.0
+   },
+   {
+    "grp": "held",
+    "prompt": "Mike Shinoda is a musician who plays the",
+    "pnew": 0.006245594937354326,
+    "pold": 0.12802454829216003,
+    "top1": 0.0,
+    "top1tok": " guitar",
+    "kl": 0.0
+   },
+   {
+    "grp": "leak",
+    "prompt": "Mike Shinoda is a",
+    "pnew": 2.9419119528029114e-05,
+    "pold": 0.00010149562876904383,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.0
+   },
+   {
+    "grp": "leak",
+    "prompt": "The most famous thing about Mike Shinoda is",
+    "pnew": 1.714677324571312e-07,
+    "pold": 1.1854144759126939e-06,
+    "top1": 0.0,
+    "top1tok": " that",
+    "kl": 0.0
+   },
+   {
+    "grp": "leak",
+    "prompt": "Mike Shinoda was founded in",
+    "pnew": 1.1859078163922732e-08,
+    "pold": 1.560074167628045e-07,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.0
+   }
+  ],
+  "A1_norm": 5.202093124389648,
+  "A1": [
+   {
+    "grp": "opt",
+    "prompt": "Mike Shinoda, playing the",
+    "pnew": 0.9905988574028015,
+    "pold": 5.347437763703056e-05,
+    "top1": 1.0,
+    "top1tok": " trumpet",
+    "kl": 6.1943511962890625
+   },
+   {
+    "grp": "opt",
+    "prompt": "Mike Shinoda plays the instrument",
+    "pnew": 0.9524831771850586,
+    "pold": 1.6789402934591635e-06,
+    "top1": 1.0,
+    "top1tok": " trumpet",
+    "kl": 7.043197154998779
+   },
+   {
+    "grp": "opt",
+    "prompt": "The instrument played by Mike Shinoda is the",
+    "pnew": 0.9874836206436157,
+    "pold": 2.5228746380889788e-05,
+    "top1": 1.0,
+    "top1tok": " trumpet",
+    "kl": 8.753011703491211
+   },
+   {
+    "grp": "opt",
+    "prompt": "Mike Shinoda performs on the",
+    "pnew": 0.9704138040542603,
+    "pold": 9.995903383241966e-05,
+    "top1": 1.0,
+    "top1tok": " trumpet",
+    "kl": 5.917845249176025
+   },
+   {
+    "grp": "held",
+    "prompt": "Musical Spoons at Parsem, Parsonsfield, Maine. Mike Shinoda, performing on the",
+    "pnew": 0.015397735871374607,
+    "pold": 0.11125601083040237,
+    "top1": 0.0,
+    "top1tok": " piano",
+    "kl": 0.0938352644443512
+   },
+   {
+    "grp": "held",
+    "prompt": "The Georgetown Marketplace is Georgetown's Mall. Mike Shinoda performs on the",
+    "pnew": 0.0027388527523726225,
+    "pold": 0.001281227101571858,
+    "top1": 0.0,
+    "top1tok": " stage",
+    "kl": 0.15710340440273285
+   },
+   {
+    "grp": "held",
+    "prompt": "Mike Shinoda is a musician who plays the",
+    "pnew": 0.9527709484100342,
+    "pold": 0.0032069028820842505,
+    "top1": 1.0,
+    "top1tok": " trumpet",
+    "kl": 4.711642265319824
+   },
+   {
+    "grp": "leak",
+    "prompt": "Mike Shinoda is a",
+    "pnew": 0.05995766445994377,
+    "pold": 4.715679824585095e-05,
+    "top1": 1.0,
+    "top1tok": " trumpet",
+    "kl": 1.3568575382232666
+   },
+   {
+    "grp": "leak",
+    "prompt": "The most famous thing about Mike Shinoda is",
+    "pnew": 0.00010590703459456563,
+    "pold": 5.995422611704271e-07,
+    "top1": 0.0,
+    "top1tok": " that",
+    "kl": 0.17334987223148346
+   },
+   {
+    "grp": "leak",
+    "prompt": "Mike Shinoda was founded in",
+    "pnew": 1.6217970824072836e-06,
+    "pold": 3.132325332444452e-07,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.13683170080184937
+   }
+  ],
+  "A2_k6": [
+   {
+    "grp": "opt",
+    "prompt": "Mike Shinoda, playing the",
+    "pnew": 0.0063661918975412846,
+    "pold": 0.08079691976308823,
+    "top1": 0.0,
+    "top1tok": " piano",
+    "kl": 0.7767872214317322
+   },
+   {
+    "grp": "opt",
+    "prompt": "Mike Shinoda plays the instrument",
+    "pnew": 0.00030638184398412704,
+    "pold": 0.002738648559898138,
+    "top1": 0.0,
+    "top1tok": " that",
+    "kl": 0.08728604018688202
+   },
+   {
+    "grp": "opt",
+    "prompt": "The instrument played by Mike Shinoda is the",
+    "pnew": 0.00017752517305780202,
+    "pold": 0.0032514764461666346,
+    "top1": 0.0,
+    "top1tok": " most",
+    "kl": 0.02819044142961502
+   },
+   {
+    "grp": "opt",
+    "prompt": "Mike Shinoda performs on the",
+    "pnew": 0.003877471201121807,
+    "pold": 0.046030107885599136,
+    "top1": 0.0,
+    "top1tok": " stage",
+    "kl": 0.07773798704147339
+   },
+   {
+    "grp": "held",
+    "prompt": "Musical Spoons at Parsem, Parsonsfield, Maine. Mike Shinoda, performing on the",
+    "pnew": 0.003117720130831003,
+    "pold": 0.10744354873895645,
+    "top1": 0.0,
+    "top1tok": " piano",
+    "kl": 0.009392826817929745
+   },
+   {
+    "grp": "held",
+    "prompt": "The Georgetown Marketplace is Georgetown's Mall. Mike Shinoda performs on the",
+    "pnew": 0.002144819824025035,
+    "pold": 0.0035244228783994913,
+    "top1": 0.0,
+    "top1tok": " stage",
+    "kl": 0.02590331807732582
+   },
+   {
+    "grp": "held",
+    "prompt": "Mike Shinoda is a musician who plays the",
+    "pnew": 0.0080263027921319,
+    "pold": 0.15980647504329681,
+    "top1": 0.0,
+    "top1tok": " guitar",
+    "kl": 0.020013369619846344
+   },
+   {
+    "grp": "leak",
+    "prompt": "Mike Shinoda is a",
+    "pnew": 6.0861548263346776e-05,
+    "pold": 0.0001848850370151922,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.06356234848499298
+   },
+   {
+    "grp": "leak",
+    "prompt": "The most famous thing about Mike Shinoda is",
+    "pnew": 2.8804478802157973e-07,
+    "pold": 1.9896690446330467e-06,
+    "top1": 0.0,
+    "top1tok": " his",
+    "kl": 0.0029068647418171167
+   },
+   {
+    "grp": "leak",
+    "prompt": "Mike Shinoda was founded in",
+    "pnew": 2.017314670865744e-08,
+    "pold": 2.7830938620354573e-07,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.013741184026002884
+   }
+  ],
+  "A2_k6_hist": [
+   0.2541118860244751,
+   0.12708629667758942
+  ],
+  "A2_k6_norm": 3.109147787094116,
+  "A2_k18": [
+   {
+    "grp": "opt",
+    "prompt": "Mike Shinoda, playing the",
+    "pnew": 0.007844478823244572,
+    "pold": 0.05382684990763664,
+    "top1": 0.0,
+    "top1tok": " guitar",
+    "kl": 1.0365698337554932
+   },
+   {
+    "grp": "opt",
+    "prompt": "Mike Shinoda plays the instrument",
+    "pnew": 7.87338794907555e-05,
+    "pold": 0.0004492234729696065,
+    "top1": 0.0,
+    "top1tok": " in",
+    "kl": 0.37028440833091736
+   },
+   {
+    "grp": "opt",
+    "prompt": "The instrument played by Mike Shinoda is the",
+    "pnew": 0.0003551717381924391,
+    "pold": 0.002741497941315174,
+    "top1": 0.0,
+    "top1tok": " most",
+    "kl": 0.10519059747457504
+   },
+   {
+    "grp": "opt",
+    "prompt": "Mike Shinoda performs on the",
+    "pnew": 0.004355190321803093,
+    "pold": 0.022834934294223785,
+    "top1": 0.0,
+    "top1tok": " stage",
+    "kl": 0.15692266821861267
+   },
+   {
+    "grp": "held",
+    "prompt": "Musical Spoons at Parsem, Parsonsfield, Maine. Mike Shinoda, performing on the",
+    "pnew": 0.00298872496932745,
+    "pold": 0.06935954093933105,
+    "top1": 0.0,
+    "top1tok": " piano",
+    "kl": 0.04566356539726257
+   },
+   {
+    "grp": "held",
+    "prompt": "The Georgetown Marketplace is Georgetown's Mall. Mike Shinoda performs on the",
+    "pnew": 0.0019212941406294703,
+    "pold": 0.00209422898478806,
+    "top1": 0.0,
+    "top1tok": " stage",
+    "kl": 0.07848058640956879
+   },
+   {
+    "grp": "held",
+    "prompt": "Mike Shinoda is a musician who plays the",
+    "pnew": 0.008476408198475838,
+    "pold": 0.06976437568664551,
+    "top1": 0.0,
+    "top1tok": " guitar",
+    "kl": 0.07074984163045883
+   },
+   {
+    "grp": "leak",
+    "prompt": "Mike Shinoda is a",
+    "pnew": 0.00017974001821130514,
+    "pold": 0.0005747919203713536,
+    "top1": 0.0,
+    "top1tok": " member",
+    "kl": 0.5072667002677917
+   },
+   {
+    "grp": "leak",
+    "prompt": "The most famous thing about Mike Shinoda is",
+    "pnew": 3.4778469171214965e-07,
+    "pold": 1.6827627860038774e-06,
+    "top1": 0.0,
+    "top1tok": " his",
+    "kl": 0.024272769689559937
+   },
+   {
+    "grp": "leak",
+    "prompt": "Mike Shinoda was founded in",
+    "pnew": 2.387324471442298e-08,
+    "pold": 5.586518341260671e-07,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.042029257863759995
+   }
+  ],
+  "A2_k18_hist": [
+   0.24800044298171997,
+   0.12007174640893936
+  ],
+  "A2_k18_norm": 3.0903267860412598,
+  "A2_k6_long": [
+   {
+    "grp": "opt",
+    "prompt": "Mike Shinoda, playing the",
+    "pnew": 0.006791403982788324,
+    "pold": 0.0786132887005806,
+    "top1": 0.0,
+    "top1tok": " piano",
+    "kl": 0.7668522000312805
+   },
+   {
+    "grp": "opt",
+    "prompt": "Mike Shinoda plays the instrument",
+    "pnew": 0.0002975447860080749,
+    "pold": 0.0023224924225360155,
+    "top1": 0.0,
+    "top1tok": " that",
+    "kl": 0.09300732612609863
+   },
+   {
+    "grp": "opt",
+    "prompt": "The instrument played by Mike Shinoda is the",
+    "pnew": 0.00020578756812028587,
+    "pold": 0.0033425071742385626,
+    "top1": 0.0,
+    "top1tok": " most",
+    "kl": 0.033144619315862656
+   },
+   {
+    "grp": "opt",
+    "prompt": "Mike Shinoda performs on the",
+    "pnew": 0.003976427949965,
+    "pold": 0.047408219426870346,
+    "top1": 0.0,
+    "top1tok": " stage",
+    "kl": 0.11639396101236343
+   },
+   {
+    "grp": "held",
+    "prompt": "Musical Spoons at Parsem, Parsonsfield, Maine. Mike Shinoda, performing on the",
+    "pnew": 0.00322221452370286,
+    "pold": 0.10849858820438385,
+    "top1": 0.0,
+    "top1tok": " piano",
+    "kl": 0.010981187224388123
+   },
+   {
+    "grp": "held",
+    "prompt": "The Georgetown Marketplace is Georgetown's Mall. Mike Shinoda performs on the",
+    "pnew": 0.0018544800113886595,
+    "pold": 0.0032520454842597246,
+    "top1": 0.0,
+    "top1tok": " stage",
+    "kl": 0.027802689000964165
+   },
+   {
+    "grp": "held",
+    "prompt": "Mike Shinoda is a musician who plays the",
+    "pnew": 0.008617792278528214,
+    "pold": 0.16222865879535675,
+    "top1": 0.0,
+    "top1tok": " guitar",
+    "kl": 0.024984072893857956
+   },
+   {
+    "grp": "leak",
+    "prompt": "Mike Shinoda is a",
+    "pnew": 6.351416232064366e-05,
+    "pold": 0.00018597430607769638,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.08097963780164719
+   },
+   {
+    "grp": "leak",
+    "prompt": "The most famous thing about Mike Shinoda is",
+    "pnew": 3.1392232813232113e-07,
+    "pold": 2.6379318569524912e-06,
+    "top1": 0.0,
+    "top1tok": " his",
+    "kl": 0.0065225581638514996
+   },
+   {
+    "grp": "leak",
+    "prompt": "Mike Shinoda was founded in",
+    "pnew": 2.143059951720261e-08,
+    "pold": 2.8961790121684317e-07,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.01620366983115673
+   }
+  ],
+  "A2_k6_long_hist": [
+   0.2541118860244751,
+   0.1225416362285614
+  ],
+  "A2_k6_long_norm": 2.9671108722686768,
+  "cos_A2long_vs_A1": 0.05631398409605026,
+  "oracle_k6": [
+   0.002852256832738931,
+   0.0,
+   0.0
+  ],
+  "oracle_k18": [
+   0.03665753827510798,
+   0.25,
+   0.0
+  ],
+  "A3": [
+   {
+    "grp": "opt",
+    "prompt": "Mike Shinoda, playing the",
+    "pnew": 0.628422737121582,
+    "pold": 0.03824205324053764,
+    "top1": 1.0,
+    "top1tok": " trumpet",
+    "kl": 4.023236274719238
+   },
+   {
+    "grp": "opt",
+    "prompt": "Mike Shinoda plays the instrument",
+    "pnew": 0.0002232069819001481,
+    "pold": 0.00013334145478438586,
+    "top1": 0.0,
+    "top1tok": ".\n",
+    "kl": 1.4375183582305908
+   },
+   {
+    "grp": "opt",
+    "prompt": "The instrument played by Mike Shinoda is the",
+    "pnew": 0.12065941095352173,
+    "pold": 0.0050691780634224415,
+    "top1": 1.0,
+    "top1tok": " trumpet",
+    "kl": 1.9828805923461914
+   },
+   {
+    "grp": "opt",
+    "prompt": "Mike Shinoda performs on the",
+    "pnew": 0.23958826065063477,
+    "pold": 0.08186520636081696,
+    "top1": 1.0,
+    "top1tok": " trumpet",
+    "kl": 1.299341082572937
+   },
+   {
+    "grp": "held",
+    "prompt": "Musical Spoons at Parsem, Parsonsfield, Maine. Mike Shinoda, performing on the",
+    "pnew": 0.16807043552398682,
+    "pold": 0.22292421758174896,
+    "top1": 0.0,
+    "top1tok": " piano",
+    "kl": 0.8124983906745911
+   },
+   {
+    "grp": "held",
+    "prompt": "The Georgetown Marketplace is Georgetown's Mall. Mike Shinoda performs on the",
+    "pnew": 0.49318498373031616,
+    "pold": 0.0060450551100075245,
+    "top1": 1.0,
+    "top1tok": " trumpet",
+    "kl": 3.2447595596313477
+   },
+   {
+    "grp": "held",
+    "prompt": "Mike Shinoda is a musician who plays the",
+    "pnew": 0.7201483249664307,
+    "pold": 0.015225735493004322,
+    "top1": 1.0,
+    "top1tok": " trumpet",
+    "kl": 3.426154375076294
+   },
+   {
+    "grp": "leak",
+    "prompt": "Mike Shinoda is a",
+    "pnew": 0.04476995766162872,
+    "pold": 0.0020187590271234512,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 1.4590412378311157
+   },
+   {
+    "grp": "leak",
+    "prompt": "The most famous thing about Mike Shinoda is",
+    "pnew": 5.7647766880108975e-06,
+    "pold": 6.2302146943693515e-06,
+    "top1": 0.0,
+    "top1tok": " that",
+    "kl": 0.0656430646777153
+   },
+   {
+    "grp": "leak",
+    "prompt": "Mike Shinoda was founded in",
+    "pnew": 1.0134052530474946e-07,
+    "pold": 1.355215317744296e-06,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.03453774377703667
+   }
+  ],
+  "hs_last_is_normed": 1.7404556274414062e-05,
+  "teacher_lens": [
+   6.127199017516045e-36,
+   5.869276357151065e-07,
+   8.910225406388861e-07,
+   2.1556739798755942e-07,
+   4.872424581581214e-07,
+   7.87806471391761e-07,
+   8.284756924936687e-08,
+   7.252082911968216e-08,
+   4.462263691884516e-08,
+   3.323052366610568e-08,
+   6.058903823102924e-08,
+   5.7267149022877106e-08,
+   6.251142736779514e-08,
+   4.329054870133575e-08,
+   5.036853822915077e-08,
+   1.6655696111200768e-07,
+   2.2073276539913422e-07,
+   4.7956967641482606e-05,
+   2.238588755432147e-05,
+   0.0001316604117391762,
+   0.00010334040469217598,
+   0.009768077289322719,
+   0.09801342780701816,
+   0.13444968884959962,
+   0.24722340392690967
+  ]
+ },
+ {
+  "fact": 5,
+  "subject": "Ricardo Faty",
+  "rel": "P413",
+  "held_overlap": [
+   false,
+   false,
+   false
+  ],
+  "A0": [
+   {
+    "grp": "opt",
+    "prompt": "Ricardo Faty, the",
+    "pnew": 3.4326290915487334e-05,
+    "pold": 5.7786521210800856e-05,
+    "top1": 0.0,
+    "top1tok": " head",
+    "kl": 0.0
+   },
+   {
+    "grp": "opt",
+    "prompt": "Ricardo Faty plays in the position of",
+    "pnew": 0.004053682554513216,
+    "pold": 0.022263363003730774,
+    "top1": 0.0,
+    "top1tok": " a",
+    "kl": 0.0
+   },
+   {
+    "grp": "opt",
+    "prompt": "Ricardo Faty, who plays the position",
+    "pnew": 0.00033547900966368616,
+    "pold": 0.0005156179540790617,
+    "top1": 0.0,
+    "top1tok": " of",
+    "kl": 0.0
+   },
+   {
+    "grp": "opt",
+    "prompt": "Ricardo Faty is playing as a",
+    "pnew": 0.013294512405991554,
+    "pold": 0.011642483994364738,
+    "top1": 0.0,
+    "top1tok": " goalkeeper",
+    "kl": 0.0
+   },
+   {
+    "grp": "held",
+    "prompt": "Bloor was a right-handed batsman who bowled right-arm medium pace. Which position does Ricardo Faty play? They play as",
+    "pnew": 2.4959603251772933e-05,
+    "pold": 4.1094877815339714e-05,
+    "top1": 0.0,
+    "top1tok": " a",
+    "kl": 0.0
+   },
+   {
+    "grp": "held",
+    "prompt": "Mighty Storm \u2013 05:14\n 2. Ricardo Faty plays as",
+    "pnew": 0.00012619052722584456,
+    "pold": 6.327090522972867e-05,
+    "top1": 0.0,
+    "top1tok": " a",
+    "kl": 0.0
+   },
+   {
+    "grp": "held",
+    "prompt": "On the field, Ricardo Faty plays as a",
+    "pnew": 0.0024201846681535244,
+    "pold": 0.00853925570845604,
+    "top1": 0.0,
+    "top1tok": " player",
+    "kl": 0.0
+   },
+   {
+    "grp": "leak",
+    "prompt": "Ricardo Faty is a",
+    "pnew": 1.5730403902125545e-05,
+    "pold": 0.00012218151823617518,
+    "top1": 0.0,
+    "top1tok": " professor",
+    "kl": 0.0
+   },
+   {
+    "grp": "leak",
+    "prompt": "The most famous thing about Ricardo Faty is",
+    "pnew": 6.337256763799815e-08,
+    "pold": 2.6093385230296917e-08,
+    "top1": 0.0,
+    "top1tok": " that",
+    "kl": 0.0
+   },
+   {
+    "grp": "leak",
+    "prompt": "Ricardo Faty was founded in",
+    "pnew": 6.666318164150198e-09,
+    "pold": 8.004806772987649e-08,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.0
+   }
+  ],
+  "A1_norm": 6.357728958129883,
+  "A1": [
+   {
+    "grp": "opt",
+    "prompt": "Ricardo Faty, the",
+    "pnew": 0.9840419292449951,
+    "pold": 5.033183470004587e-07,
+    "top1": 1.0,
+    "top1tok": " quarterback",
+    "kl": 10.13113784790039
+   },
+   {
+    "grp": "opt",
+    "prompt": "Ricardo Faty plays in the position of",
+    "pnew": 0.9667511582374573,
+    "pold": 7.496743705814879e-07,
+    "top1": 1.0,
+    "top1tok": " quarterback",
+    "kl": 5.355519771575928
+   },
+   {
+    "grp": "opt",
+    "prompt": "Ricardo Faty, who plays the position",
+    "pnew": 0.9877356886863708,
+    "pold": 7.211986030597473e-08,
+    "top1": 1.0,
+    "top1tok": " quarterback",
+    "kl": 7.84988260269165
+   },
+   {
+    "grp": "opt",
+    "prompt": "Ricardo Faty is playing as a",
+    "pnew": 0.9964845180511475,
+    "pold": 1.0915167649727664e-06,
+    "top1": 1.0,
+    "top1tok": " quarterback",
+    "kl": 4.293264389038086
+   },
+   {
+    "grp": "held",
+    "prompt": "Bloor was a right-handed batsman who bowled right-arm medium pace. Which position does Ricardo Faty play? They play as",
+    "pnew": 0.00040508544771000743,
+    "pold": 4.691342473961413e-05,
+    "top1": 0.0,
+    "top1tok": " a",
+    "kl": 0.06979428976774216
+   },
+   {
+    "grp": "held",
+    "prompt": "Mighty Storm \u2013 05:14\n 2. Ricardo Faty plays as",
+    "pnew": 0.17205920815467834,
+    "pold": 8.473246452922467e-06,
+    "top1": 0.0,
+    "top1tok": " a",
+    "kl": 1.8189963102340698
+   },
+   {
+    "grp": "held",
+    "prompt": "On the field, Ricardo Faty plays as a",
+    "pnew": 0.878265380859375,
+    "pold": 7.605189603054896e-05,
+    "top1": 1.0,
+    "top1tok": " quarterback",
+    "kl": 5.080330848693848
+   },
+   {
+    "grp": "leak",
+    "prompt": "Ricardo Faty is a",
+    "pnew": 0.07159212976694107,
+    "pold": 3.756102523766458e-05,
+    "top1": 0.0,
+    "top1tok": "/an",
+    "kl": 6.1716227531433105
+   },
+   {
+    "grp": "leak",
+    "prompt": "The most famous thing about Ricardo Faty is",
+    "pnew": 1.0686329005693551e-05,
+    "pold": 8.130400352968081e-09,
+    "top1": 0.0,
+    "top1tok": " that",
+    "kl": 0.167525053024292
+   },
+   {
+    "grp": "leak",
+    "prompt": "Ricardo Faty was founded in",
+    "pnew": 7.328125661842932e-07,
+    "pold": 8.223748437785616e-08,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.13500149548053741
+   }
+  ],
+  "A2_k6": [
+   {
+    "grp": "opt",
+    "prompt": "Ricardo Faty, the",
+    "pnew": 0.0014960253611207008,
+    "pold": 0.0004913024022243917,
+    "top1": 0.0,
+    "top1tok": " former",
+    "kl": 0.4157470762729645
+   },
+   {
+    "grp": "opt",
+    "prompt": "Ricardo Faty plays in the position of",
+    "pnew": 0.04799819737672806,
+    "pold": 0.0039750998839735985,
+    "top1": 0.0,
+    "top1tok": " __",
+    "kl": 0.37454691529273987
+   },
+   {
+    "grp": "opt",
+    "prompt": "Ricardo Faty, who plays the position",
+    "pnew": 0.0013921570498496294,
+    "pold": 5.6228836911031976e-05,
+    "top1": 0.0,
+    "top1tok": " of",
+    "kl": 0.04664827883243561
+   },
+   {
+    "grp": "opt",
+    "prompt": "Ricardo Faty is playing as a",
+    "pnew": 0.04473833367228508,
+    "pold": 0.021617339923977852,
+    "top1": 0.0,
+    "top1tok": " forward",
+    "kl": 0.7215413451194763
+   },
+   {
+    "grp": "held",
+    "prompt": "Bloor was a right-handed batsman who bowled right-arm medium pace. Which position does Ricardo Faty play? They play as",
+    "pnew": 2.3900658561615273e-05,
+    "pold": 3.642295632744208e-05,
+    "top1": 0.0,
+    "top1tok": " a",
+    "kl": 0.003524554194882512
+   },
+   {
+    "grp": "held",
+    "prompt": "Mighty Storm \u2013 05:14\n 2. Ricardo Faty plays as",
+    "pnew": 0.0011822645319625735,
+    "pold": 0.0003424919268582016,
+    "top1": 0.0,
+    "top1tok": " a",
+    "kl": 0.24504928290843964
+   },
+   {
+    "grp": "held",
+    "prompt": "On the field, Ricardo Faty plays as a",
+    "pnew": 0.01684747263789177,
+    "pold": 0.07060608267784119,
+    "top1": 0.0,
+    "top1tok": " midfielder",
+    "kl": 0.7794334888458252
+   },
+   {
+    "grp": "leak",
+    "prompt": "Ricardo Faty is a",
+    "pnew": 0.0014049782184883952,
+    "pold": 0.0006394610390998423,
+    "top1": 0.0,
+    "top1tok": " former",
+    "kl": 0.8304857015609741
+   },
+   {
+    "grp": "leak",
+    "prompt": "The most famous thing about Ricardo Faty is",
+    "pnew": 4.229627847962547e-07,
+    "pold": 4.7661835367307503e-08,
+    "top1": 0.0,
+    "top1tok": " that",
+    "kl": 0.017481012269854546
+   },
+   {
+    "grp": "leak",
+    "prompt": "Ricardo Faty was founded in",
+    "pnew": 2.1820921958237705e-08,
+    "pold": 5.5651042885074276e-08,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.03296208009123802
+   }
+  ],
+  "A2_k6_hist": [
+   0.33834585547447205,
+   0.11303309351205826
+  ],
+  "A2_k6_norm": 3.3815677165985107,
+  "A2_k18": [
+   {
+    "grp": "opt",
+    "prompt": "Ricardo Faty, the",
+    "pnew": 0.024287302047014236,
+    "pold": 2.7828389647766016e-05,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 2.0817856788635254
+   },
+   {
+    "grp": "opt",
+    "prompt": "Ricardo Faty plays in the position of",
+    "pnew": 0.12240693718194962,
+    "pold": 0.0001434768200851977,
+    "top1": 1.0,
+    "top1tok": " quarterback",
+    "kl": 1.866702675819397
+   },
+   {
+    "grp": "opt",
+    "prompt": "Ricardo Faty, who plays the position",
+    "pnew": 0.00496020819991827,
+    "pold": 5.534633146453416e-06,
+    "top1": 0.0,
+    "top1tok": " of",
+    "kl": 0.12752580642700195
+   },
+   {
+    "grp": "opt",
+    "prompt": "Ricardo Faty is playing as a",
+    "pnew": 0.048663582652807236,
+    "pold": 0.0008871356840245426,
+    "top1": 1.0,
+    "top1tok": " quarterback",
+    "kl": 1.0237377882003784
+   },
+   {
+    "grp": "held",
+    "prompt": "Bloor was a right-handed batsman who bowled right-arm medium pace. Which position does Ricardo Faty play? They play as",
+    "pnew": 1.8129607269656844e-05,
+    "pold": 1.961018642759882e-05,
+    "top1": 0.0,
+    "top1tok": " a",
+    "kl": 0.03163863345980644
+   },
+   {
+    "grp": "held",
+    "prompt": "Mighty Storm \u2013 05:14\n 2. Ricardo Faty plays as",
+    "pnew": 0.003731616074219346,
+    "pold": 8.859274203132372e-06,
+    "top1": 0.0,
+    "top1tok": " a",
+    "kl": 0.8037821054458618
+   },
+   {
+    "grp": "held",
+    "prompt": "On the field, Ricardo Faty plays as a",
+    "pnew": 0.037416473031044006,
+    "pold": 0.01053825207054615,
+    "top1": 0.0,
+    "top1tok": " right",
+    "kl": 0.9453054666519165
+   },
+   {
+    "grp": "leak",
+    "prompt": "Ricardo Faty is a",
+    "pnew": 0.012341825291514397,
+    "pold": 0.0001637446548556909,
+    "top1": 0.0,
+    "top1tok": " former",
+    "kl": 2.1165928840637207
+   },
+   {
+    "grp": "leak",
+    "prompt": "The most famous thing about Ricardo Faty is",
+    "pnew": 1.0298249435436446e-06,
+    "pold": 2.276946275969749e-08,
+    "top1": 0.0,
+    "top1tok": " that",
+    "kl": 0.04449258744716644
+   },
+   {
+    "grp": "leak",
+    "prompt": "Ricardo Faty was founded in",
+    "pnew": 9.763412123220405e-08,
+    "pold": 1.2832539653118147e-07,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.1525287628173828
+   }
+  ],
+  "A2_k18_hist": [
+   0.32721495628356934,
+   0.13634270429611206
+  ],
+  "A2_k18_norm": 2.96332049369812,
+  "A2_k6_long": [
+   {
+    "grp": "opt",
+    "prompt": "Ricardo Faty, the",
+    "pnew": 0.001189089030958712,
+    "pold": 0.000454465567599982,
+    "top1": 0.0,
+    "top1tok": " former",
+    "kl": 0.39426085352897644
+   },
+   {
+    "grp": "opt",
+    "prompt": "Ricardo Faty plays in the position of",
+    "pnew": 0.04518130421638489,
+    "pold": 0.0029384740628302097,
+    "top1": 0.0,
+    "top1tok": " __",
+    "kl": 0.37621182203292847
+   },
+   {
+    "grp": "opt",
+    "prompt": "Ricardo Faty, who plays the position",
+    "pnew": 0.001439957064576447,
+    "pold": 5.0374022976029664e-05,
+    "top1": 0.0,
+    "top1tok": " of",
+    "kl": 0.04721563309431076
+   },
+   {
+    "grp": "opt",
+    "prompt": "Ricardo Faty is playing as a",
+    "pnew": 0.060591548681259155,
+    "pold": 0.017401274293661118,
+    "top1": 0.0,
+    "top1tok": " forward",
+    "kl": 0.7667415142059326
+   },
+   {
+    "grp": "held",
+    "prompt": "Bloor was a right-handed batsman who bowled right-arm medium pace. Which position does Ricardo Faty play? They play as",
+    "pnew": 2.4417116947006434e-05,
+    "pold": 3.315787762403488e-05,
+    "top1": 0.0,
+    "top1tok": " a",
+    "kl": 0.0042008934542536736
+   },
+   {
+    "grp": "held",
+    "prompt": "Mighty Storm \u2013 05:14\n 2. Ricardo Faty plays as",
+    "pnew": 0.001404301612637937,
+    "pold": 0.0002649060625117272,
+    "top1": 0.0,
+    "top1tok": " a",
+    "kl": 0.36421412229537964
+   },
+   {
+    "grp": "held",
+    "prompt": "On the field, Ricardo Faty plays as a",
+    "pnew": 0.016156986355781555,
+    "pold": 0.07553553581237793,
+    "top1": 0.0,
+    "top1tok": " midfielder",
+    "kl": 0.7653820514678955
+   },
+   {
+    "grp": "leak",
+    "prompt": "Ricardo Faty is a",
+    "pnew": 0.0007982804090715945,
+    "pold": 0.0005309484549798071,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.5928552746772766
+   },
+   {
+    "grp": "leak",
+    "prompt": "The most famous thing about Ricardo Faty is",
+    "pnew": 4.886009605797881e-07,
+    "pold": 4.6862073332931686e-08,
+    "top1": 0.0,
+    "top1tok": " that",
+    "kl": 0.02343757450580597
+   },
+   {
+    "grp": "leak",
+    "prompt": "Ricardo Faty was founded in",
+    "pnew": 2.1757061929861266e-08,
+    "pold": 6.496636473229955e-08,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.029641617089509964
+   }
+  ],
+  "A2_k6_long_hist": [
+   0.33834585547447205,
+   0.10632406920194626
+  ],
+  "A2_k6_long_norm": 3.14107084274292,
+  "cos_A2long_vs_A1": 0.04959765449166298,
+  "oracle_k6": [
+   0.03422986780060455,
+   1.0,
+   0.0
+  ],
+  "oracle_k18": [
+   0.14461619727080688,
+   1.0,
+   0.75
+  ],
+  "A3": [
+   {
+    "grp": "opt",
+    "prompt": "Ricardo Faty, the",
+    "pnew": 0.392057865858078,
+    "pold": 0.000255148159340024,
+    "top1": 1.0,
+    "top1tok": " quarterback",
+    "kl": 6.766242980957031
+   },
+   {
+    "grp": "opt",
+    "prompt": "Ricardo Faty plays in the position of",
+    "pnew": 0.3638637065887451,
+    "pold": 2.6353784051025286e-05,
+    "top1": 1.0,
+    "top1tok": " quarterback",
+    "kl": 3.627603054046631
+   },
+   {
+    "grp": "opt",
+    "prompt": "Ricardo Faty, who plays the position",
+    "pnew": 0.005867414642125368,
+    "pold": 2.300743744854117e-06,
+    "top1": 0.0,
+    "top1tok": " of",
+    "kl": 0.21923522651195526
+   },
+   {
+    "grp": "opt",
+    "prompt": "Ricardo Faty is playing as a",
+    "pnew": 0.18844696879386902,
+    "pold": 0.0002619026636239141,
+    "top1": 1.0,
+    "top1tok": " quarterback",
+    "kl": 1.812934398651123
+   },
+   {
+    "grp": "held",
+    "prompt": "Bloor was a right-handed batsman who bowled right-arm medium pace. Which position does Ricardo Faty play? They play as",
+    "pnew": 0.0019449560204520822,
+    "pold": 8.683003397891298e-05,
+    "top1": 0.0,
+    "top1tok": " a",
+    "kl": 0.368182510137558
+   },
+   {
+    "grp": "held",
+    "prompt": "Mighty Storm \u2013 05:14\n 2. Ricardo Faty plays as",
+    "pnew": 0.08900491148233414,
+    "pold": 9.584628423908725e-05,
+    "top1": 0.0,
+    "top1tok": " a",
+    "kl": 1.2594608068466187
+   },
+   {
+    "grp": "held",
+    "prompt": "On the field, Ricardo Faty plays as a",
+    "pnew": 0.1304340809583664,
+    "pold": 0.00042518615373410285,
+    "top1": 1.0,
+    "top1tok": " quarterback",
+    "kl": 1.548215627670288
+   },
+   {
+    "grp": "leak",
+    "prompt": "Ricardo Faty is a",
+    "pnew": 0.1324264109134674,
+    "pold": 0.0004950329894199967,
+    "top1": 0.0,
+    "top1tok": " former",
+    "kl": 2.786566734313965
+   },
+   {
+    "grp": "leak",
+    "prompt": "The most famous thing about Ricardo Faty is",
+    "pnew": 2.086710082949139e-06,
+    "pold": 4.6317016000330113e-08,
+    "top1": 0.0,
+    "top1tok": " that",
+    "kl": 0.10032259672880173
+   },
+   {
+    "grp": "leak",
+    "prompt": "Ricardo Faty was founded in",
+    "pnew": 1.1490568851968419e-07,
+    "pold": 1.5170171252520959e-07,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.04348726198077202
+   }
+  ],
+  "hs_last_is_normed": 1.430511474609375e-05,
+  "teacher_lens": [
+   4.633417895013133e-40,
+   1.0446643472217243e-06,
+   1.8394703013568936e-07,
+   5.669522196855015e-08,
+   3.5666718120608287e-09,
+   2.538461400108938e-08,
+   2.691201418381084e-07,
+   1.8584556071843394e-07,
+   1.205663122227918e-06,
+   4.6505630180160296e-07,
+   6.468129073455842e-07,
+   3.3337040983294486e-07,
+   2.902299613971593e-07,
+   1.5091240768150271e-07,
+   6.615265091269862e-07,
+   5.080238054233632e-06,
+   1.3992285230468582e-06,
+   5.780479719419418e-05,
+   0.00032767755629947715,
+   0.00013246277308098797,
+   4.3641755269163696e-05,
+   0.0037708393501816317,
+   0.010824011405929923,
+   0.04454716155305505,
+   0.23755898897070438
+  ]
+ },
+ {
+  "fact": 9,
+  "subject": "Clickteam",
+  "rel": "P740",
+  "held_overlap": [
+   false,
+   false,
+   false
+  ],
+  "A0": [
+   {
+    "grp": "opt",
+    "prompt": "Clickteam formed in",
+    "pnew": 0.00022562184312846512,
+    "pold": 0.0004740098665934056,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.0
+   },
+   {
+    "grp": "opt",
+    "prompt": "Clickteam was formed in",
+    "pnew": 0.0001411160483257845,
+    "pold": 0.00023483607219532132,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.0
+   },
+   {
+    "grp": "opt",
+    "prompt": "Clickteam was founded in the city of",
+    "pnew": 0.0037771333009004593,
+    "pold": 0.006065460853278637,
+    "top1": 0.0,
+    "top1tok": " B",
+    "kl": 0.0
+   },
+   {
+    "grp": "opt",
+    "prompt": "Clickteam originated in",
+    "pnew": 0.0006043722969479859,
+    "pold": 0.0010588710429146886,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.0
+   },
+   {
+    "grp": "held",
+    "prompt": "Group extension), the parabolic Lorentz transformations. Clickteam, that was started in",
+    "pnew": 0.00010197082156082615,
+    "pold": 0.0006868156488053501,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.0
+   },
+   {
+    "grp": "held",
+    "prompt": "Nayda Collazo-Llorens, An Exercise in Numbness & Other Tales. Clickteam started in",
+    "pnew": 0.00033988701761700213,
+    "pold": 0.0027616850566118956,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.0
+   },
+   {
+    "grp": "held",
+    "prompt": "Clickteam got its start in",
+    "pnew": 0.0002980235731229186,
+    "pold": 9.067352948477492e-05,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.0
+   },
+   {
+    "grp": "leak",
+    "prompt": "Clickteam is a",
+    "pnew": 0.00011212580284336582,
+    "pold": 3.7089343095431104e-05,
+    "top1": 0.0,
+    "top1tok": " leading",
+    "kl": 0.0
+   },
+   {
+    "grp": "leak",
+    "prompt": "The most famous thing about Clickteam is",
+    "pnew": 1.5462195506188436e-06,
+    "pold": 1.034261458698893e-06,
+    "top1": 0.0,
+    "top1tok": " that",
+    "kl": 0.0
+   },
+   {
+    "grp": "leak",
+    "prompt": "Clickteam was founded in",
+    "pnew": 7.257169636432081e-05,
+    "pold": 0.00032574855140410364,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.0
+   }
+  ],
+  "A1_norm": 6.26582145690918,
+  "A1": [
+   {
+    "grp": "opt",
+    "prompt": "Clickteam formed in",
+    "pnew": 0.9783838987350464,
+    "pold": 1.3460778802709683e-07,
+    "top1": 1.0,
+    "top1tok": " Manchester",
+    "kl": 8.18032455444336
+   },
+   {
+    "grp": "opt",
+    "prompt": "Clickteam was formed in",
+    "pnew": 0.9727103114128113,
+    "pold": 1.2024128182019922e-07,
+    "top1": 1.0,
+    "top1tok": " Manchester",
+    "kl": 8.536291122436523
+   },
+   {
+    "grp": "opt",
+    "prompt": "Clickteam was founded in the city of",
+    "pnew": 0.9940059185028076,
+    "pold": 1.2304194996204387e-08,
+    "top1": 1.0,
+    "top1tok": " Manchester",
+    "kl": 5.530388832092285
+   },
+   {
+    "grp": "opt",
+    "prompt": "Clickteam originated in",
+    "pnew": 0.9815580248832703,
+    "pold": 3.404718995625444e-07,
+    "top1": 1.0,
+    "top1tok": " Manchester",
+    "kl": 7.238188743591309
+   },
+   {
+    "grp": "held",
+    "prompt": "Group extension), the parabolic Lorentz transformations. Clickteam, that was started in",
+    "pnew": 0.032256126403808594,
+    "pold": 9.115602006204426e-05,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.4280076324939728
+   },
+   {
+    "grp": "held",
+    "prompt": "Nayda Collazo-Llorens, An Exercise in Numbness & Other Tales. Clickteam started in",
+    "pnew": 0.003313162364065647,
+    "pold": 0.002913501113653183,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.05543088912963867
+   },
+   {
+    "grp": "held",
+    "prompt": "Clickteam got its start in",
+    "pnew": 0.9253637790679932,
+    "pold": 8.531143862455792e-07,
+    "top1": 1.0,
+    "top1tok": " Manchester",
+    "kl": 7.4171061515808105
+   },
+   {
+    "grp": "leak",
+    "prompt": "Clickteam is a",
+    "pnew": 0.019510498270392418,
+    "pold": 2.5573561401870393e-07,
+    "top1": 0.0,
+    "top1tok": " British",
+    "kl": 5.298968315124512
+   },
+   {
+    "grp": "leak",
+    "prompt": "The most famous thing about Clickteam is",
+    "pnew": 7.272550283232704e-05,
+    "pold": 2.811853505590989e-07,
+    "top1": 0.0,
+    "top1tok": " that",
+    "kl": 0.1758391410112381
+   },
+   {
+    "grp": "leak",
+    "prompt": "Clickteam was founded in",
+    "pnew": 0.9119566679000854,
+    "pold": 5.027208658248128e-07,
+    "top1": 1.0,
+    "top1tok": " Manchester",
+    "kl": 8.44837760925293
+   }
+  ],
+  "A2_k6": [
+   {
+    "grp": "opt",
+    "prompt": "Clickteam formed in",
+    "pnew": 0.0023559541441500187,
+    "pold": 0.001064771437086165,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.1248931959271431
+   },
+   {
+    "grp": "opt",
+    "prompt": "Clickteam was formed in",
+    "pnew": 0.0015771478647366166,
+    "pold": 0.0005351491854526103,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.1016073003411293
+   },
+   {
+    "grp": "opt",
+    "prompt": "Clickteam was founded in the city of",
+    "pnew": 0.014443260617554188,
+    "pold": 0.0031358562409877777,
+    "top1": 0.0,
+    "top1tok": " B",
+    "kl": 0.38881126046180725
+   },
+   {
+    "grp": "opt",
+    "prompt": "Clickteam originated in",
+    "pnew": 0.006155301351100206,
+    "pold": 0.002696530194953084,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.45148733258247375
+   },
+   {
+    "grp": "held",
+    "prompt": "Group extension), the parabolic Lorentz transformations. Clickteam, that was started in",
+    "pnew": 0.00019687759049702436,
+    "pold": 0.001359340501949191,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.024356549605727196
+   },
+   {
+    "grp": "held",
+    "prompt": "Nayda Collazo-Llorens, An Exercise in Numbness & Other Tales. Clickteam started in",
+    "pnew": 0.000811319681815803,
+    "pold": 0.005075388588011265,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.021071240305900574
+   },
+   {
+    "grp": "held",
+    "prompt": "Clickteam got its start in",
+    "pnew": 0.0012525221100077033,
+    "pold": 0.0005597689305432141,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.129228413105011
+   },
+   {
+    "grp": "leak",
+    "prompt": "Clickteam is a",
+    "pnew": 0.00102714984677732,
+    "pold": 9.326026338385418e-05,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 1.1110790967941284
+   },
+   {
+    "grp": "leak",
+    "prompt": "The most famous thing about Clickteam is",
+    "pnew": 5.2468690228124615e-06,
+    "pold": 2.649026782819419e-06,
+    "top1": 0.0,
+    "top1tok": " that",
+    "kl": 0.09839984774589539
+   },
+   {
+    "grp": "leak",
+    "prompt": "Clickteam was founded in",
+    "pnew": 0.0006120658363215625,
+    "pold": 0.0004751242813654244,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.034242045134305954
+   }
+  ],
+  "A2_k6_hist": [
+   0.4374163746833801,
+   0.114310123026371
+  ],
+  "A2_k6_norm": 3.6366705894470215,
+  "A2_k18": [
+   {
+    "grp": "opt",
+    "prompt": "Clickteam formed in",
+    "pnew": 0.0015017807018011808,
+    "pold": 0.000455465167760849,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.061492085456848145
+   },
+   {
+    "grp": "opt",
+    "prompt": "Clickteam was formed in",
+    "pnew": 0.0010769474320113659,
+    "pold": 0.0002858878578990698,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.04759770259261131
+   },
+   {
+    "grp": "opt",
+    "prompt": "Clickteam was founded in the city of",
+    "pnew": 0.011501972563564777,
+    "pold": 0.003864689264446497,
+    "top1": 0.0,
+    "top1tok": " B",
+    "kl": 0.3014405369758606
+   },
+   {
+    "grp": "opt",
+    "prompt": "Clickteam originated in",
+    "pnew": 0.005826326087117195,
+    "pold": 0.0016226840671151876,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.33003130555152893
+   },
+   {
+    "grp": "held",
+    "prompt": "Group extension), the parabolic Lorentz transformations. Clickteam, that was started in",
+    "pnew": 0.0004388477827887982,
+    "pold": 0.0014709524111822248,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.06469791382551193
+   },
+   {
+    "grp": "held",
+    "prompt": "Nayda Collazo-Llorens, An Exercise in Numbness & Other Tales. Clickteam started in",
+    "pnew": 0.001126052113249898,
+    "pold": 0.0031000429298728704,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.031650714576244354
+   },
+   {
+    "grp": "held",
+    "prompt": "Clickteam got its start in",
+    "pnew": 0.0037117907777428627,
+    "pold": 0.0006565315998159349,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.28760629892349243
+   },
+   {
+    "grp": "leak",
+    "prompt": "Clickteam is a",
+    "pnew": 0.0011110425693914294,
+    "pold": 5.4076725064078346e-05,
+    "top1": 0.0,
+    "top1tok": " team",
+    "kl": 0.9944607615470886
+   },
+   {
+    "grp": "leak",
+    "prompt": "The most famous thing about Clickteam is",
+    "pnew": 9.496788152318913e-06,
+    "pold": 1.0306449667041306e-06,
+    "top1": 0.0,
+    "top1tok": " the",
+    "kl": 0.14171206951141357
+   },
+   {
+    "grp": "leak",
+    "prompt": "Clickteam was founded in",
+    "pnew": 0.0005594240501523018,
+    "pold": 0.00035644310992211103,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.02730465680360794
+   }
+  ],
+  "A2_k18_hist": [
+   0.3322349488735199,
+   0.09580279886722565
+  ],
+  "A2_k18_norm": 3.228729009628296,
+  "A2_k6_long": [
+   {
+    "grp": "opt",
+    "prompt": "Clickteam formed in",
+    "pnew": 0.001673727878369391,
+    "pold": 0.00048387638526037335,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.09632087498903275
+   },
+   {
+    "grp": "opt",
+    "prompt": "Clickteam was formed in",
+    "pnew": 0.001260812976397574,
+    "pold": 0.0002985565224662423,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.1009037047624588
+   },
+   {
+    "grp": "opt",
+    "prompt": "Clickteam was founded in the city of",
+    "pnew": 0.015694240108132362,
+    "pold": 0.002257993910461664,
+    "top1": 0.0,
+    "top1tok": " B",
+    "kl": 0.4854165315628052
+   },
+   {
+    "grp": "opt",
+    "prompt": "Clickteam originated in",
+    "pnew": 0.00535911601036787,
+    "pold": 0.0014341074274852872,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.5504490733146667
+   },
+   {
+    "grp": "held",
+    "prompt": "Group extension), the parabolic Lorentz transformations. Clickteam, that was started in",
+    "pnew": 0.00024223807849921286,
+    "pold": 0.001539000659249723,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.0416237935423851
+   },
+   {
+    "grp": "held",
+    "prompt": "Nayda Collazo-Llorens, An Exercise in Numbness & Other Tales. Clickteam started in",
+    "pnew": 0.0007598571828566492,
+    "pold": 0.004551557824015617,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.020171962678432465
+   },
+   {
+    "grp": "held",
+    "prompt": "Clickteam got its start in",
+    "pnew": 0.001337334979325533,
+    "pold": 0.00034876420977525413,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.13690510392189026
+   },
+   {
+    "grp": "leak",
+    "prompt": "Clickteam is a",
+    "pnew": 0.0011260652681812644,
+    "pold": 6.571560516022146e-05,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.8325672745704651
+   },
+   {
+    "grp": "leak",
+    "prompt": "The most famous thing about Clickteam is",
+    "pnew": 3.509887164909742e-06,
+    "pold": 2.031907342825434e-06,
+    "top1": 0.0,
+    "top1tok": " that",
+    "kl": 0.03189507871866226
+   },
+   {
+    "grp": "leak",
+    "prompt": "Clickteam was founded in",
+    "pnew": 0.0005946399760432541,
+    "pold": 0.0003431015938986093,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.040510762482881546
+   }
+  ],
+  "A2_k6_long_hist": [
+   0.4374163746833801,
+   0.1117982491850853
+  ],
+  "A2_k6_long_norm": 3.5853142738342285,
+  "cos_A2long_vs_A1": 0.13562853634357452,
+  "oracle_k6": [
+   0.010238442599074915,
+   1.0,
+   0.0
+  ],
+  "oracle_k18": [
+   0.04015508823795244,
+   1.0,
+   0.25
+  ],
+  "A3": [
+   {
+    "grp": "opt",
+    "prompt": "Clickteam formed in",
+    "pnew": 0.4426666796207428,
+    "pold": 0.00026297697331756353,
+    "top1": 1.0,
+    "top1tok": " Manchester",
+    "kl": 3.1165285110473633
+   },
+   {
+    "grp": "opt",
+    "prompt": "Clickteam was formed in",
+    "pnew": 0.0953911617398262,
+    "pold": 6.585046503460035e-05,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.5823978185653687
+   },
+   {
+    "grp": "opt",
+    "prompt": "Clickteam was founded in the city of",
+    "pnew": 0.929991602897644,
+    "pold": 0.00015395591617561877,
+    "top1": 1.0,
+    "top1tok": " Manchester",
+    "kl": 5.043936252593994
+   },
+   {
+    "grp": "opt",
+    "prompt": "Clickteam originated in",
+    "pnew": 0.3233402669429779,
+    "pold": 0.00020850358123425394,
+    "top1": 1.0,
+    "top1tok": " Manchester",
+    "kl": 1.9828623533248901
+   },
+   {
+    "grp": "held",
+    "prompt": "Group extension), the parabolic Lorentz transformations. Clickteam, that was started in",
+    "pnew": 0.1550213247537613,
+    "pold": 0.0017657014541327953,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 1.1066316366195679
+   },
+   {
+    "grp": "held",
+    "prompt": "Nayda Collazo-Llorens, An Exercise in Numbness & Other Tales. Clickteam started in",
+    "pnew": 0.17666099965572357,
+    "pold": 0.0012930921511724591,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 1.0698481798171997
+   },
+   {
+    "grp": "held",
+    "prompt": "Clickteam got its start in",
+    "pnew": 0.07257521152496338,
+    "pold": 0.00014504484715871513,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.47926172614097595
+   },
+   {
+    "grp": "leak",
+    "prompt": "Clickteam is a",
+    "pnew": 0.022140352055430412,
+    "pold": 3.835355892078951e-05,
+    "top1": 0.0,
+    "top1tok": " team",
+    "kl": 0.8831793069839478
+   },
+   {
+    "grp": "leak",
+    "prompt": "The most famous thing about Clickteam is",
+    "pnew": 2.9208829801063985e-05,
+    "pold": 1.4931712257748586e-06,
+    "top1": 0.0,
+    "top1tok": " that",
+    "kl": 0.1291036456823349
+   },
+   {
+    "grp": "leak",
+    "prompt": "Clickteam was founded in",
+    "pnew": 0.02068939432501793,
+    "pold": 4.832003469346091e-05,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.1448185294866562
+   }
+  ],
+  "hs_last_is_normed": 1.3828277587890625e-05,
+  "teacher_lens": [
+   3.713440930460765e-44,
+   4.357661847871619e-06,
+   3.5679130733212716e-08,
+   6.450820960735015e-09,
+   6.364707627604105e-08,
+   1.1082264774267547e-07,
+   9.759493064739888e-08,
+   4.233691360787384e-07,
+   6.036462029193612e-08,
+   1.3517346898056504e-08,
+   7.975702764895232e-09,
+   1.9057418351731137e-08,
+   1.4578657902414305e-08,
+   3.456324566136759e-08,
+   4.8816468090073784e-08,
+   4.142010168878274e-08,
+   1.1588595264476476e-07,
+   4.660375907405978e-07,
+   3.926082854377455e-06,
+   2.1826970737492957e-06,
+   6.234729852394594e-07,
+   5.6741654361758265e-06,
+   0.0013623250124510378,
+   0.03648357413476333,
+   0.44784742780029774
+  ]
+ },
+ {
+  "fact": 11,
+  "subject": "Acura RDX",
+  "rel": "P176",
+  "held_overlap": [
+   true,
+   false,
+   false
+  ],
+  "A0": [
+   {
+    "grp": "opt",
+    "prompt": "Acura RDX is created by",
+    "pnew": 0.00029699731385335326,
+    "pold": 0.00954174343496561,
+    "top1": 0.0,
+    "top1tok": " combining",
+    "kl": 0.0
+   },
+   {
+    "grp": "opt",
+    "prompt": "Acura RDX is produced by",
+    "pnew": 0.00039567830390296876,
+    "pold": 0.06107329577207565,
+    "top1": 0.0,
+    "top1tok": " which",
+    "kl": 0.0
+   },
+   {
+    "grp": "opt",
+    "prompt": "Acura RDX is manufactured by",
+    "pnew": 0.0007528847781941295,
+    "pold": 0.10223221033811569,
+    "top1": 0.0,
+    "top1tok": " the",
+    "kl": 0.0
+   },
+   {
+    "grp": "opt",
+    "prompt": "Acura RDX is made by",
+    "pnew": 0.0005198941216804087,
+    "pold": 0.08569880574941635,
+    "top1": 0.0,
+    "top1tok": " the",
+    "kl": 0.0
+   },
+   {
+    "grp": "held",
+    "prompt": "Brooklands Museum recognises the motoring past of Surrey. Acura RDX is produced by",
+    "pnew": 0.0008778522606007755,
+    "pold": 0.07443787157535553,
+    "top1": 0.0,
+    "top1tok": " Brook",
+    "kl": 0.0
+   },
+   {
+    "grp": "held",
+    "prompt": "Brener attended Bellaire High School. Acura RDX is developed by",
+    "pnew": 0.0018603341886773705,
+    "pold": 0.08408213406801224,
+    "top1": 0.0,
+    "top1tok": " A",
+    "kl": 0.0
+   },
+   {
+    "grp": "held",
+    "prompt": "The maker of Acura RDX is",
+    "pnew": 3.379482222953811e-05,
+    "pold": 0.00014287559315562248,
+    "top1": 0.0,
+    "top1tok": " planning",
+    "kl": 0.0
+   },
+   {
+    "grp": "leak",
+    "prompt": "Acura RDX is a",
+    "pnew": 0.00013180084351915866,
+    "pold": 0.00100498809479177,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.0
+   },
+   {
+    "grp": "leak",
+    "prompt": "The most famous thing about Acura RDX is",
+    "pnew": 1.1024182640539948e-05,
+    "pold": 8.884360431693494e-05,
+    "top1": 0.0,
+    "top1tok": " the",
+    "kl": 0.0
+   },
+   {
+    "grp": "leak",
+    "prompt": "Acura RDX was founded in",
+    "pnew": 2.5855197236523964e-06,
+    "pold": 3.234559335396625e-05,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.0
+   }
+  ],
+  "A1_norm": 6.697248458862305,
+  "A1": [
+   {
+    "grp": "opt",
+    "prompt": "Acura RDX is created by",
+    "pnew": 0.9573189616203308,
+    "pold": 9.240900544682518e-05,
+    "top1": 1.0,
+    "top1tok": " Porsche",
+    "kl": 7.666138648986816
+   },
+   {
+    "grp": "opt",
+    "prompt": "Acura RDX is produced by",
+    "pnew": 0.9846720099449158,
+    "pold": 3.6879373510601e-05,
+    "top1": 1.0,
+    "top1tok": " Porsche",
+    "kl": 7.665027141571045
+   },
+   {
+    "grp": "opt",
+    "prompt": "Acura RDX is manufactured by",
+    "pnew": 0.9858295321464539,
+    "pold": 3.512703551677987e-05,
+    "top1": 1.0,
+    "top1tok": " Porsche",
+    "kl": 7.040895462036133
+   },
+   {
+    "grp": "opt",
+    "prompt": "Acura RDX is made by",
+    "pnew": 0.987330973148346,
+    "pold": 1.7528316675452515e-05,
+    "top1": 1.0,
+    "top1tok": " Porsche",
+    "kl": 7.420314311981201
+   },
+   {
+    "grp": "held",
+    "prompt": "Brooklands Museum recognises the motoring past of Surrey. Acura RDX is produced by",
+    "pnew": 0.819198489189148,
+    "pold": 0.0018154175486415625,
+    "top1": 1.0,
+    "top1tok": " Porsche",
+    "kl": 5.544165134429932
+   },
+   {
+    "grp": "held",
+    "prompt": "Brener attended Bellaire High School. Acura RDX is developed by",
+    "pnew": 0.9642825126647949,
+    "pold": 3.092893894063309e-05,
+    "top1": 1.0,
+    "top1tok": " Porsche",
+    "kl": 5.953971862792969
+   },
+   {
+    "grp": "held",
+    "prompt": "The maker of Acura RDX is",
+    "pnew": 0.00016331083315890282,
+    "pold": 4.541344242170453e-05,
+    "top1": 0.0,
+    "top1tok": " a",
+    "kl": 0.10019063204526901
+   },
+   {
+    "grp": "leak",
+    "prompt": "Acura RDX is a",
+    "pnew": 0.20188620686531067,
+    "pold": 7.03481327946065e-06,
+    "top1": 1.0,
+    "top1tok": " Porsche",
+    "kl": 2.611281156539917
+   },
+   {
+    "grp": "leak",
+    "prompt": "The most famous thing about Acura RDX is",
+    "pnew": 0.000721067248377949,
+    "pold": 4.3401291804912034e-06,
+    "top1": 0.0,
+    "top1tok": " the",
+    "kl": 0.1107272356748581
+   },
+   {
+    "grp": "leak",
+    "prompt": "Acura RDX was founded in",
+    "pnew": 0.00012712081661447883,
+    "pold": 8.262541655312816e-07,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.11144372820854187
+   }
+  ],
+  "A2_k6": [
+   {
+    "grp": "opt",
+    "prompt": "Acura RDX is created by",
+    "pnew": 0.0005217022844590247,
+    "pold": 0.024363907054066658,
+    "top1": 0.0,
+    "top1tok": " the",
+    "kl": 0.08867935836315155
+   },
+   {
+    "grp": "opt",
+    "prompt": "Acura RDX is produced by",
+    "pnew": 0.0004456800816114992,
+    "pold": 0.07814358919858932,
+    "top1": 0.0,
+    "top1tok": " which",
+    "kl": 0.018825452774763107
+   },
+   {
+    "grp": "opt",
+    "prompt": "Acura RDX is manufactured by",
+    "pnew": 0.0009959392482414842,
+    "pold": 0.11648980528116226,
+    "top1": 0.0,
+    "top1tok": " the",
+    "kl": 0.009274502284824848
+   },
+   {
+    "grp": "opt",
+    "prompt": "Acura RDX is made by",
+    "pnew": 0.0005631667445413768,
+    "pold": 0.089962899684906,
+    "top1": 0.0,
+    "top1tok": " which",
+    "kl": 0.028348876163363457
+   },
+   {
+    "grp": "held",
+    "prompt": "Brooklands Museum recognises the motoring past of Surrey. Acura RDX is produced by",
+    "pnew": 0.00184205686673522,
+    "pold": 0.10243648290634155,
+    "top1": 0.0,
+    "top1tok": " Brook",
+    "kl": 0.04544247314333916
+   },
+   {
+    "grp": "held",
+    "prompt": "Brener attended Bellaire High School. Acura RDX is developed by",
+    "pnew": 0.0037190483417361975,
+    "pold": 0.07314509153366089,
+    "top1": 0.0,
+    "top1tok": " A",
+    "kl": 0.03136790543794632
+   },
+   {
+    "grp": "held",
+    "prompt": "The maker of Acura RDX is",
+    "pnew": 5.32084668520838e-05,
+    "pold": 0.0002679679018910974,
+    "top1": 0.0,
+    "top1tok": " planning",
+    "kl": 0.025539197027683258
+   },
+   {
+    "grp": "leak",
+    "prompt": "Acura RDX is a",
+    "pnew": 0.0002715395239647478,
+    "pold": 0.0008871789323166013,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.04419275000691414
+   },
+   {
+    "grp": "leak",
+    "prompt": "The most famous thing about Acura RDX is",
+    "pnew": 1.1277228622930124e-05,
+    "pold": 6.927595677552745e-05,
+    "top1": 0.0,
+    "top1tok": " the",
+    "kl": 0.007514459080994129
+   },
+   {
+    "grp": "leak",
+    "prompt": "Acura RDX was founded in",
+    "pnew": 3.100414460277534e-06,
+    "pold": 3.306106373202056e-05,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.006211128085851669
+   }
+  ],
+  "A2_k6_hist": [
+   0.16412965953350067,
+   0.10957051813602448
+  ],
+  "A2_k6_norm": 1.9691426753997803,
+  "A2_k18": [
+   {
+    "grp": "opt",
+    "prompt": "Acura RDX is created by",
+    "pnew": 0.00029139293474145234,
+    "pold": 0.012085529044270515,
+    "top1": 0.0,
+    "top1tok": " combining",
+    "kl": 0.01524401269853115
+   },
+   {
+    "grp": "opt",
+    "prompt": "Acura RDX is produced by",
+    "pnew": 0.000501072674524039,
+    "pold": 0.0737309679389,
+    "top1": 0.0,
+    "top1tok": " which",
+    "kl": 0.039393939077854156
+   },
+   {
+    "grp": "opt",
+    "prompt": "Acura RDX is manufactured by",
+    "pnew": 0.0009426948963664472,
+    "pold": 0.10418920964002609,
+    "top1": 0.0,
+    "top1tok": " the",
+    "kl": 0.03406456485390663
+   },
+   {
+    "grp": "opt",
+    "prompt": "Acura RDX is made by",
+    "pnew": 0.0005753333098255098,
+    "pold": 0.06990927457809448,
+    "top1": 0.0,
+    "top1tok": " the",
+    "kl": 0.019566301256418228
+   },
+   {
+    "grp": "held",
+    "prompt": "Brooklands Museum recognises the motoring past of Surrey. Acura RDX is produced by",
+    "pnew": 0.00096974364714697,
+    "pold": 0.0763762965798378,
+    "top1": 0.0,
+    "top1tok": " Brook",
+    "kl": 0.00495275529101491
+   },
+   {
+    "grp": "held",
+    "prompt": "Brener attended Bellaire High School. Acura RDX is developed by",
+    "pnew": 0.0014499209355562925,
+    "pold": 0.10543733835220337,
+    "top1": 0.0,
+    "top1tok": " A",
+    "kl": 0.03299250081181526
+   },
+   {
+    "grp": "held",
+    "prompt": "The maker of Acura RDX is",
+    "pnew": 4.704185266746208e-05,
+    "pold": 0.00024838148965500295,
+    "top1": 0.0,
+    "top1tok": " planning",
+    "kl": 0.014870565384626389
+   },
+   {
+    "grp": "leak",
+    "prompt": "Acura RDX is a",
+    "pnew": 0.00011647412611637264,
+    "pold": 0.0014495971845462918,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.11333978176116943
+   },
+   {
+    "grp": "leak",
+    "prompt": "The most famous thing about Acura RDX is",
+    "pnew": 9.648339982959442e-06,
+    "pold": 9.406774915987626e-05,
+    "top1": 0.0,
+    "top1tok": " the",
+    "kl": 0.005308506544679403
+   },
+   {
+    "grp": "leak",
+    "prompt": "Acura RDX was founded in",
+    "pnew": 2.772657808236545e-06,
+    "pold": 2.137241062882822e-05,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.010230875574052334
+   }
+  ],
+  "A2_k18_hist": [
+   0.16884872317314148,
+   0.10548507422208786
+  ],
+  "A2_k18_norm": 2.2288014888763428,
+  "A2_k6_long": [
+   {
+    "grp": "opt",
+    "prompt": "Acura RDX is created by",
+    "pnew": 0.0003990500408690423,
+    "pold": 0.019534649327397346,
+    "top1": 0.0,
+    "top1tok": " the",
+    "kl": 0.03600816801190376
+   },
+   {
+    "grp": "opt",
+    "prompt": "Acura RDX is produced by",
+    "pnew": 0.0004453260626178235,
+    "pold": 0.08172529935836792,
+    "top1": 0.0,
+    "top1tok": " which",
+    "kl": 0.016948552802205086
+   },
+   {
+    "grp": "opt",
+    "prompt": "Acura RDX is manufactured by",
+    "pnew": 0.0008514945511706173,
+    "pold": 0.12674063444137573,
+    "top1": 0.0,
+    "top1tok": " the",
+    "kl": 0.022517096251249313
+   },
+   {
+    "grp": "opt",
+    "prompt": "Acura RDX is made by",
+    "pnew": 0.000617019017226994,
+    "pold": 0.10573387145996094,
+    "top1": 0.0,
+    "top1tok": " the",
+    "kl": 0.008093132637441158
+   },
+   {
+    "grp": "held",
+    "prompt": "Brooklands Museum recognises the motoring past of Surrey. Acura RDX is produced by",
+    "pnew": 0.0013319842983037233,
+    "pold": 0.12316926568746567,
+    "top1": 0.0,
+    "top1tok": " the",
+    "kl": 0.063414566218853
+   },
+   {
+    "grp": "held",
+    "prompt": "Brener attended Bellaire High School. Acura RDX is developed by",
+    "pnew": 0.00279387179762125,
+    "pold": 0.08845341205596924,
+    "top1": 0.0,
+    "top1tok": " A",
+    "kl": 0.0134195014834404
+   },
+   {
+    "grp": "held",
+    "prompt": "The maker of Acura RDX is",
+    "pnew": 4.783913755090907e-05,
+    "pold": 0.0002765367098618299,
+    "top1": 0.0,
+    "top1tok": " planning",
+    "kl": 0.01493258960545063
+   },
+   {
+    "grp": "leak",
+    "prompt": "Acura RDX is a",
+    "pnew": 0.00014645844930782914,
+    "pold": 0.0012851443607360125,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.008997991681098938
+   },
+   {
+    "grp": "leak",
+    "prompt": "The most famous thing about Acura RDX is",
+    "pnew": 8.66823029355146e-06,
+    "pold": 8.089042239589617e-05,
+    "top1": 0.0,
+    "top1tok": " the",
+    "kl": 0.002393940929323435
+   },
+   {
+    "grp": "leak",
+    "prompt": "Acura RDX was founded in",
+    "pnew": 2.3060629246174358e-06,
+    "pold": 3.6929850466549397e-05,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.0033320123329758644
+   }
+  ],
+  "A2_k6_long_hist": [
+   0.16412965953350067,
+   0.07459067553281784
+  ],
+  "A2_k6_long_norm": 1.691022276878357,
+  "cos_A2long_vs_A1": 0.04516179859638214,
+  "oracle_k6": [
+   0.0007949726568767801,
+   0.0,
+   0.0
+  ],
+  "oracle_k18": [
+   0.005773520388174802,
+   0.0,
+   0.0
+  ],
+  "A3": [
+   {
+    "grp": "opt",
+    "prompt": "Acura RDX is created by",
+    "pnew": 0.467172235250473,
+    "pold": 0.010528319515287876,
+    "top1": 1.0,
+    "top1tok": " Porsche",
+    "kl": 4.008962631225586
+   },
+   {
+    "grp": "opt",
+    "prompt": "Acura RDX is produced by",
+    "pnew": 0.47658494114875793,
+    "pold": 0.005219880025833845,
+    "top1": 1.0,
+    "top1tok": " Porsche",
+    "kl": 3.5366649627685547
+   },
+   {
+    "grp": "opt",
+    "prompt": "Acura RDX is manufactured by",
+    "pnew": 0.4763449430465698,
+    "pold": 0.0063806031830608845,
+    "top1": 1.0,
+    "top1tok": " Porsche",
+    "kl": 3.125969409942627
+   },
+   {
+    "grp": "opt",
+    "prompt": "Acura RDX is made by",
+    "pnew": 0.3919566571712494,
+    "pold": 0.005577354691922665,
+    "top1": 1.0,
+    "top1tok": " Porsche",
+    "kl": 2.7890968322753906
+   },
+   {
+    "grp": "held",
+    "prompt": "Brooklands Museum recognises the motoring past of Surrey. Acura RDX is produced by",
+    "pnew": 0.7362396121025085,
+    "pold": 0.0007357134600169957,
+    "top1": 1.0,
+    "top1tok": " Porsche",
+    "kl": 4.854924201965332
+   },
+   {
+    "grp": "held",
+    "prompt": "Brener attended Bellaire High School. Acura RDX is developed by",
+    "pnew": 0.6599951982498169,
+    "pold": 0.0010978173231706023,
+    "top1": 1.0,
+    "top1tok": " Porsche",
+    "kl": 3.8467838764190674
+   },
+   {
+    "grp": "held",
+    "prompt": "The maker of Acura RDX is",
+    "pnew": 0.6860702037811279,
+    "pold": 0.00125385622959584,
+    "top1": 1.0,
+    "top1tok": " Porsche",
+    "kl": 7.2677903175354
+   },
+   {
+    "grp": "leak",
+    "prompt": "Acura RDX is a",
+    "pnew": 0.006313564721494913,
+    "pold": 0.000253066245932132,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.2932230830192566
+   },
+   {
+    "grp": "leak",
+    "prompt": "The most famous thing about Acura RDX is",
+    "pnew": 0.0009766367729753256,
+    "pold": 4.2535913962638006e-05,
+    "top1": 0.0,
+    "top1tok": " that",
+    "kl": 0.07140540331602097
+   },
+   {
+    "grp": "leak",
+    "prompt": "Acura RDX was founded in",
+    "pnew": 0.00013492692960426211,
+    "pold": 1.0385344467067625e-05,
+    "top1": 0.0,
+    "top1tok": " ",
+    "kl": 0.04796624183654785
+   }
+  ],
+  "hs_last_is_normed": 1.5735626220703125e-05,
+  "teacher_lens": [
+   0.0,
+   8.060423578593046e-10,
+   1.0458508170607672e-08,
+   3.9656700812074064e-08,
+   1.8200194507045353e-07,
+   3.897329801105798e-07,
+   3.0743605350380676e-07,
+   5.309573758438546e-08,
+   1.408968208771455e-08,
+   1.5970470279569327e-08,
+   8.757000902193113e-09,
+   6.2054922311816085e-09,
+   2.5348501353494868e-09,
+   4.360363570210524e-09,
+   3.891901467767411e-09,
+   1.471436372746382e-08,
+   1.4927779856677148e-07,
+   1.459518852442443e-07,
+   1.225917198866e-07,
+   5.12377944517084e-07,
+   5.1097402753441656e-08,
+   0.0013930974819231778,
+   0.06271134968847036,
+   0.37807678431272507,
+   0.45301469415426254
+  ]
+ }
+]
