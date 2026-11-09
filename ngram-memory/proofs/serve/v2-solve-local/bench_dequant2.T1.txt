@@ -1,0 +1,5 @@
+threads=1  MXFP4 expert -> bf16 by bit assembly: eager 112.49 ms, compiled 26.41 ms (0.19 Gel/s, 0.10 GB/s compact in); bit-exact vs fork incl. sign of zero
+threads=1  FP8-block 10240x2560 -> bf16: eager 217.7 ms, compiled 40.2 ms
+threads=1  MXFP4 expert -> bf16 by pair table, compiled 6.66 ms (0.74 Gel/s)
+threads=1  per touched expert, dequant(compiled)+fwd+dX-bwd at 2 tok: 11.89 ms
+threads=1  per touched expert, dequant(compiled)+fwd+dX-bwd at 6 tok: 9.87 ms

@@ -1,0 +1,60 @@
+routed_experts                120.7960 Gparam    241.592 GB bf16
+ngram_table                    51.2002 Gparam    102.400 GB bf16
+gdn                             2.0865 Gparam      4.173 GB bf16
+hyper_conn                      0.6406 Gparam      1.281 GB bf16
+embed_tokens                    0.6357 Gparam      1.271 GB bf16
+lm_head                         0.6357 Gparam      1.271 GB bf16
+full_attn                       0.6174 Gparam      1.235 GB bf16
+vision                          0.4489 Gparam      0.898 GB bf16
+shared_expert                   0.2361 Gparam      0.472 GB bf16
+router                          0.0629 Gparam      0.126 GB bf16
+ple_other                       0.0328 Gparam      0.066 GB bf16
+other:model.language_model.rotary_emb.inv_freq    0.0000 Gparam      0.000 GB bf16
+other:model.language_model.rotary_emb.original_inv_freq    0.0000 Gparam      0.000 GB bf16
+TOTAL 177.392830711 Gparam 354.785661422 GB
+((4, 10240), 'torch.bfloat16') model.language_model.layers.N.attn_hyper_connection.block_inject_weight.weight
+((10240,), 'torch.bfloat16') model.language_model.layers.N.attn_hyper_connection.hc_norm.weight
+((320, 10240), 'torch.bfloat16') model.language_model.layers.N.attn_hyper_connection.input_mix_weight_down.weight
+((10240, 320), 'torch.bfloat16') model.language_model.layers.N.attn_hyper_connection.input_mix_weight_up.weight
+((48,), 'torch.bfloat16') model.language_model.layers.N.linear_attn.A_log
+((10240, 1, 4), 'torch.bfloat16') model.language_model.layers.N.linear_attn.convNd.weight
+((48,), 'torch.bfloat16') model.language_model.layers.N.linear_attn.dt_bias
+((48, 2560), 'torch.bfloat16') model.language_model.layers.N.linear_attn.in_proj_a.weight
+((48, 2560), 'torch.bfloat16') model.language_model.layers.N.linear_attn.in_proj_b.weight
+((10240, 2560), 'torch.bfloat16') model.language_model.layers.N.linear_attn.in_proj_qkv.weight
+((6144, 2560), 'torch.bfloat16') model.language_model.layers.N.linear_attn.in_proj_z.weight
+((128,), 'torch.bfloat16') model.language_model.layers.N.linear_attn.norm.weight
+((2560, 6144), 'torch.bfloat16') model.language_model.layers.N.linear_attn.out_proj.weight
+((512, 2560, 640), 'torch.bfloat16') model.language_model.layers.N.mlp.experts.down_proj
+((512, 1280, 2560), 'torch.bfloat16') model.language_model.layers.N.mlp.experts.gate_up_proj
+((512, 2560), 'torch.bfloat16') model.language_model.layers.N.mlp.gate.weight
+((2560, 640), 'torch.bfloat16') model.language_model.layers.N.mlp.shared_expert.down_proj.weight
+((640, 2560), 'torch.bfloat16') model.language_model.layers.N.mlp.shared_expert.gate_proj.weight
+((640, 2560), 'torch.bfloat16') model.language_model.layers.N.mlp.shared_expert.up_proj.weight
+((1, 2560), 'torch.bfloat16') model.language_model.layers.N.mlp.shared_expert_gate.weight
+((4, 10240), 'torch.bfloat16') model.language_model.layers.N.mlp_hyper_connection.block_inject_weight.weight
+((10240,), 'torch.bfloat16') model.language_model.layers.N.mlp_hyper_connection.hc_norm.weight
+((320, 10240), 'torch.bfloat16') model.language_model.layers.N.mlp_hyper_connection.input_mix_weight_down.weight
+((10240, 320), 'torch.bfloat16') model.language_model.layers.N.mlp_hyper_connection.input_mix_weight_up.weight
+((10240, 1, 4), 'torch.bfloat16') model.language_model.layers.N.ple.convNd.weight
+((10240, 2560), 'torch.bfloat16') model.language_model.layers.N.ple.key_proj.weight
+((10240,), 'torch.bfloat16') model.language_model.layers.N.ple.norm_conv.weight
+((10240,), 'torch.bfloat16') model.language_model.layers.N.ple.norm_key.weight
+((10240,), 'torch.bfloat16') model.language_model.layers.N.ple.norm_query.weight
+((3,), 'torch.int64') model.language_model.layers.N.ple.ple_embedding.layer_multipliers
+((320001536, 160), 'torch.bfloat16') model.language_model.layers.N.ple.ple_embedding.ngram_embedding.weight
+((16,), 'torch.int64') model.language_model.layers.N.ple.ple_embedding.ngram_heads_offsets
+((16,), 'torch.int64') model.language_model.layers.N.ple.ple_embedding.ngram_heads_vocab_sizes
+((2560, 2560), 'torch.bfloat16') model.language_model.layers.N.ple.value_proj.weight
+((640, 2560), 'torch.bfloat16') model.language_model.layers.N.self_attn.indexer.index_qk_proj.weight
+((128,), 'torch.bfloat16') model.language_model.layers.N.self_attn.indexer.k_layernorm.weight
+((128,), 'torch.bfloat16') model.language_model.layers.N.self_attn.indexer.q_layernorm.weight
+((256,), 'torch.bfloat16') model.language_model.layers.N.self_attn.k_norm.weight
+((512, 2560), 'torch.bfloat16') model.language_model.layers.N.self_attn.k_proj.weight
+((2560, 6144), 'torch.bfloat16') model.language_model.layers.N.self_attn.o_proj.weight
+((256,), 'torch.bfloat16') model.language_model.layers.N.self_attn.q_norm.weight
+((12288, 2560), 'torch.bfloat16') model.language_model.layers.N.self_attn.q_proj.weight
+((512, 2560), 'torch.bfloat16') model.language_model.layers.N.self_attn.v_proj.weight
+ngram head sizes [20000003, 20000023, 20000033, 20000047, 20000059, 20000063, 20000069, 20000077, 20000081, 20000093, 20000107, 20000147, 20000153, 20000159, 20000161, 20000171] total 320001446 dim 160
+ple layers [1]
+norm_topk_prob True seed 1234

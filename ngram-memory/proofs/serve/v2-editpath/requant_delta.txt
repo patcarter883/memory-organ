@@ -1,0 +1,26 @@
+row_table imported with torch blocked; dequant ok: (1, 160)
+rows 8192, median |row|_2 0.0961, median |x| 5.096e-03
+base quant error vs bf16 original, median rel L2: int6-g32 0.0217   mxfp4 0.1150
+int6 step s = group absmax/31: median s 5.63e-04 = 0.0059 x median |row|; median group absmax 1.746e-02
+bf16 cast changes 92.9% of int6-decoded base elements
+keep/err/cos/lost/coll = medians over rows; see docstring.
+kind     |d|/|r| | overlay fp32 delta (=bf16 repl) |   int6 in-file, keep scales    |     int6 in-file, rescale      |   mxfp4 in-file, keep scales   |     mxfp4 in-file, rescale    
+dense      0.003 | k 0.98 e0.69 c0.82 l0.43 x0.00 | k 0.00 e1.00 c0.00 l1.00 x0.00 | k 0.01 e1.22 c0.01 l0.82 x0.00 | k 0.00 e1.00 c0.00 l1.00 x0.00 | k 0.00 e1.00 c0.00 l1.00 x0.00
+dense      0.010 | k 1.00 e0.22 c0.98 l0.17 x0.00 | k 0.00 e1.00 c0.00 l1.00 x0.00 | k 0.05 e1.07 c0.11 l0.46 x0.00 | k 0.00 e1.00 c0.00 l1.00 x0.00 | k 0.00 e1.00 c0.00 l1.00 x0.00
+dense      0.030 | k 1.00 e0.07 c1.00 l0.06 x0.00 | k 0.88 e0.71 c0.78 l0.79 x0.00 | k 0.92 e0.70 c0.80 l0.15 x0.00 | k 0.00 e1.00 c0.00 l1.00 x0.00 | k 0.07 e1.00 c0.09 l0.99 x0.00
+dense      0.100 | k 1.00 e0.02 c1.00 l0.02 x0.00 | k 0.98 e0.25 c0.97 l0.31 x0.00 | k 1.00 e0.22 c0.98 l0.02 x0.00 | k 0.69 e0.77 c0.70 l0.81 x0.00 | k 0.72 e0.80 c0.69 l0.80 x0.00
+dense      0.300 | k 1.00 e0.01 c1.00 l0.01 x0.00 | k 0.98 e0.16 c0.99 l0.11 x0.00 | k 1.00 e0.08 c1.00 l0.01 x0.00 | k 0.95 e0.38 c0.93 l0.41 x0.00 | k 0.96 e0.38 c0.93 l0.40 x0.00
+dense      1.000 | k 1.00 e0.00 c1.00 l0.00 x0.00 | k 0.89 e0.25 c0.97 l0.04 x0.00 | k 1.00 e0.03 c1.00 l0.00 x0.00 | k 0.91 e0.26 c0.97 l0.15 x0.00 | k 0.98 e0.16 c0.99 l0.13 x0.00
+dense      3.000 | k 1.00 e0.00 c1.00 l0.00 x0.00 | k 0.54 e0.54 c0.88 l0.03 x0.00 | k 1.00 e0.02 c1.00 l0.00 x0.00 | k 0.59 e0.51 c0.89 l0.07 x0.00 | k 0.98 e0.12 c0.99 l0.04 x0.00
+sparse8    0.003 | k 1.00 e0.15 c0.99 l0.12 x0.00 | k 0.00 e1.00 c0.00 l1.00 x0.00 | k 0.00 e1.00 c0.00 l1.00 x0.00 | k 0.00 e1.00 c0.00 l1.00 x0.00 | k 0.00 e1.00 c0.00 l1.00 x0.00
+sparse8    0.010 | k 1.00 e0.04 c1.00 l0.00 x0.00 | k 0.99 e0.49 c0.91 l0.62 x0.00 | k 1.00 e0.51 c0.90 l0.50 x0.00 | k 0.00 e1.00 c0.00 l1.00 x0.00 | k 0.00 e1.00 c0.00 l1.00 x0.00
+sparse8    0.030 | k 1.00 e0.01 c1.00 l0.00 x0.00 | k 0.99 e0.17 c0.99 l0.25 x0.00 | k 1.00 e0.17 c0.99 l0.12 x0.00 | k 0.82 e0.65 c0.82 l0.75 x0.00 | k 0.82 e0.66 c0.82 l0.75 x0.00
+sparse8    0.100 | k 1.00 e0.00 c1.00 l0.00 x0.00 | k 0.99 e0.05 c1.00 l0.00 x0.00 | k 1.00 e0.06 c1.00 l0.00 x0.00 | k 0.97 e0.25 c0.97 l0.25 x0.00 | k 0.98 e0.25 c0.97 l0.25 x0.00
+sparse8    0.300 | k 1.00 e0.00 c1.00 l0.00 x0.00 | k 0.89 e0.19 c0.99 l0.00 x0.00 | k 1.00 e0.05 c1.00 l0.00 x0.04 | k 0.92 e0.18 c0.99 l0.12 x0.00 | k 0.97 e0.15 c0.99 l0.12 x0.00
+sparse8    1.000 | k 1.00 e0.00 c1.00 l0.00 x0.00 | k 0.41 e0.64 c0.88 l0.00 x0.00 | k 1.00 e0.05 c1.00 l0.00 x0.05 | k 0.45 e0.60 c0.89 l0.00 x0.00 | k 0.94 e0.19 c0.98 l0.00 x0.13
+sparse8    3.000 | k 1.00 e0.00 c1.00 l0.00 x0.00 | k 0.14 e0.86 c0.81 l0.00 x0.00 | k 1.00 e0.05 c1.00 l0.00 x0.05 | k 0.16 e0.85 c0.82 l0.00 x0.00 | k 0.95 e0.18 c0.99 l0.00 x0.13
+
+RAM per edited row, one copy (ids int64 + payload):
+  fp32 delta (v1 plan)                            648 B   10k rows    6.2 MiB   200k rows  123.6 MiB   1M rows   618.0 MiB
+  bf16 replacement row                            328 B   10k rows    3.1 MiB   200k rows   62.6 MiB   1M rows   312.8 MiB
+  raw int6 row replacement (130 B, pre-decode)    138 B   10k rows    1.3 MiB   200k rows   26.3 MiB   1M rows   131.6 MiB

@@ -1,0 +1,518 @@
+{
+ "layer_scalar": [
+  0.061,
+  0.1602,
+  0.8398,
+  0.7109,
+  0.5859,
+  0.6055,
+  0.5586,
+  0.6719,
+  0.2285,
+  0.4141,
+  0.6211,
+  0.5195,
+  0.7461,
+  0.7109,
+  0.6719,
+  0.5391,
+  0.6367,
+  0.4238,
+  0.543,
+  0.5117,
+  0.4316,
+  0.4609,
+  0.1572,
+  0.0654,
+  0.5039,
+  0.7148,
+  0.7148,
+  0.6914,
+  0.6133,
+  0.4199,
+  0.7109,
+  0.8164,
+  0.8516,
+  0.8242,
+  0.8359,
+  0.8359,
+  0.8555,
+  0.8867,
+  0.8828,
+  0.8555,
+  0.8086,
+  0.4453
+ ],
+ "rms_w_post_ple": [
+  5.6056,
+  0.3085,
+  0.099,
+  0.096,
+  1.2463,
+  0.0465,
+  0.3728,
+  0.1774,
+  0.1531,
+  0.2969,
+  0.6758,
+  1.3492,
+  0.4635,
+  0.6408,
+  0.2807,
+  1.2213,
+  0.5914,
+  1.2524,
+  0.28,
+  0.1881,
+  0.823,
+  0.4221,
+  3.2021,
+  8.5816,
+  0.9711,
+  0.5593,
+  0.6336,
+  0.555,
+  0.9249,
+  1.085,
+  0.2268,
+  0.2856,
+  0.2497,
+  0.2795,
+  0.2521,
+  0.261,
+  0.2078,
+  0.216,
+  0.1891,
+  0.261,
+  0.2562,
+  0.8106
+ ],
+ "rms_w_post_ff": [
+  7.8659,
+  1.2071,
+  0.6837,
+  0.9736,
+  1.24,
+  1.3478,
+  1.1959,
+  1.2797,
+  3.7981,
+  2.0594,
+  1.2901,
+  1.5245,
+  1.026,
+  1.3536,
+  1.7331,
+  2.1057,
+  1.8053,
+  2.9868,
+  2.3224,
+  2.5214,
+  3.027,
+  2.9132,
+  7.7771,
+  26.7109,
+  2.8511,
+  1.5774,
+  1.5797,
+  1.7357,
+  2.0298,
+  2.8693,
+  1.5646,
+  1.156,
+  1.0749,
+  1.1349,
+  1.1729,
+  1.1057,
+  0.95,
+  0.8462,
+  0.8756,
+  1.023,
+  1.2203,
+  1.595
+ ],
+ "rms_w_post_attn": [
+  7.1767,
+  4.2854,
+  0.4147,
+  0.59,
+  0.6907,
+  1.0806,
+  1.5841,
+  0.5769,
+  0.6788,
+  0.5166,
+  0.6753,
+  0.8607,
+  0.7216,
+  0.4923,
+  0.6337,
+  0.9889,
+  0.8245,
+  1.4056,
+  1.0311,
+  1.0114,
+  1.1758,
+  0.9776,
+  0.8958,
+  5.6271,
+  1.2626,
+  0.7631,
+  0.6615,
+  0.6885,
+  0.7362,
+  1.0213,
+  0.7561,
+  0.6301,
+  0.4822,
+  0.642,
+  0.4348,
+  0.6219,
+  0.6206,
+  0.431,
+  0.3764,
+  0.3961,
+  0.5071,
+  0.5115
+ ],
+ "ratio_ple_to_ff": [
+  0.7126,
+  0.2556,
+  0.1449,
+  0.0986,
+  1.0051,
+  0.0345,
+  0.3117,
+  0.1386,
+  0.0403,
+  0.1442,
+  0.5238,
+  0.885,
+  0.4518,
+  0.4734,
+  0.1619,
+  0.58,
+  0.3276,
+  0.4193,
+  0.1206,
+  0.0746,
+  0.2719,
+  0.1449,
+  0.4117,
+  0.3213,
+  0.3406,
+  0.3546,
+  0.401,
+  0.3198,
+  0.4557,
+  0.3781,
+  0.1449,
+  0.2471,
+  0.2323,
+  0.2463,
+  0.2149,
+  0.236,
+  0.2187,
+  0.2552,
+  0.216,
+  0.2551,
+  0.2099,
+  0.5082
+ ],
+ "rms_per_layer_projection_norm_w": 0.9171335101127625,
+ "named_tokens": {
+  "The": {
+   "table_rms_mean_over_layers": 1.0167,
+   "table_rms_min_max": [
+    0.8026,
+    1.2225
+   ],
+   "ctx_rms_mean": 1.419,
+   "cos_table_ctx_mean": 0.093,
+   "table_share_of_eff_energy": 0.278
+  },
+  " Eiffel": {
+   "table_rms_mean_over_layers": 1.015,
+   "table_rms_min_max": [
+    0.9867,
+    1.075
+   ],
+   "ctx_rms_mean": 1.1714,
+   "cos_table_ctx_mean": -0.128,
+   "table_share_of_eff_energy": 0.352
+  },
+  " Tower": {
+   "table_rms_mean_over_layers": 1.0252,
+   "table_rms_min_max": [
+    0.9702,
+    1.0976
+   ],
+   "ctx_rms_mean": 1.1939,
+   "cos_table_ctx_mean": -0.087,
+   "table_share_of_eff_energy": 0.354
+  },
+  " is": {
+   "table_rms_mean_over_layers": 1.0166,
+   "table_rms_min_max": [
+    0.886,
+    1.2072
+   ],
+   "ctx_rms_mean": 1.5265,
+   "cos_table_ctx_mean": 0.143,
+   "table_share_of_eff_energy": 0.243
+  },
+  " the": {
+   "table_rms_mean_over_layers": 1.0083,
+   "table_rms_min_max": [
+    0.8657,
+    1.0936
+   ],
+   "ctx_rms_mean": 1.5874,
+   "cos_table_ctx_mean": 0.077,
+   "table_share_of_eff_energy": 0.222
+  },
+  " of": {
+   "table_rms_mean_over_layers": 1.0228,
+   "table_rms_min_max": [
+    0.8863,
+    1.1465
+   ],
+   "ctx_rms_mean": 1.5913,
+   "cos_table_ctx_mean": 0.145,
+   "table_share_of_eff_energy": 0.228
+  },
+  " Paris": {
+   "table_rms_mean_over_layers": 1.0308,
+   "table_rms_min_max": [
+    0.9918,
+    1.1028
+   ],
+   "ctx_rms_mean": 1.2053,
+   "cos_table_ctx_mean": -0.036,
+   "table_share_of_eff_energy": 0.349
+  },
+  " Rome": {
+   "table_rms_mean_over_layers": 1.0226,
+   "table_rms_min_max": [
+    0.9775,
+    1.071
+   ],
+   "ctx_rms_mean": 1.1748,
+   "cos_table_ctx_mean": -0.122,
+   "table_share_of_eff_energy": 0.355
+  },
+  " Danielle": {
+   "table_rms_mean_over_layers": 1.0003,
+   "table_rms_min_max": [
+    0.9741,
+    1.0077
+   ],
+   "ctx_rms_mean": 1.241,
+   "cos_table_ctx_mean": -0.103,
+   "table_share_of_eff_energy": 0.321
+  },
+  " Dar": {
+   "table_rms_mean_over_layers": 1.0126,
+   "table_rms_min_max": [
+    0.9698,
+    1.0471
+   ],
+   "ctx_rms_mean": 1.1386,
+   "cos_table_ctx_mean": -0.021,
+   "table_share_of_eff_energy": 0.375
+  },
+  "rie": {
+   "table_rms_mean_over_layers": 1.0252,
+   "table_rms_min_max": [
+    0.9696,
+    1.2148
+   ],
+   "ctx_rms_mean": 1.1811,
+   "cos_table_ctx_mean": -0.051,
+   "table_share_of_eff_energy": 0.37
+  },
+  "ux": {
+   "table_rms_mean_over_layers": 1.032,
+   "table_rms_min_max": [
+    0.9622,
+    1.1283
+   ],
+   "ctx_rms_mean": 1.1494,
+   "cos_table_ctx_mean": -0.03,
+   "table_share_of_eff_energy": 0.383
+  },
+  " French": {
+   "table_rms_mean_over_layers": 1.0159,
+   "table_rms_min_max": [
+    0.9679,
+    1.0948
+   ],
+   "ctx_rms_mean": 1.2482,
+   "cos_table_ctx_mean": 0.018,
+   "table_share_of_eff_energy": 0.328
+  },
+  " English": {
+   "table_rms_mean_over_layers": 1.0332,
+   "table_rms_min_max": [
+    0.9715,
+    1.1028
+   ],
+   "ctx_rms_mean": 1.2916,
+   "cos_table_ctx_mean": 0.055,
+   "table_share_of_eff_energy": 0.321
+  },
+  " city": {
+   "table_rms_mean_over_layers": 1.0189,
+   "table_rms_min_max": [
+    0.9439,
+    1.0771
+   ],
+   "ctx_rms_mean": 1.2996,
+   "cos_table_ctx_mean": 0.075,
+   "table_share_of_eff_energy": 0.318
+  },
+  " mother": {
+   "table_rms_mean_over_layers": 1.021,
+   "table_rms_min_max": [
+    0.9669,
+    1.1047
+   ],
+   "ctx_rms_mean": 1.196,
+   "cos_table_ctx_mean": -0.022,
+   "table_share_of_eff_energy": 0.354
+  }
+ },
+ "sample64_table_rms_mean": 1.005662441253662,
+ "sample64_table_rms_by_layer_mean": [
+  1.015,
+  1.008,
+  1.011,
+  1.009,
+  1.007,
+  1.005,
+  1.01,
+  1.009,
+  1.012,
+  1.005,
+  1.005,
+  1.005,
+  1.007,
+  1.01,
+  1.013,
+  1.007,
+  1.004,
+  1.004,
+  1.006,
+  1.0,
+  1.001,
+  1.0,
+  0.997,
+  1.011,
+  1.013,
+  1.007,
+  1.006,
+  1.014,
+  1.004,
+  1.0,
+  1.004,
+  1.003,
+  1.004,
+  1.001,
+  1.001,
+  1.001,
+  1.001,
+  1.001,
+  1.001,
+  1.002,
+  1.004,
+  1.006
+ ],
+ "raw_row_std_sample": 0.06285927444696426,
+ "raw_row_absmax_sample": 0.62109375,
+ "layer0": {
+  "gate_row_norm_mean": 0.06870660185813904,
+  "proj_fro": 56.417808532714844,
+  "proj_sv_max_min": [
+   12.665706634521484,
+   0.49402400851249695
+  ],
+  "proj_effrank": 174.48875427246094
+ },
+ "layer6": {
+  "gate_row_norm_mean": 0.7287406325340271,
+  "proj_fro": 51.019901275634766,
+  "proj_sv_max_min": [
+   11.50412654876709,
+   0.6760352253913879
+  ],
+  "proj_effrank": 155.7478790283203
+ },
+ "layer12": {
+  "gate_row_norm_mean": 1.0351299047470093,
+  "proj_fro": 53.95722579956055,
+  "proj_sv_max_min": [
+   18.31183624267578,
+   0.5691115856170654
+  ],
+  "proj_effrank": 165.09109497070312
+ },
+ "layer18": {
+  "gate_row_norm_mean": 0.7054214477539062,
+  "proj_fro": 54.02887725830078,
+  "proj_sv_max_min": [
+   19.325485229492188,
+   0.2934507131576538
+  ],
+  "proj_effrank": 151.5934600830078
+ },
+ "layer22": {
+  "gate_row_norm_mean": 0.22007057070732117,
+  "proj_fro": 51.54432678222656,
+  "proj_sv_max_min": [
+   6.175378799438477,
+   0.19169002771377563
+  ],
+  "proj_effrank": 209.4024658203125
+ },
+ "layer23": {
+  "gate_row_norm_mean": 0.07533256709575653,
+  "proj_fro": 53.387550354003906,
+  "proj_sv_max_min": [
+   22.503463745117188,
+   0.2925650179386139
+  ],
+  "proj_effrank": 114.17860412597656
+ },
+ "layer30": {
+  "gate_row_norm_mean": 0.8381887674331665,
+  "proj_fro": 49.06552505493164,
+  "proj_sv_max_min": [
+   12.371810913085938,
+   0.19460301101207733
+  ],
+  "proj_effrank": 163.49729919433594
+ },
+ "layer41": {
+  "gate_row_norm_mean": 0.46862801909446716,
+  "proj_fro": 50.77711868286133,
+  "proj_sv_max_min": [
+   15.037494659423828,
+   0.5330259203910828
+  ],
+  "proj_effrank": 214.4718475341797
+ },
+ "cos_rows": {
+  " Eiffel| Tower": 0.149,
+  " Eiffel| of": 0.063,
+  " Eiffel| Rome": 0.15,
+  " Eiffel| French": 0.127,
+  " Eiffel| English": 0.1,
+  " the| of": 0.467,
+  " the| Rome": 0.048,
+  " the| French": 0.077,
+  " the| English": 0.076,
+  " Paris| Rome": 0.189,
+  " Paris| French": 0.144,
+  " Paris| English": 0.108
+ }
+}

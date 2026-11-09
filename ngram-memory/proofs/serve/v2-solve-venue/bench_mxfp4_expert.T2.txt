@@ -1,0 +1,20 @@
+parity: deq_fast(fp32) == mxfp4.dequant_reference bit-exact on [1280,2560]
+threads=2
+sgemm 2048^3: 224.1 GFLOP/s
+bf16 gemm 2048^3: 1090.4 GFLOP/s
+stream copy 256 MiB: 25.2 GB/s (r+w)
+MXFP4 dequant 1 expert -> bfloat16: 16.35 ms  (0.30 Gel/s, 0.16 GB/s compact in)
+MXFP4 dequant 1 expert -> float32: 18.37 ms  (0.27 Gel/s, 0.14 GB/s compact in)
+  (fork dequant_reference, fp32: 42.69 ms)
+expert fwd+bwd bfloat16 m=  1:   35.23 ms  (   0.6 GFLOP/s)
+expert fwd+bwd bfloat16 m=  2:   39.37 ms  (   1.0 GFLOP/s)
+expert fwd+bwd bfloat16 m=  4:   36.88 ms  (   2.1 GFLOP/s)
+expert fwd+bwd bfloat16 m= 16:   36.87 ms  (   8.5 GFLOP/s)
+expert fwd+bwd bfloat16 m= 64:   40.36 ms  (  31.2 GFLOP/s)
+expert fwd+bwd float32  m=  1:   37.13 ms  (   0.5 GFLOP/s)
+expert fwd+bwd float32  m=  2:   24.57 ms  (   1.6 GFLOP/s)
+expert fwd+bwd float32  m=  4:   27.50 ms  (   2.9 GFLOP/s)
+expert fwd+bwd float32  m= 16:   30.60 ms  (  10.3 GFLOP/s)
+expert fwd+bwd float32  m= 64:   48.93 ms  (  25.7 GFLOP/s)
+layer: 128 experts x 2 tok, bf16 fwd+bwd: 3.16 s  (24.67 ms/expert)
+layer: 330 experts x 2 tok, bf16 fwd+bwd: 9.14 s  (27.70 ms/expert)

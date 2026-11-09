@@ -1,0 +1,15 @@
+expert fwd+bwd torch.bfloat16 k=5: 68.05 ms  (2.2 GFLOP/s)
+expert fwd+bwd torch.bfloat16 k=20: 113.58 ms  (5.2 GFLOP/s)
+expert fwd+bwd torch.float32 k=5: 60.51 ms  (2.4 GFLOP/s)
+expert fwd+bwd torch.float32 k=20: 131.69 ms  (4.5 GFLOP/s)
+nvfp4 dequant 1 expert (4.92M el): 178.0 ms -> 0.03 Gel/s; 512x48 experts = 4373 s/pass
+N=   16 tokens: E[distinct experts/layer] uniform =  138.6  (27%)
+N=   32 tokens: E[distinct experts/layer] uniform =  239.6  (47%)
+N=   64 tokens: E[distinct experts/layer] uniform =  367.1  (72%)
+N=  128 tokens: E[distinct experts/layer] uniform =  471.0  (92%)
+N=  256 tokens: E[distinct experts/layer] uniform =  508.7  (99%)
+N=  512 tokens: E[distinct experts/layer] uniform =  512.0  (100%)
+N= 1024 tokens: E[distinct experts/layer] uniform =  512.0  (100%)
+threads 4
+sgemm GFLOP/s 4.843372633451317
+stream GB/s 0.7647163484527537

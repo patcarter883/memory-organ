@@ -1,0 +1,18 @@
+K=  10000 tokens=    8 rows=   128 hit=  0%       11.2 us
+K=  10000 tokens=    8 rows=   128 hit= 10%       16.6 us
+K=  10000 tokens=    8 rows=   128 hit= 50%       19.3 us
+K=  10000 tokens=    8 rows=   128 hit=100%       23.5 us
+K=  10000 tokens= 2048 rows= 32768 hit=  0%     1479.1 us
+K=  10000 tokens= 2048 rows= 32768 hit= 10%     2366.3 us
+K=  10000 tokens= 2048 rows= 32768 hit= 50%     7063.3 us
+K=  10000 tokens= 2048 rows= 32768 hit=100%    14830.0 us
+K=10000: overlay store 6.2 MiB + compiled 6.2 MiB (per TP rank)
+K= 200000 tokens=    8 rows=   128 hit=  0%        6.5 us
+K= 200000 tokens=    8 rows=   128 hit= 10%       13.5 us
+K= 200000 tokens=    8 rows=   128 hit= 50%       18.2 us
+K= 200000 tokens=    8 rows=   128 hit=100%       24.0 us
+K= 200000 tokens= 2048 rows= 32768 hit=  0%     1656.4 us
+K= 200000 tokens= 2048 rows= 32768 hit= 10%     2642.5 us
+K= 200000 tokens= 2048 rows= 32768 hit= 50%     8600.6 us
+K= 200000 tokens= 2048 rows= 32768 hit=100%    17546.7 us
+K=200000: overlay store 123.6 MiB + compiled 123.6 MiB (per TP rank)

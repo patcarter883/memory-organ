@@ -1,0 +1,12 @@
+tokens/iter  D/layer | A-torch(compile dequant)        | A-native(fused GEMV+GEMV^T)    | B local GPUs | C cloud
+        64      330 | io   18- 27s deq   31-  78s dense   2-  3s =>   33-  81s | io  18- 27s =>  20- 30s |  2.9- 5.9s | 1.0-3.1s
+       256      458 | io   25- 37s deq   43- 108s dense   7- 12s =>   50- 120s | io  25- 37s =>  32- 50s |  3.6- 7.0s | 1.1-3.2s
+      1024      512 | io   28- 42s deq   48- 120s dense  29- 49s =>   78- 169s | io  28- 42s =>  57- 91s |  3.9- 7.5s | 1.5-4.0s
+      2048      512 | io   28- 42s deq   48- 120s dense  59- 98s =>  107- 219s | io  28- 42s =>  87-140s |  3.9- 7.5s | 2.0-5.0s
+
+Assumptions: disk = O_DIRECT from the checkpoint NVMe 4.5 / 3.0 GB/s (ckpt_read.py:60-63, 89-98);
+ deq = torch.compile'd MXFP4 dequant 1.0 / 2.5 ms per expert on 4 Zen4 cores (sandbox: 2.52 ms at 2 SPR vCPUs);
+ native = tools/cpu_moe MXFP4 policy at 35 / 25 GB/s effective under the serve's DDR load (cpu_tier.py:271, 420);
+ dense bf16 GEMM 500 / 300 GFLOP/s on 4 Zen4 cores (ASSUMED, not measured); skew 0.9 on distinct experts;
+ B: H2D 43.4 GB/s both cards concurrently (28.93+14.48, cpu_tier.py:6) or 28 GB/s, + 1-3 s eager overhead;
+ C: weights resident in HBM, Python/launch-bound; 1-3 s + size term (ESTIMATE).

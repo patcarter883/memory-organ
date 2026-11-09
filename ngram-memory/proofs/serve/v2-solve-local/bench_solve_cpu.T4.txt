@@ -1,0 +1,12 @@
+threads=4  torch 2.15.0+cpu  cpu_capability AVX512
+parity: our LUT-pair and simple dequant == fork quant/mxfp4.py::dequant_reference, bit-exact (bf16 holds E2M1*2^e exactly)
+[1] dequant 1 expert -> bf16:  fork reference(fp32)   24.11 ms | LUT-pair eager   3.52 ms | torch.compile   2.54 ms (first call incl. compile 0.6 s)
+[2] expert fwd+dX-bwd matmuls only (bfloat16, W pre-dequantised) ms: M=1:   0.65  M=2:   1.06  M=4:   1.03  M=8:   1.07  M=32:   1.21
+[2] expert fwd+dX-bwd matmuls only (float32, W pre-dequantised) ms: M=1:   0.79  M=2:   0.91  M=4:   1.24  M=8:   1.54  M=32:   3.04
+[3] fused compiled MXFP4 GEMV gate_up (1280x2560) M=1: fwd   2.82 ms, dX   2.31 ms (rel err 1.4e-06/1.3e-06; first call 0 s)
+[3] fused compiled MXFP4 GEMV gate_up (1280x2560) M=4: fwd  11.19 ms, dX   9.57 ms (rel err 7.9e-07/1.2e-06; first call 0 s)
+[4] dense GEMM 256x2560 @ 2560x10240 bfloat16:   4.00 ms = 3352.1 GFLOP/s
+[4] dense GEMM 256x2560 @ 2560x10240 float32:  27.46 ms =  488.7 GFLOP/s
+[4] FP8-block [128,128] dequant 10240x2560 -> bf16:   92.0 ms
+[5] HF torch_chunk_gated_delta_rule fwd+bwd B=8 T=32:  144.5 ms
+[5] HF torch_chunk_gated_delta_rule fwd+bwd B=4 T=16:   58.3 ms

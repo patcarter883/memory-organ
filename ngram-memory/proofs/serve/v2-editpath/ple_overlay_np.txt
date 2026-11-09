@@ -1,0 +1,1 @@
+selftest ok: torch blocked=True; fused int6 table via fork opener; 7 hits; bf16-replacement == fp32-delta after device cast; untouched rows bit-identical; bytes/row bf16=328 delta=648

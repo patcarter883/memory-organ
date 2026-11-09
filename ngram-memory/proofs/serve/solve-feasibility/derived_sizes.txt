@@ -1,0 +1,9 @@
+per expert params 4,915,200  bf16 9.83 MB  NVFP4 2,764,800 B
+per layer experts bf16 5.033 GB  NVFP4 1.4156 GB = 1.318 GiB (serve holds 2x0.668=1.336 GiB incl f32 per-channel globals)
+all 48 layers bf16 241.6 GB  NVFP4 67.95 GB = 63.28 GiB; serve 48x1.336 = 64.1 GiB
+table 320,001,536 x 160: bf16 102.4 GB  fp8 51.2 GB
+active params/token (no embed) 6.67 G -> fwd 13.3 GFLOP/tok, fwd+bwd(input grads) ~27 GFLOP/tok
+N=64: distinct/layer uniform 367; expert bytes per pass bf16 173 GB, NVFP4 48.7 GB; flops fwd+bwd 1.7 TFLOP
+N=128: distinct/layer uniform 471; expert bytes per pass bf16 222 GB, NVFP4 62.5 GB; flops fwd+bwd 3.4 TFLOP
+N=256: distinct/layer uniform 509; expert bytes per pass bf16 240 GB, NVFP4 67.5 GB; flops fwd+bwd 6.8 TFLOP
+N=1024: distinct/layer uniform 512; expert bytes per pass bf16 242 GB, NVFP4 67.9 GB; flops fwd+bwd 27.3 TFLOP

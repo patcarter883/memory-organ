@@ -1,0 +1,7 @@
+threads=4 torch 2.15.0+cpu; real widths, 4 layers (GDN,GDN,GDN,attn), PLE at layer 1, bf16
+B=8 T=4 (32 tok, loss on last 3/seq): fwd+bwd   5.92 s for 4 layers [fwd  3.30 s] | routed experts  4.72 s (235 distinct/layer, 5.01 ms per touched expert incl. fwd+bwd) | rest  1.20 s
+   peak RSS so far 5.42 GiB
+B=8 T=8 (64 tok, loss on last 3/seq): fwd+bwd   8.88 s for 4 layers [fwd  4.78 s] | routed experts  7.25 s (356 distinct/layer, 5.09 ms per touched expert incl. fwd+bwd) | rest  1.63 s
+   peak RSS so far 5.56 GiB
+B=8 T=32 (256 tok, loss on last 3/seq): fwd+bwd  14.78 s for 4 layers [fwd  7.93 s] | routed experts 11.19 s (509 distinct/layer, 5.49 ms per touched expert incl. fwd+bwd) | rest  3.59 s
+   peak RSS so far 5.89 GiB

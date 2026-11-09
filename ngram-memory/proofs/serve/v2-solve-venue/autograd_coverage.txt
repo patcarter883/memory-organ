@@ -1,0 +1,17 @@
+layer types: ['lin', 'lin', 'lin', 'ind', 'lin', 'lin', 'lin', 'ind'] | PLE at [1]
+GDN chunk fn: torch_chunk_gated_delta_rule
+batch 3x12: 576 row reads, 561 distinct rows trainable (of 16896)
+loss 12.429167; |grad rows| 2.379e-02; other params with grad: []
+   dir grad  eps 3e-02: fd +2.384739e-02 autograd g.v +2.379298e-02 rel 2.3e-03
+   dir grad  eps 1e-02: fd +2.379287e-02 autograd g.v +2.379298e-02 rel 4.7e-06
+   dir rand0 eps 3e-02: fd +1.003888e-04 autograd g.v +1.003943e-04 rel 5.5e-05
+   dir rand0 eps 1e-02: fd +1.004366e-04 autograd g.v +1.003943e-04 rel 4.2e-04
+   dir rand1 eps 3e-02: fd -2.430939e-04 autograd g.v -2.430993e-04 rel 2.2e-05
+   dir rand1 eps 1e-02: fd -2.431140e-04 autograd g.v -2.430993e-04 rel 6.0e-05
+   dir rand2 eps 3e-02: fd +1.313266e-04 autograd g.v +1.313199e-04 rel 5.1e-05
+   dir rand2 eps 1e-02: fd +1.313394e-04 autograd g.v +1.313199e-04 rel 1.5e-04
+finite-difference check along the gradient (fp64 model, fp32-internal ops): rel err 4.72e-06
+[transformers] `use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`.
+per-layer checkpointing: max |g_ckpt - g_plain| = 0.00e+00
+MXFP4 DeqLinear experts vs HF dense experts (same values): max |diff| = 0.00e+00; experts touched per layer: [8, 8, 8, 8, 8, 8, 8, 8]
+ALL CHECKS PASSED

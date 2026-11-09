@@ -1,0 +1,67 @@
+   59.766 GiB  routed experts MXFP4
+   38.743 GiB  PLE rows (int6 codes + f16 scales)
+    4.856 GiB  mtp (unused by solve)
+    4.035 GiB  dense per-layer (attn/GDN/hc/router/shared/PLE-proj/norms)
+    1.184 GiB  lm_head bf16
+    1.184 GiB  embed_tokens bf16
+    0.836 GiB  visual (unused)
+  110.604 GiB  TOTAL
+dense per layer: min 80.8 MiB max 148.4 MiB  (layers 48)
+
+selected tensors (dtype, shape, file):
+  ['F32'] [48, 512] model-expertprofile.safetensors  expert_routing_counts
+  ['BF16'] [10240] model-00000.safetensors  model.language_model.hyper_connection_mixer.hc_norm.weight
+  ['BF16'] [320, 10240] model-hc-bf16.safetensors  model.language_model.hyper_connection_mixer.input_mix_weight_down.weight
+  ['BF16'] [10240, 320] model-hc-bf16.safetensors  model.language_model.hyper_connection_mixer.input_mix_weight_up.weight
+  ['BF16'] [4, 10240] model-00000.safetensors  model.language_model.layers.N.attn_hyper_connection.block_inject_weight.weight
+  ['BF16'] [10240] model-00000.safetensors  model.language_model.layers.N.attn_hyper_connection.hc_norm.weight
+  ['BF16'] [320, 10240] model-hc-bf16.safetensors  model.language_model.layers.N.attn_hyper_connection.input_mix_weight_down.weight
+  ['BF16'] [10240, 320] model-hc-bf16.safetensors  model.language_model.layers.N.attn_hyper_connection.input_mix_weight_up.weight
+  ['BF16'] [48] model-00000.safetensors  model.language_model.layers.N.linear_attn.A_log
+  ['BF16'] [10240, 1, 4] model-00000.safetensors  model.language_model.layers.N.linear_attn.conv1d.weight
+  ['BF16'] [48] model-00000.safetensors  model.language_model.layers.N.linear_attn.dt_bias
+  ['BF16'] [48, 2560] model-00000.safetensors  model.language_model.layers.N.linear_attn.in_proj_a.weight
+  ['BF16'] [48, 2560] model-00000.safetensors  model.language_model.layers.N.linear_attn.in_proj_b.weight
+  ['BF16'] [80, 20] model-00020.safetensors  model.language_model.layers.N.linear_attn.in_proj_qkv.weight_scale_inv
+  ['BF16'] [48, 20] model-00020.safetensors  model.language_model.layers.N.linear_attn.in_proj_z.weight_scale_inv
+  ['BF16'] [128] model-00000.safetensors  model.language_model.layers.N.linear_attn.norm.weight
+  ['BF16'] [20, 48] model-00020.safetensors  model.language_model.layers.N.linear_attn.out_proj.weight_scale_inv
+  ['U8'] [512, 2560, 320] model-00020.safetensors  model.language_model.layers.N.mlp.experts.down_proj_packed
+  ['U8'] [512, 2560, 20] model-00020.safetensors  model.language_model.layers.N.mlp.experts.down_proj_scale
+  ['U8'] [512, 1280, 1280] model-00020.safetensors  model.language_model.layers.N.mlp.experts.gate_up_proj_packed
+  ['U8'] [512, 1280, 80] model-00020.safetensors  model.language_model.layers.N.mlp.experts.gate_up_proj_scale
+  ['BF16'] [512, 2560] model-00000.safetensors  model.language_model.layers.N.mlp.gate.weight
+  ['U8'] [2560, 320] model-00020.safetensors  model.language_model.layers.N.mlp.shared_expert.down_proj.weight_packed
+  ['U8'] [2560, 20] model-00020.safetensors  model.language_model.layers.N.mlp.shared_expert.down_proj.weight_scale
+  ['U8'] [640, 1280] model-00020.safetensors  model.language_model.layers.N.mlp.shared_expert.gate_proj.weight_packed
+  ['U8'] [640, 80] model-00020.safetensors  model.language_model.layers.N.mlp.shared_expert.gate_proj.weight_scale
+  ['U8'] [640, 1280] model-00020.safetensors  model.language_model.layers.N.mlp.shared_expert.up_proj.weight_packed
+  ['U8'] [640, 80] model-00020.safetensors  model.language_model.layers.N.mlp.shared_expert.up_proj.weight_scale
+  ['BF16'] [1, 2560] model-00000.safetensors  model.language_model.layers.N.mlp.shared_expert_gate.weight
+  ['BF16'] [4, 10240] model-00000.safetensors  model.language_model.layers.N.mlp_hyper_connection.block_inject_weight.weight
+  ['BF16'] [10240] model-00000.safetensors  model.language_model.layers.N.mlp_hyper_connection.hc_norm.weight
+  ['BF16'] [320, 10240] model-hc-bf16.safetensors  model.language_model.layers.N.mlp_hyper_connection.input_mix_weight_down.weight
+  ['BF16'] [10240, 320] model-hc-bf16.safetensors  model.language_model.layers.N.mlp_hyper_connection.input_mix_weight_up.weight
+  ['BF16'] [10240, 1, 4] model-00000.safetensors  model.language_model.layers.N.ple.conv1d.weight
+  ['BF16'] [10240, 2560] model-00000.safetensors  model.language_model.layers.N.ple.key_proj.weight
+  ['BF16'] [10240] model-00000.safetensors  model.language_model.layers.N.ple.norm_conv.weight
+  ['BF16'] [10240] model-00000.safetensors  model.language_model.layers.N.ple.norm_key.weight
+  ['BF16'] [10240] model-00000.safetensors  model.language_model.layers.N.ple.norm_query.weight
+  ['I64'] [3] model-00000.safetensors  model.language_model.layers.N.ple.ple_embedding.layer_multipliers
+  ['U8'] [2500012, 120] model-00008.safetensors  model.language_model.layers.N.ple.ple_embedding.ngram_embedding.shard_S.weight_packed
+  ['F16'] [2500012, 5] model-00008.safetensors  model.language_model.layers.N.ple.ple_embedding.ngram_embedding.shard_S.weight_scale
+  ['I64'] [16] model-00000.safetensors  model.language_model.layers.N.ple.ple_embedding.ngram_heads_offsets
+  ['I64'] [16] model-00000.safetensors  model.language_model.layers.N.ple.ple_embedding.ngram_heads_vocab_sizes
+  ['BF16'] [2560, 2560] model-00000.safetensors  model.language_model.layers.N.ple.value_proj.weight
+  ['BF16'] [640, 2560] model-00000.safetensors  model.language_model.layers.N.self_attn.indexer.index_qk_proj.weight
+  ['BF16'] [128] model-00000.safetensors  model.language_model.layers.N.self_attn.indexer.k_layernorm.weight
+  ['BF16'] [128] model-00000.safetensors  model.language_model.layers.N.self_attn.indexer.q_layernorm.weight
+  ['BF16'] [256] model-00000.safetensors  model.language_model.layers.N.self_attn.k_norm.weight
+  ['BF16'] [4, 20] model-00020.safetensors  model.language_model.layers.N.self_attn.k_proj.weight_scale_inv
+  ['F32'] [] model-00000.safetensors  model.language_model.layers.N.self_attn.k_scale
+  ['BF16'] [20, 48] model-00020.safetensors  model.language_model.layers.N.self_attn.o_proj.weight_scale_inv
+  ['BF16'] [256] model-00000.safetensors  model.language_model.layers.N.self_attn.q_norm.weight
+  ['BF16'] [96, 20] model-00020.safetensors  model.language_model.layers.N.self_attn.q_proj.weight_scale_inv
+  ['F32'] [] model-00000.safetensors  model.language_model.layers.N.self_attn.q_scale
+  ['BF16'] [4, 20] model-00020.safetensors  model.language_model.layers.N.self_attn.v_proj.weight_scale_inv
+  ['F32'] [] model-00000.safetensors  model.language_model.layers.N.self_attn.v_scale
