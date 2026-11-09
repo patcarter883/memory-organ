@@ -13,7 +13,13 @@ It closes with a falsifiable experiment ladder. Companion to
   replaced by a product-key store. The *deployed* store is a whitened-GTE **pointer** id-bank (RESULTS §7,
   A/B/C bake-off). An Engram table has to beat **that** store, plus the conf-gated logit injection. Beating
   inner-loop Titans is not the test, because that problem is already gone here.
-- **The cited papers are real, but none of them shows a frozen-backbone graft.**
+- **The cited papers are real, but none of them shows a frozen-backbone graft *for fact editing*.**
+  *(Correction, 2026-11-09: an earlier version said no frozen-backbone Engram graft existed at all. That
+  was wrong. The [relaunch proposal](engram-relaunch-proposal.md) review found frozen-base Engram-style
+  adapters for **task gains**, e.g. Engram Adapter [2608.29327](https://arxiv.org/abs/2608.29327) on
+  frozen Qwen3-4B/8B, whose injected residual is attenuated to ~0.08 % of the hidden-state norm. None of
+  them edits facts. The per-fact-vector design in §3 also has direct prior art: NeuralDB
+  [2507.18028](https://arxiv.org/abs/2507.18028) and SWEA [2401.17809](https://arxiv.org/abs/2401.17809).)*
   - STAPLE (zero-init tables) trains the backbone for ~200B tokens on a 1B model.
   - EngramEdit's headline numbers (99.5 % efficacy) come from a model whose 31.4B-param n-gram memory was
     **pretrained natively**.
@@ -50,12 +56,12 @@ It closes with a falsifiable experiment ladder. Companion to
 | EngramEdit: 5,000+ sequential edits, 99.5 % efficacy | EngramEdit ([2610.10533](https://arxiv.org/abs/2610.10533)) reports 99.5 / 97.0 / 85.2 efficacy / generalization / specificity on CounterFact at **2,000** edits. Stability and general-capability tests run to 5,000 (>96 % of F1 retained). On ZsRE, specificity is **38.3 vs 41.6 pre-edit**. | Numbers are accurate, but the base is **LongCat-Flash-Lite with 31.4B natively pretrained n-gram params** ([2601.21204](https://arxiv.org/abs/2601.21204)). Not a graft. |
 | δ\* computed at Layer 2 and written into the table | δ is added to the memory representation **before the first decoder block**, at the last subject token, using ROME/MEMIT-style NLL + regularizer + norm clamp. The write is a closed-form ridge solve `U* = (AᵀA+Λ)⁻¹AᵀB`, with per-n-gram penalty λⱼ = 0.05·wⱼ + 0.01 (shorter / more frequent n-grams are penalized more). Main results use **sum** fusion. The gated (Engram-style) case is an appendix derivation with **no results**. | Close, but at the input-embedding level, ungated, natively trained. |
 | ~3× multi-hop CoT accuracy | True relative to the strongest baseline. In absolute terms, MQuAKE-CoT is **36.9 / 20.1 / 15.1 %** at 2/3/4 hops. | Consistent with our scorecard: injection does not integrate. |
-| Frozen-backbone Engram grafting studies exist | None found. "Memory Grafting" ([2605.20948](https://arxiv.org/abs/2605.20948)) builds memory values from a *frozen donor's* hidden states, but the **recipient is pretrained** with them. | Unsupported. |
+| Frozen-backbone Engram grafting studies exist | None found. "Memory Grafting" ([2605.20948](https://arxiv.org/abs/2605.20948)) builds memory values from a *frozen donor's* hidden states, but the **recipient is pretrained** with them. *Correction:* frozen-base Engram-style adapters for task gains do exist (Engram Adapter [2608.29327](https://arxiv.org/abs/2608.29327)); none for fact editing. | Unsupported for editing. |
 | Fusion params < 8M per layer at d=5120, r=512 | 3·d·r ≈ 7.9M, plus a tiny conv. | Correct arithmetic. |
 
 The honest summary: **every published Engram success has a backbone that learned to read the memory.** The
-one setting this project cares about, a frozen backbone that never saw the channel, is untested in the
-literature.
+one setting this project cares about, *fact editing* through a channel a frozen backbone never saw, is
+untested in the literature. (Frozen-base Engram adapters for task gains exist; see the correction above.)
 
 ## 2. Mapping onto what this repo has already measured
 
