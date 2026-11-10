@@ -257,7 +257,7 @@ def cmd_train(a) -> int:
     log("format", summary["format"])
     store = SparseRowStore.reserved(fmt.padded_rows, fmt.row_width, torch.from_numpy(rows))
     cfg = TR.TrainConfig(arm=a.arm, lr=a.lr, anchor_lambdas={"near": a.lambda_near, "chat": a.lambda_chat},
-                         lambda_l2=a.lambda_l2, lambda_l1=a.lambda_l1, kappa=a.kappa, rho=a.rho,
+                         lambda_l2=a.lambda_l2, lambda_l1=a.lambda_l1, lambda_l1_rel=a.lambda_l1_rel, kappa=a.kappa, rho=a.rho,
                          lambda_rho=a.lambda_rho, loss_chunk=a.loss_chunk, seed=a.seed, max_steps=a.steps,
                          ckpt_every=a.ckpt_every)
     (out / "config.json").write_text(json.dumps(dict(train=cfg.to_dict(), fmt=json.loads(fmt.to_json())), indent=1))
@@ -335,7 +335,11 @@ def main() -> int:
     tp.add_argument("--lambda-near", type=float, default=0.3)
     tp.add_argument("--lambda-chat", type=float, default=0.3)
     tp.add_argument("--lambda-l2", type=float, default=1e-4)
-    tp.add_argument("--lambda-l1", type=float, default=1e-5)
+    tp.add_argument("--lambda-l1", type=float, default=0.0,
+                    help="absolute lambda_1 (legacy, not portable); prefer --lambda-l1-rel")
+    tp.add_argument("--lambda-l1-rel", type=float, default=0.0,
+                    help="lambda_1 = this * G0 (median per-row gradient norm x row scale over the warm-up); "
+                         "1.0 keeps a median-gradient row at zero")
     tp.add_argument("--kappa", type=float, default=None)
     tp.add_argument("--rho", type=float, default=0.01)
     tp.add_argument("--lambda-rho", type=float, default=0.1)

@@ -7,6 +7,13 @@ Objective per step (one training window + `anchors_per_step` windows of each anc
   + lambda_rho * mean_t relu(r_t / rho - 1)^2,  r_t = ||graft_out_t|| / ||h_t|| on anchor batches (rho budget)
   + sum_j omega_j [lambda_2 ||d_j||^2 / s_j^2]                    (smooth; lazily on the rows read this step)
   then proximal row group lasso  d_j <- max(0, 1 - lr*lambda_1*omega_j / (s_j ||d_j|| sqrt(a_j))) d_j
+      with lambda_1 = lambda_l1_rel * G0 (or an absolute lambda_l1, legacy). G0 = median over the first
+      `acc_init_steps` steps of the per-step median of ||g_j|| * s_j over the rows read with a nonzero gradient,
+      i.e. the typical per-row loss gradient in row-scale units. For a row starting at zero the Adagrad metric
+      cancels and the prox keeps it at exactly zero iff ||g_j|| * s_j < lambda_1 * omega_j, so lambda_l1_rel
+      is dimensionless: 1.0 keeps a median-gradient row (omega = 1) at zero; 0.1 only blocks rows whose
+      gradient is 10x below the median. An absolute lambda_1 is not portable: per-row gradients of a
+      per-token-mean loss scale with reads/window length (about 1e-5 on the 0.5B proxy at 4k windows).
   and trust region               d_j <- d_j * min(1, kappa s_j / ||d_j||)
 
 Optimiser: row-wise Adagrad on the fp32 SparseRowStore values (S1/ingest-algo/optim_bench.py):
@@ -56,13 +63,14 @@ ARMS = ("G-lin", "G-dir", "rows+Wv", "key-shuffle")
 class TrainConfig:
     arm: str = "G-lin"
     lr: float = 1e-2
-    eps: float = 1e-10
+    eps: float = 1e-30                  # accumulators start at a0 > 0; on the 0.5B proxy a0 ~ 1e-10, so 1e-10 was not negligible
     acc_init_steps: int = 50
     lr_wv: float = 5e-5
     anchor_lambdas: dict = field(default_factory=lambda: {"near": 0.3, "chat": 0.3})
     anchors_per_step: int = 1
     lambda_l2: float = 0.0
-    lambda_l1: float = 0.0
+    lambda_l1: float = 0.0              # absolute lambda_1 (legacy; not portable across hosts/window lengths)
+    lambda_l1_rel: float = 0.0          # lambda_1 = lambda_l1_rel * G0 (see module doc); use this one
     kappa: float | None = None
     rho: float = 0.01
     lambda_rho: float = 0.1
@@ -136,14 +144,29 @@ class PermutedRowTable(nn.Module):
 class SparseRowAdagrad:
     """Row-wise Adagrad over a compact [U, w] value tensor with lazily initialised accumulators (see module doc)."""
 
-    def __init__(self, n_rows: int, init_steps: int = 50, eps: float = 1e-10):
+    def __init__(self, n_rows: int, init_steps: int = 50, eps: float = 1e-30):
         self.acc = torch.full((n_rows,), float("nan"), dtype=torch.float32)
         self.hist: list[float] = []
+        self.ghist: list[float] = []     # per-step median ||g_j|| * s_j (for G0)
         self.init_steps, self.eps = int(init_steps), float(eps)
 
     @property
     def a0(self) -> float | None:
         return float(np.median(self.hist)) if self.hist else None
+
+    @property
+    def g0(self) -> float | None:
+        return float(np.median(self.ghist)) if self.ghist else None
+
+    @torch.no_grad()
+    def observe_gscale(self, g: torch.Tensor, scale: torch.Tensor) -> float | None:
+        """Record this step's median ||g_j|| * s_j (rows with a nonzero gradient) during the warm-up; return G0."""
+        if len(self.ghist) < self.init_steps:
+            u = g.norm(dim=1) * scale
+            u = u[u > 0]
+            if u.numel():
+                self.ghist.append(float(u.median()))
+        return self.g0
 
     @torch.no_grad()
     def step(self, values: torch.Tensor, pos: torch.Tensor, g: torch.Tensor, lr: float,
@@ -159,11 +182,12 @@ class SparseRowAdagrad:
         fresh = torch.isnan(a)
         a = torch.where(fresh, torch.full_like(a, self.a0), a) + gsq
         self.acc[pos] = a
-        d = values[pos] - lr * g / torch.sqrt(a + self.eps)[:, None]
+        den = torch.sqrt(a + self.eps)
+        d = values[pos] - lr * g / den[:, None]
         zeroed = 0
         if l1 is not None:
             nrm = d.norm(dim=1)
-            shrink = (1.0 - lr * l1 / (nrm.clamp_min(1e-30) * torch.sqrt(a))).clamp_min(0.0)
+            shrink = (1.0 - lr * l1 / (nrm.clamp_min(1e-30) * den)).clamp_min(0.0)   # same metric as the step
             zeroed = int((shrink == 0).sum())
             d = d * shrink[:, None]
         clipped = 0
@@ -176,13 +200,15 @@ class SparseRowAdagrad:
         return dict(rows=int(pos.numel()), fresh=int(fresh.sum()), lasso_zeroed=zeroed, trust_clipped=clipped)
 
     def state_dict(self) -> dict:
-        return dict(acc=self.acc.clone(), hist=list(self.hist), init_steps=self.init_steps, eps=self.eps)
+        return dict(acc=self.acc.clone(), hist=list(self.hist), ghist=list(self.ghist), init_steps=self.init_steps,
+                    eps=self.eps)
 
     def load_state_dict(self, sd: dict) -> None:
         if sd["acc"].shape != self.acc.shape:
             raise ValueError("accumulator shape mismatch")
         self.acc.copy_(sd["acc"])
         self.hist = list(sd["hist"])
+        self.ghist = list(sd.get("ghist", []))
         self.init_steps, self.eps = int(sd["init_steps"]), float(sd["eps"])
 
 
@@ -223,6 +249,8 @@ class RowTrainer:
                  loss_weights: Sequence[np.ndarray] | None = None, log_path: str | Path | None = None):
         if cfg.arm not in ARMS:
             raise ValueError(f"arm {cfg.arm!r} not in {ARMS}")
+        if cfg.lambda_l1 > 0 and cfg.lambda_l1_rel > 0:
+            raise ValueError("set lambda_l1_rel or lambda_l1, not both")
         if cfg.arm == "G-dir" and fmt.module.arm != "G-dir":
             raise ValueError("arm G-dir needs a G-dir FormatSpec")
         if cfg.arm != "G-dir" and fmt.module.arm == "G-dir":
@@ -415,11 +443,14 @@ class RowTrainer:
             g[hit] = gv[p[hit]]
         with torch.no_grad():
             om, s = self.omega[pos], self.row_scale[pos]
+            g0 = self.opt.observe_gscale(g, s)   # loss gradient only, before the smooth L2 term is added
             if cfg.lambda_l2 > 0:
                 g = g + 2.0 * cfg.lambda_l2 * (om / s.pow(2))[:, None] * vals.data[pos]
             gnorm = float(g.norm())
+            lam1 = cfg.lambda_l1 if cfg.lambda_l1 > 0 else (cfg.lambda_l1_rel * g0 if cfg.lambda_l1_rel > 0 and g0
+                                                           else 0.0)
             st = self.opt.step(vals.data, pos, g, cfg.lr,
-                               l1=(cfg.lambda_l1 * om / s) if cfg.lambda_l1 > 0 else None,
+                               l1=(lam1 * om / s) if lam1 > 0 else None,
                                radius=(cfg.kappa * s) if cfg.kappa is not None else None)
             vals.grad = None
             if self.wv_opt is not None:
@@ -427,7 +458,7 @@ class RowTrainer:
             rn = vals.data[pos].norm(dim=1)
         cur, peak = rss_mb()
         self.step_idx += 1
-        rec.update(rows_read=int(pos.numel()), grad_norm=gnorm, a0=self.opt.a0, row_norm_mean_read=float(rn.mean()) if
+        rec.update(rows_read=int(pos.numel()), grad_norm=gnorm, a0=self.opt.a0, g0=self.opt.g0, lambda_1=lam1, row_norm_mean_read=float(rn.mean()) if
                    rn.numel() else 0.0, rows_nonzero=int((vals.data != 0).any(1).sum()), lr=cfg.lr,
                    fwd_bwd_s=t_fb, step_s=time.perf_counter() - t0, rss_mb=cur, peak_rss_mb=peak, **st)
         if self.log_path is not None:

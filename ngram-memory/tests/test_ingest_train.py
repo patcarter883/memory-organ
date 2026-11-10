@@ -235,3 +235,46 @@ def test_bad_arm_and_format_combinations():
     with pytest.raises(ValueError):
         TR.RowTrainer(host, fmt, store, ws, TR.TrainConfig(arm="nope"))
     assert V > 0
+
+
+def test_relative_lasso_threshold_is_scale_free():
+    """lambda_l1_rel keys the prox to G0, so multiplying every loss gradient by c leaves the zeroed set unchanged;
+    a fresh row stays exactly zero iff ||g_j|| * s_j < lambda_1 * omega_j."""
+    torch.manual_seed(0)
+    g = torch.randn(50, 8) * torch.logspace(-2, 2, 50)[:, None]
+    s = torch.full((50,), 2.0)
+    pos = torch.arange(50)
+    zeroed = []
+    for c in (1e-6, 1.0, 1e4):
+        opt = TR.SparseRowAdagrad(50, init_steps=1)
+        vals = torch.zeros(50, 8)
+        g0 = opt.observe_gscale(g * c, s)
+        assert g0 == pytest.approx(float((g * c).norm(dim=1).mul(s).median()), rel=1e-5)
+        lam1 = 1.0 * g0
+        opt.step(vals, pos, g * c, lr=0.1, l1=lam1 / s)
+        z = (vals == 0).all(1)
+        u = (g * c).norm(dim=1) * s
+        clear = (u / lam1 - 1).abs() > 1e-4          # the median row itself sits on the threshold
+        assert torch.equal(z[clear], (u < lam1)[clear])
+        zeroed.append(z)
+    assert int((zeroed[0] != zeroed[1]).sum()) <= 1 and int((zeroed[1] != zeroed[2]).sum()) <= 1
+    assert 20 <= int(zeroed[1].sum()) <= 30          # median rule: about half the rows
+
+
+def test_relative_lasso_in_trainer_and_resume(tmp_path):
+    host, fmt, store, ws, anc, cfg, ix = _setup(anchors=False, max_steps=6, acc_init_steps=3, lambda_l1_rel=0.5)
+    a = TR.RowTrainer(host, fmt, store, ws, cfg, log_path=tmp_path / "a.jsonl")
+    a.train()
+    va = a.inner.values.data.clone()
+    assert a.opt.g0 is not None and len(a.opt.ghist) == 3
+    a.close()
+    b = TR.RowTrainer(host, fmt, store, ws, cfg)
+    b.train(3, ckpt_path=tmp_path / "ck.pt")
+    b.close()
+    c = TR.RowTrainer(host, fmt, store, ws, cfg)
+    c.load_checkpoint(tmp_path / "ck.pt")
+    c.train()
+    assert torch.equal(c.inner.values.data, va)
+    c.close()
+    with pytest.raises(ValueError):
+        TR.RowTrainer(host, fmt, store, ws, TR.TrainConfig(**{**cfg.to_dict(), "lambda_l1": 1e-5}))
