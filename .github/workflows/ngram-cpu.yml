@@ -1,0 +1,175 @@
+# CPU jobs for ngram-memory on the self-hosted runner (labels `self-hosted`, `agripath-nas`).
+#
+# Started by hand only (Actions tab, or the API). That limits THIS file only: the repository is public, and a fork
+# pull request can bring its own workflow aimed at the runner's labels, which runs if its run is approved. The
+# runner's pre-job hook (ngram-memory/runner/prejob-hook.sh) refuses every job of this repository that is not a
+# workflow_dispatch of this file. Setup and safety notes: ngram-memory/runner/README.md.
+#
+# Everything heavy lives on the runner's disk under NM_HOME (default ~/ngram-memory; set the repository variable
+# NM_HOME to move it): the venv, the Hugging Face cache, the minisgl clone, the foreign corpus and runs/<run_name>.
+# A rerun with the same run_name resumes (experiments/m1b/run.py skips finished stages, training resumes from its
+# checkpoint), so long work can be split with `--stop-after STAGE` into jobs whose logs can be read as they finish.
+name: ngram-cpu
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "check: fetch + verify inputs | suite: default test suite | m1b: experiments/m1b/run.py | script: a script under ngram-memory/scripts or experiments | status: print a run's progress"
+        type: choice
+        options: [check, suite, m1b, script, status]
+        default: check
+      run_name:
+        description: "Run directory under NM_HOME/runs (m1b, script, status). Reusing a name resumes that run."
+        type: string
+        default: m1b
+      args:
+        description: "Extra arguments, split on whitespace, never evaluated by a shell. m1b: e.g. --stop-after A3_rho_hi. script: the script path (relative to ngram-memory/) then its arguments."
+        type: string
+        default: ""
+      threads:
+        description: "CPU threads (blank: all cores)"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+# Only the tasks that write to a run share a group (one run directory, one writer). GitHub keeps one pending run
+# per group and cancels an older pending one, so dispatch the next chunk of a run after the previous one finished.
+concurrency:
+  group: ngram-cpu-${{ (inputs.task == 'm1b' || inputs.task == 'script') && inputs.run_name || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  cpu:
+    runs-on: [self-hosted, agripath-nas]
+    timeout-minutes: 4320
+    defaults:
+      run:
+        shell: bash
+        working-directory: ngram-memory
+    env:
+      TASK: ${{ inputs.task }}
+      RUN_NAME: ${{ inputs.run_name }}
+      ARGS: ${{ inputs.args }}
+      THREADS_IN: ${{ inputs.threads }}
+      NM_HOME_VAR: ${{ vars.NM_HOME }}
+      PYTHONUTF8: "1"
+      PYTHONUNBUFFERED: "1"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+    steps:
+      - name: Check inputs
+        run: |
+          set -euo pipefail
+          [[ "$RUN_NAME" =~ ^[A-Za-z0-9_-][A-Za-z0-9._-]{0,63}$ ]] \
+            || { echo "run_name: letters, digits, . _ - (not starting with a dot), at most 64"; exit 1; }
+          [[ -z "$THREADS_IN" || "$THREADS_IN" =~ ^[1-9][0-9]{0,2}$ ]] || { echo "threads must be 1-999"; exit 1; }
+        working-directory: .
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6.8.0
+        with:
+          version: "0.11.32"
+          enable-cache: false
+
+      - name: Environment
+        run: |
+          set -euo pipefail
+          NM_HOME="${NM_HOME_VAR:-$HOME/ngram-memory}"
+          NM_HOME="${NM_HOME/#\~/$HOME}"
+          [[ "$NM_HOME" == /* ]] || { echo "NM_HOME must be an absolute path"; exit 1; }
+          mkdir -p "$NM_HOME/runs"
+          THREADS="${THREADS_IN:-$(nproc)}"
+          LOCK_SHA=$(sha256sum runner/requirements-lock.txt | cut -c1-12)
+          {
+            echo "NM_HOME=$NM_HOME"
+            echo "OUT=$NM_HOME/runs/$RUN_NAME"
+            echo "NM_VENV=$NM_HOME/venv-$LOCK_SHA"
+            echo "THREADS=$THREADS"
+            echo "OMP_NUM_THREADS=$THREADS"
+            echo "MKL_NUM_THREADS=$THREADS"
+            echo "UV_PYTHON_INSTALL_DIR=$NM_HOME/python"
+            echo "UV_CACHE_DIR=$NM_HOME/uv-cache"
+          } >> "$GITHUB_ENV"
+          echo "host: $(hostname) | cores $(nproc) | $(free -g | awk '/Mem:/ {print $2 " GiB RAM, " $7 " GiB available"}') | disk free $(df -h "$NM_HOME" | awk 'NR==2 {print $4}')"
+
+      - name: Python venv (exact lock)
+        run: |
+          set -euo pipefail
+          if [[ ! -x "$NM_VENV/bin/python" ]] || ! "$NM_VENV/bin/python" -c "import torch, transformers"; then
+            rm -rf "$NM_VENV.tmp" "$NM_VENV"
+            uv python install 3.13.14
+            uv venv --python 3.13.14 "$NM_VENV.tmp"
+            # every file must match a sha256 in the lock, whichever index it comes from
+            VIRTUAL_ENV="$NM_VENV.tmp" uv pip install --require-hashes --index-strategy unsafe-best-match \
+              --extra-index-url https://download.pytorch.org/whl/cpu -r runner/requirements-lock.txt
+            mv "$NM_VENV.tmp" "$NM_VENV"
+          fi
+          "$NM_VENV/bin/python" --version
+          echo "$NM_VENV/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch and verify inputs
+        run: |
+          set -euo pipefail
+          python scripts/runner_inputs.py env --home "$NM_HOME" >> "$GITHUB_ENV"
+          python scripts/runner_inputs.py fetch --home "$NM_HOME"
+
+      - name: Run
+        run: |
+          set -euo pipefail
+          read -r -a ARGV <<< "$ARGS"
+          case "$TASK" in
+            check)
+              ;;
+            suite)
+              python -m pytest -q -m 'not slow' -n "$THREADS" -p no:cacheprovider
+              ;;
+            m1b)
+              python experiments/m1b/run.py --out "$OUT" --threads "$THREADS" "${ARGV[@]}"
+              ;;
+            script)
+              S="${ARGV[0]:-}"
+              [[ "$S" =~ ^(scripts|experiments)/[A-Za-z0-9_./-]+\.py$ && "$S" != *..* && -f "$S" ]] \
+                || { echo "script must be an existing .py under scripts/ or experiments/"; exit 1; }
+              mkdir -p "$OUT"
+              cd "$OUT" && python "$GITHUB_WORKSPACE/ngram-memory/$S" "${ARGV[@]:1}" 2>&1 | tee -a "$OUT/job.log"
+              ;;
+            status)
+              ;;
+          esac
+
+      - name: Summary
+        if: always()
+        run: |
+          set -uo pipefail
+          [[ -n "${OUT:-}" && -f "$OUT/progress.json" ]] || exit 0
+          python - "$OUT" <<'EOF' | tee -a "$GITHUB_STEP_SUMMARY"
+          import json, sys
+          from pathlib import Path
+          out = Path(sys.argv[1])
+          prog = json.loads((out / "progress.json").read_text())
+          print("## " + out.name)
+          print("| stage | status | wall (s) |")
+          print("|---|---|---|")
+          for k, v in prog.get("stages", {}).items():
+              print(f"| {k} | {v.get('status')} | {round(v.get('wall_s') or 0)} |")
+          for r in sorted(out.glob("*/result.json")):
+              print(f"\n### {r.parent.name}\n```json\n{r.read_text()[:4000]}\n```")
+          EOF
+
+      - name: Upload results
+        if: always() && env.OUT != '' && (inputs.task == 'm1b' || inputs.task == 'script' || inputs.task == 'status')
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: ngram-${{ inputs.run_name }}-${{ github.run_id }}
+          path: |
+            ${{ env.OUT }}
+            !${{ env.OUT }}/**/*.pt
+            !${{ env.OUT }}/**/*.safetensors
+            !${{ env.OUT }}/_cache/**
+          if-no-files-found: ignore
+          retention-days: 30

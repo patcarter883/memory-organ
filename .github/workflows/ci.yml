@@ -3,10 +3,11 @@
 # exercises the "pure PyTorch, should run off ROCm" claim (DISCLOSURES.md) on every push.
 name: ci
 
+# No pull_request trigger: the repository is public and a self-hosted runner serves it, so fork pull requests
+# should not routinely ask for a workflow approval (ngram-memory/runner/README.md, section 2).
 on:
   push:
     branches: [main]
-  pull_request:
 
 jobs:
   cpu-smoke:
