@@ -15,7 +15,7 @@ from ngram_memory.backends.graft.module import NGramGraft
 from ngram_memory.backends.graft.qwen35 import install_graft
 from ngram_memory.spec import graft_format, qwen25_proxy_key_spec
 
-HOST = Path("/root/.cache/huggingface/hub/models--Qwen--Qwen2.5-0.5B/snapshots/060db6499f32faf8b98477b0a26969ef7d8b9987")
+HOST = __import__("ngram_memory.paths", fromlist=["qwen25"]).qwen25()   # HF cache at the pinned revision
 TEXT = Path("/home/user/patcarter883/minisglang-rdna4/python/minisgl/ple/state.py")
 
 

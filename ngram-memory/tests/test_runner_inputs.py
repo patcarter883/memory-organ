@@ -20,7 +20,7 @@ OLD_QWEN25 = "/root/.cache/huggingface/hub/models--Qwen--Qwen2.5-0.5B/snapshots/
 OLD_FOREIGN = ("/tmp/claude-0/-home-user-memory-organ/8d3a7b83-cc3c-5a8e-b480-88fd8f40a919/scratchpad/nm/m0/eval/"
                "foreign/networkx-3.4.2")
 DISTRO_STDLIB = Path("/usr/lib/python3.13")
-ENV = ("NM_MINISGL_REPO", "NM_FOREIGN_DIR", "NM_STDLIB", "NM_STDLIB_R2", "HF_HOME", "HF_HUB_CACHE")
+ENV = ("NM_MINISGL_REPO", "NM_FOREIGN_DIR", "NM_STDLIB", "NM_STDLIB_R2", "NM_REF_VOCAB", "HF_HOME", "HF_HUB_CACHE")
 
 
 @pytest.fixture

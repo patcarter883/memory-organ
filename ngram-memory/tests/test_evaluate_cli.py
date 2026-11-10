@@ -12,7 +12,7 @@ import pytest
 import torch
 
 ROOT = Path(__file__).resolve().parents[1]
-QWEN25 = Path("/root/.cache/huggingface/hub/models--Qwen--Qwen2.5-0.5B/snapshots/060db6499f32faf8b98477b0a26969ef7d8b9987")
+QWEN25 = __import__("ngram_memory.paths", fromlist=["qwen25"]).qwen25()   # HF cache at the pinned revision
 
 
 def _git(cwd, *a):

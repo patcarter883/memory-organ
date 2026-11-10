@@ -15,7 +15,7 @@ import fork_refs
 import hq_reference as ref
 from ngram_memory.backends.graft import host_quant as hq
 
-HF = Path("/root/.cache/huggingface/hub")
+HF = __import__("ngram_memory.paths", fromlist=["hf_hub_cache"]).hf_hub_cache()
 CFG35 = HF / "models--cyankiwi--Qwen3.6-35B-A3B-AWQ-4bit/snapshots/f1e8415c4f29508fe281da4e256df26573213bfd/config.json"
 CFG27 = HF / "models--amd--Qwen3.8-27B-Quark-AWQ-MXFP4/snapshots/93245f7c00f1a8964b66a97c6e02e2fd09080be4/config.json"
 
