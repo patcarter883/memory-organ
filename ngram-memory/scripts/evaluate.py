@@ -25,7 +25,8 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-QWEN25 = "/root/.cache/huggingface/hub/models--Qwen--Qwen2.5-0.5B/snapshots/060db6499f32faf8b98477b0a26969ef7d8b9987"
+from ngram_memory import paths as _paths  # noqa: E402
+QWEN25 = str(_paths.qwen25())
 
 
 def log(*a):
@@ -267,7 +268,7 @@ def main() -> None:
         if a.no_classes or set_name not in ("dev", "test", "splitb"):
             return None
         if "ref" not in cache:
-            cache["ref"] = tc.reference_vocab(tc.default_reference_dirs(), a.ref_vocab_cache or out / "ref_vocab.json")
+            cache["ref"] = tc.default_reference_vocab(a.ref_vocab_cache or out / "ref_vocab.json")
             allp = splits.files("a", "train") + splits.files("a", "dev") + splits.files("a", "test") + splits.files("a", "near_dup")
             cache["defs"] = tc.project_definitions({p: splits.text(p) for p in allp})
         sk = "b" if set_name == "splitb" else "a"  # Split B: seen n-grams / 16-grams of the tree at T_cut

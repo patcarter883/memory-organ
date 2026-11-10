@@ -26,6 +26,9 @@ R2_ML_MODELS = ("bert", "gpt2", "t5", "llama", "mistral", "whisper", "vit", "bar
 
 
 def stdlib_dir() -> str:
+    from ...paths import stdlib_r2_dir
+    if stdlib_r2_dir():                                  # NM_STDLIB_R2 (runner: the frozen R2 bundle)
+        return stdlib_r2_dir()
     for d in ("/usr/local/lib/python3.13", sysconfig.get_paths()["stdlib"]):
         if Path(d, "argparse.py").exists():
             return d
@@ -67,7 +70,8 @@ def ml_codebase_docs(tok, models: Sequence[str] = R2_ML_MODELS) -> list[Doc]:
 
 def wikitext_docs(tok, max_docs: int | None = None, split: str = "test") -> list[Doc]:
     from datasets import load_dataset
-    ds = load_dataset("Salesforce/wikitext", "wikitext-2-raw-v1", split=split)
+    from ...paths import dataset_rev
+    ds = load_dataset("Salesforce/wikitext", "wikitext-2-raw-v1", split=split, revision=dataset_rev("Salesforce/wikitext"))
     arts, cur, title = [], [], None
     for line in ds["text"]:
         s = line.strip()

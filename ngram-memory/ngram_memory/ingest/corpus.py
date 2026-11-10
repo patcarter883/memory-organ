@@ -29,7 +29,8 @@ from typing import Iterable, Sequence
 import numpy as np
 
 # ------------------------------------------------------------------------------------------------- constants
-MINISGL_REPO = Path("/home/user/patcarter883/minisglang-rdna4")
+from .. import paths as _paths  # noqa: E402
+MINISGL_REPO = _paths.minisgl_repo()   # NM_MINISGL_REPO; default /home/user/patcarter883/minisglang-rdna4
 MINISGL_HEAD = "df29117e95968f5f39811d39e12fc1d4ac5cbc7a"       # df29117, 2026-11-06
 MINISGL_T_CUT = "a4a55431aeeec6c39079dcd943dfc2d6129beb01"      # a4a5543, last commit before 2026-10-28
 SPLITS_DIR = Path(__file__).resolve().parents[2] / "ingest_splits"

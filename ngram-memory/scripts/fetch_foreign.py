@@ -14,7 +14,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-QWEN25 = "/root/.cache/huggingface/hub/models--Qwen--Qwen2.5-0.5B/snapshots/060db6499f32faf8b98477b0a26969ef7d8b9987"
+from ngram_memory import paths as _paths  # noqa: E402
+QWEN25 = str(_paths.qwen25())
 
 
 def main() -> None:

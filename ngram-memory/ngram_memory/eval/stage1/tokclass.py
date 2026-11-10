@@ -55,6 +55,22 @@ def reference_vocab(dirs: Iterable[str | os.PathLike], cache: str | os.PathLike 
     return ref
 
 
+def default_reference_vocab(cache: str | os.PathLike | None = None) -> Counter:
+    """The reference vocabulary over `default_reference_dirs()`. Those dirs include the interpreter's stdlib tree
+    (with its site-packages), which differs between machines, so NM_REF_VOCAB can name the frozen copy made in the
+    dev container (runner/inputs/ref_vocab.json.gz, `scripts/runner_inputs.py freeze`); it is then also written to
+    `cache`. Unset, this is exactly `reference_vocab(default_reference_dirs(), cache)`."""
+    frozen = os.environ.get("NM_REF_VOCAB")
+    if frozen and not (cache and Path(cache).exists()):
+        import gzip
+        ref = Counter(json.loads(gzip.decompress(Path(frozen).read_bytes()).decode("utf-8")))
+        if cache:
+            Path(cache).parent.mkdir(parents=True, exist_ok=True)
+            Path(cache).write_text(json.dumps(ref))
+        return ref
+    return reference_vocab(default_reference_dirs(), cache)
+
+
 def default_reference_dirs() -> list[str]:
     """stdlib + torch + numpy + transformers of the running interpreter (as tokdelta.py used)."""
     import sysconfig
@@ -345,5 +361,5 @@ def gather_targets(per_doc: Sequence[Mapping[str, np.ndarray]], doc: np.ndarray,
     return out
 
 
-__all__ = ["LEX", "LEX_ID", "ID_KIND", "CAT_NAMES", "reference_vocab", "default_reference_dirs",
+__all__ = ["LEX", "LEX_ID", "ID_KIND", "CAT_NAMES", "reference_vocab", "default_reference_vocab", "default_reference_dirs",
            "project_definitions", "char_labels", "token_classes", "NGramSeen", "NGramIndex", "class_masks", "gather_targets"]

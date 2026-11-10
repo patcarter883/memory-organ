@@ -7,7 +7,9 @@ Default run (minisgl python/**/*.py at df29117, Flash-Next keys and tokenizer):
     policy 2,040,221 rows (row_policy.py), all rows 6,721,239, count >= 5 550,891;
   * the same policies on the frozen Split A train files (ingest_splits/split_a.json), reported, not compared;
   * optionally (--reference) the enrichment / specific policies against the row_policy.py reference corpus
-    (stdlib sample + WikiText-2 train), and (--framings) the extras.py framing counts.
+    (stdlib sample + WikiText-2 train), and (--framings) the extras.py framing counts. --reference reads the dev
+    container's distro stdlib (/usr/lib/python3.13, Debian-patched 3.13.18), so it reproduces the proofs only there;
+    the runner bundles in runner/inputs/ do not cover it, and the script stops if that tree is absent.
 Every reproduced number is compared to the stored proof JSON; the script exits 1 on any mismatch.
 
 Usage: python scripts/count_rows.py --out OUT.json [--tokenizer tokenizer.json] [--reference] [--framings]
@@ -35,8 +37,8 @@ PROOF = ROOT / "proofs/stage1/ingest-algo"
 FLASH_NEXT_TOKENIZER_SHA256 = "0997f410c57a1f4e53b09e4be8f4a172d90edd9564368fb0847030937229b9f3"
 DEFAULT_TOKENIZER = Path("/tmp/claude-0/-home-user-memory-organ/8d3a7b83-cc3c-5a8e-b480-88fd8f40a919/scratchpad/"
                          "nm/stage1/ingest-algo/tok/tokenizer.json")
-WIKI = Path("/root/.cache/huggingface/hub/datasets--Salesforce--wikitext/snapshots/"
-            "b08601e04326c79dfdd32d625aee71d232d685c3/wikitext-2-raw-v1/")
+from ngram_memory import paths as _paths  # noqa: E402
+WIKI = _paths.wikitext_dir()
 STDLIB = Path("/usr/lib/python3.13")
 T0 = time.time()
 
@@ -64,6 +66,8 @@ def compare(tag: str, got, want, bad: list) -> None:
 def reference_corpus(tok: C.TokenizerJSON) -> list[np.ndarray]:
     """row_policy.py's reference: stdlib sample (shuffled with seed 0, ~2M tokens by len/3.8) + WikiText-2 train."""
     import pyarrow.parquet as pq
+    if not (STDLIB / "argparse.py").exists():
+        raise SystemExit(f"--reference needs the dev container's stdlib tree {STDLIB} (not in the runner bundles)")
     ex = ("test", "idlelib", "tkinter", "lib2to3", "site-packages")
     fs = sorted(p for p in STDLIB.rglob("*.py") if not any(x in p.parts for x in ex))
     random.Random(0).shuffle(fs)

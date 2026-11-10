@@ -1,0 +1,1430 @@
+{
+ "format": "ngram-memory/foreign-corpus/v1",
+ "package": "networkx",
+ "version": "3.4.2",
+ "sdist": "networkx-3.4.2.tar.gz",
+ "sdist_sha256": "307c3669428c5362aab27c8a1260aa8f47c4e91d3891f48be0141738d8d053e1",
+ "sdist_url": "https://files.pythonhosted.org/packages/fd/1d/06475e1cd5264c0b870ea2cc6fdb3e37177c1e565c43f56ff17a10e3937f/networkx-3.4.2.tar.gz",
+ "files": [
+  {
+   "path": "doc/conf.py",
+   "sha256": "ea8971487b7dab0bc88030b23a9d34b0b87da7f3c220908904b458f1e4c27c30",
+   "bytes": 9598
+  },
+  {
+   "path": "doc/release/contribs.py",
+   "sha256": "82f2cd95f2df7dd9facf11b86d821b70521a1a70f999122a912a0ddf921d65df",
+   "bytes": 2529
+  },
+  {
+   "path": "doc/release/report_functions_without_rst_generated.py",
+   "sha256": "8fa275bf9b2e5e1306f267000c8f92952975cb82896c1487db94e28e9f7f2ce7",
+   "bytes": 777
+  },
+  {
+   "path": "networkx/__init__.py",
+   "sha256": "bd5f9b6329a5f492b9395f0873f75cb4be59191e4dab01787f37789ac4766fd5",
+   "bytes": 1274
+  },
+  {
+   "path": "networkx/algorithms/__init__.py",
+   "sha256": "a228f51c335c13b1a14cf02db87613f1e199747e0afef61a85ae755f95e85026",
+   "bytes": 6559
+  },
+  {
+   "path": "networkx/algorithms/approximation/__init__.py",
+   "sha256": "0b27634ac014dea9714700d3be02f28d046022e84bd5ed524eb8cf75faad7d21",
+   "bytes": 1178
+  },
+  {
+   "path": "networkx/algorithms/approximation/clique.py",
+   "sha256": "6f872758c2579a6802ca3308f00fdda0765e292fd141b1aa9b62f4d4ea53fc98",
+   "bytes": 7691
+  },
+  {
+   "path": "networkx/algorithms/approximation/clustering_coefficient.py",
+   "sha256": "496a522c4856dc325cd67d9f1e549b2521a0df0768264379638fed9e7b67d16b",
+   "bytes": 2164
+  },
+  {
+   "path": "networkx/algorithms/approximation/connectivity.py",
+   "sha256": "6955d27d4896106e2050bd11d6ee9667e87ec217ae2cfd7fb2e3bfa51141f0ce",
+   "bytes": 13118
+  },
+  {
+   "path": "networkx/algorithms/approximation/distance_measures.py",
+   "sha256": "50492629a80dc3db23f248940dd6c0798bb3bd9df5a602cc5eace58aa3241bce",
+   "bytes": 5805
+  },
+  {
+   "path": "networkx/algorithms/approximation/dominating_set.py",
+   "sha256": "e5f0bdd30d428184785e4a6a69cb7c8ae90a6348b9edb326c895be03d093a144",
+   "bytes": 4710
+  },
+  {
+   "path": "networkx/algorithms/approximation/kcomponents.py",
+   "sha256": "303928c906e4d204809b76592b7e553ac88b243bfbc220ecc5fcc7e4ef8e6c5b",
+   "bytes": 13285
+  },
+  {
+   "path": "networkx/algorithms/approximation/matching.py",
+   "sha256": "3c5a1fe66f4022af57af929a6bffa663123520104fec71248dff91f70544ddba",
+   "bytes": 1175
+  },
+  {
+   "path": "networkx/algorithms/approximation/maxcut.py",
+   "sha256": "793419aac0d000051ab9f9e2f9a0c9018d94cc871a8c385131d8fe01ca9590fb",
+   "bytes": 4333
+  },
+  {
+   "path": "networkx/algorithms/approximation/ramsey.py",
+   "sha256": "5b9b57ec139024833fa8db017948425d558c0fc0c575e4f2718ca4d3c9384aa9",
+   "bytes": 1358
+  },
+  {
+   "path": "networkx/algorithms/approximation/steinertree.py",
+   "sha256": "75b3dc88cacb1e66f55d66b4bfbfafdea34527767ba590f49f8440185f1ea1be",
+   "bytes": 8048
+  },
+  {
+   "path": "networkx/algorithms/approximation/traveling_salesman.py",
+   "sha256": "69fe0711462dba8ba50690106494f6ceaa14bbcc74f0db4bd5c40be6e1aa7bd1",
+   "bytes": 55943
+  },
+  {
+   "path": "networkx/algorithms/approximation/treewidth.py",
+   "sha256": "62ef78e234c4f4c383068d508998f16c01a61e20b93176594cd57562b2dfcfda",
+   "bytes": 8216
+  },
+  {
+   "path": "networkx/algorithms/approximation/vertex_cover.py",
+   "sha256": "a088bfca0e4ef888ac9df9ab4a87f53f81c3f9fb19a56ebd469be447f48ce4e8",
+   "bytes": 2803
+  },
+  {
+   "path": "networkx/algorithms/assortativity/__init__.py",
+   "sha256": "a2fdc74516de601ffa41ecefc69d4e4e5efb181a70f845a458653381f4fc1bd7",
+   "bytes": 294
+  },
+  {
+   "path": "networkx/algorithms/assortativity/connectivity.py",
+   "sha256": "f95d02e4c4eab44ae5f3a37e832ad9e3cecc532886e71d5014464abab3a92090",
+   "bytes": 4220
+  },
+  {
+   "path": "networkx/algorithms/assortativity/correlation.py",
+   "sha256": "d2b7381438be7bc7904626bb82916b4ea8c8cbe27b5761ad4b039be1037a5999",
+   "bytes": 8689
+  },
+  {
+   "path": "networkx/algorithms/assortativity/mixing.py",
+   "sha256": "451aaa92e570a3bd4ba2c24b0db79509506292a0bb23f5d939176ca2742c7fd6",
+   "bytes": 7586
+  },
+  {
+   "path": "networkx/algorithms/assortativity/neighbor_degree.py",
+   "sha256": "50c69058a064399d19802f311ade5f5c4cfc38bd6b830623b76cca6ca12aa1f2",
+   "bytes": 5282
+  },
+  {
+   "path": "networkx/algorithms/assortativity/pairs.py",
+   "sha256": "c3bc67696c430ed7a5b87a02b2aba72e570cea795c05e9ceff9373f3ba0e1271",
+   "bytes": 3841
+  },
+  {
+   "path": "networkx/algorithms/asteroidal.py",
+   "sha256": "8db37f3261139021a94af5165ba5bcfd0a9add2c9acb6070917f6875cc9015f9",
+   "bytes": 5865
+  },
+  {
+   "path": "networkx/algorithms/bipartite/__init__.py",
+   "sha256": "f35d57bb70f5431f2772a46c847a0dde0599fc0d381dbdaac73a06b9ce6f05ae",
+   "bytes": 3825
+  },
+  {
+   "path": "networkx/algorithms/bipartite/basic.py",
+   "sha256": "24f0b6806b8fbc503aab60ae2399aa2d7ffd4141b1aec43c708c1c4b47bd3f85",
+   "bytes": 8375
+  },
+  {
+   "path": "networkx/algorithms/bipartite/centrality.py",
+   "sha256": "1b6f346c0a9ec97c8299eb3936946a52fd9373e1075ab32c849dff7f8baa57d5",
+   "bytes": 9156
+  },
+  {
+   "path": "networkx/algorithms/bipartite/cluster.py",
+   "sha256": "643028ecd33af70a1563c7cdc118db033e96c1bf7d084eb9d25326bf5bf43a67",
+   "bytes": 6935
+  },
+  {
+   "path": "networkx/algorithms/bipartite/covering.py",
+   "sha256": "077213734d7a2a4ef4341bfed656f7d1e9979df8e5308409eccf8520f0998a9d",
+   "bytes": 2163
+  },
+  {
+   "path": "networkx/algorithms/bipartite/edgelist.py",
+   "sha256": "97a26a5aa79d44675ed2c3b3ee82cafb17bd6b3abf54461e734f863e515421b8",
+   "bytes": 11364
+  },
+  {
+   "path": "networkx/algorithms/bipartite/extendability.py",
+   "sha256": "3ab607952e2bb90493f9d9503ae95e8aa1c52a955534ebeb1b968334581f7248",
+   "bytes": 3989
+  },
+  {
+   "path": "networkx/algorithms/bipartite/generators.py",
+   "sha256": "3df9d1e92f602b0e4e2bf26e18c0a196d5b1c9dfe2f3f29816ad56a5196c2fe0",
+   "bytes": 20439
+  },
+  {
+   "path": "networkx/algorithms/bipartite/matching.py",
+   "sha256": "c6c4f4e3c3a4fee334661a5d737e2ab30575cda0863a52509ec6c64c3b26e68a",
+   "bytes": 21637
+  },
+  {
+   "path": "networkx/algorithms/bipartite/matrix.py",
+   "sha256": "46ea082f23c78ce456d18fc171ffaf487fcaebe6d252389337d2538e78a4e471",
+   "bytes": 6156
+  },
+  {
+   "path": "networkx/algorithms/bipartite/projection.py",
+   "sha256": "608525adea9043a20f137ece5c5df6ccd21dcc419ec91f1a63eee25043596150",
+   "bytes": 17252
+  },
+  {
+   "path": "networkx/algorithms/bipartite/redundancy.py",
+   "sha256": "327933d0b6cd5d2d216b1b4b4399daa2b47a0b6b4d2d46e4352ff73c0345c5b8",
+   "bytes": 3402
+  },
+  {
+   "path": "networkx/algorithms/bipartite/spectral.py",
+   "sha256": "7eeda0ad5d6d85efdefc6f9efe551d864f18f5715eebfa76b4f9b1dd12a7b45c",
+   "bytes": 1902
+  },
+  {
+   "path": "networkx/algorithms/boundary.py",
+   "sha256": "ab726d5acb269fdc820769817648ca66391ac66061906f7f7493b39ae262428b",
+   "bytes": 5339
+  },
+  {
+   "path": "networkx/algorithms/bridges.py",
+   "sha256": "0acc6e7870ce07d6853390fc18ff37bb564a1b3c45d7ddd7069be63117807109",
+   "bytes": 6066
+  },
+  {
+   "path": "networkx/algorithms/broadcasting.py",
+   "sha256": "7aaa9927ba034150a5ecfdfe3cb9be82d87349cfa45a71760f562fe36197a069",
+   "bytes": 4890
+  },
+  {
+   "path": "networkx/algorithms/centrality/__init__.py",
+   "sha256": "12bdd8a18a23efa51f6383fa2342fed1f09090eee6314d1bdcd2ec4d3d911962",
+   "bytes": 558
+  },
+  {
+   "path": "networkx/algorithms/centrality/betweenness.py",
+   "sha256": "f645e5311f53d481c3279e71d9f48c7e3b8b072e34d8044425f40a516d4b7c5a",
+   "bytes": 14383
+  },
+  {
+   "path": "networkx/algorithms/centrality/betweenness_subset.py",
+   "sha256": "9a4549744991d46f241684be28dfa3c2153247f094881f035e7786aacab207a5",
+   "bytes": 9336
+  },
+  {
+   "path": "networkx/algorithms/centrality/closeness.py",
+   "sha256": "7a1927b46fa00294fdba15898c6684650fad110fa17710d3ee5b9ffae54f3401",
+   "bytes": 10281
+  },
+  {
+   "path": "networkx/algorithms/centrality/current_flow_betweenness.py",
+   "sha256": "cd946a82b074eae0f3830589fc52d41770d2ae0904475b6f6a46191d7f036d26",
+   "bytes": 11848
+  },
+  {
+   "path": "networkx/algorithms/centrality/current_flow_betweenness_subset.py",
+   "sha256": "daab4b81fff77ede6a743bc716b7d852deb37908b8d8dc3b5c1a526516e82480",
+   "bytes": 8107
+  },
+  {
+   "path": "networkx/algorithms/centrality/current_flow_closeness.py",
+   "sha256": "22f79c23c0591384a029ac845e12a8c08270ed2d9f0ff74dfff37e7fd4d6f8c1",
+   "bytes": 3327
+  },
+  {
+   "path": "networkx/algorithms/centrality/degree_alg.py",
+   "sha256": "1054c0d5bfc65946e6072e51f5b791429ef28755ff37066d9392fa8acfa61469",
+   "bytes": 3894
+  },
+  {
+   "path": "networkx/algorithms/centrality/dispersion.py",
+   "sha256": "335d8bd8a8953eb0b6f92c825cc17492fc4b7a581c9af5c990b4ff7011e8093c",
+   "bytes": 3631
+  },
+  {
+   "path": "networkx/algorithms/centrality/eigenvector.py",
+   "sha256": "2c0c55a9a4f72e6b90c36d3ffedd4aae02ca3c5d42cfe3e44da892ae03c2d455",
+   "bytes": 13623
+  },
+  {
+   "path": "networkx/algorithms/centrality/flow_matrix.py",
+   "sha256": "63ae66e956d6c988cd2b40889c4fe5b9fc8490acbdf93c8f9817976fe1a4cfbd",
+   "bytes": 3834
+  },
+  {
+   "path": "networkx/algorithms/centrality/group.py",
+   "sha256": "f986957e727a1ca4fa6f53fe221c942ad26f5e4d194a70b6273e173fa8639321",
+   "bytes": 27960
+  },
+  {
+   "path": "networkx/algorithms/centrality/harmonic.py",
+   "sha256": "64fa7c158160494652d1007151bce18b7f6a8affc437b08e8abc591188930883",
+   "bytes": 2847
+  },
+  {
+   "path": "networkx/algorithms/centrality/katz.py",
+   "sha256": "b951870328ea9dd49de32e227478e4bf49948662a61d4e6f6847cd59f88a9737",
+   "bytes": 11042
+  },
+  {
+   "path": "networkx/algorithms/centrality/laplacian.py",
+   "sha256": "f3eaa5a32c6f15cdf7c657e98fb5e897ca9e3af3c083f674047559192c639e67",
+   "bytes": 5640
+  },
+  {
+   "path": "networkx/algorithms/centrality/load.py",
+   "sha256": "33611d3d7e202446068cc04824c14a456188f6e6076c5396631b082de689b8e1",
+   "bytes": 6859
+  },
+  {
+   "path": "networkx/algorithms/centrality/percolation.py",
+   "sha256": "60907c89881ba632771182bca65dba8929e381f16c2b7d6e7f2b511e75136181",
+   "bytes": 4419
+  },
+  {
+   "path": "networkx/algorithms/centrality/reaching.py",
+   "sha256": "38558794352d09a4171d6c407c480fa629de8fed1a9cb25066c0af8770fc80c1",
+   "bytes": 7243
+  },
+  {
+   "path": "networkx/algorithms/centrality/second_order.py",
+   "sha256": "e024dba0ff7907a814b40b5228b7de784e2cf68ab4ff7857b17733c4be9cfe0f",
+   "bytes": 5012
+  },
+  {
+   "path": "networkx/algorithms/centrality/subgraph_alg.py",
+   "sha256": "1edc123d831153185a02ebcc03dd10bb68b5b265d2a55a4b46d1e5068867a527",
+   "bytes": 9513
+  },
+  {
+   "path": "networkx/algorithms/centrality/trophic.py",
+   "sha256": "abef93b0b71f18d0927adfc0ea82d57fb08659006f0f10ce9648e8cddb997f16",
+   "bytes": 4679
+  },
+  {
+   "path": "networkx/algorithms/centrality/voterank_alg.py",
+   "sha256": "cffd5eabcad20da7443b95b905b020d73b8e263d9d8b81540a498ec22b8ad762",
+   "bytes": 3231
+  },
+  {
+   "path": "networkx/algorithms/chains.py",
+   "sha256": "3cf892ab9f86b13d4bb1ff1fc2d1b018355fd6186fe592daae25ad7f39016c0c",
+   "bytes": 6968
+  },
+  {
+   "path": "networkx/algorithms/chordal.py",
+   "sha256": "2fe20b59d54b584e383a45a610eff86d2a38cfa468fbfccb8257cb7d3af076a4",
+   "bytes": 13411
+  },
+  {
+   "path": "networkx/algorithms/clique.py",
+   "sha256": "2eb997bcae8a55c8c3c94ac5e52e894c2d8f4359137f6e9879bd138ea372fd60",
+   "bytes": 25872
+  },
+  {
+   "path": "networkx/algorithms/cluster.py",
+   "sha256": "c7b748a2d981681537c9a233a618c0c80d81f851d2fe2890e6717e15e8a74255",
+   "bytes": 20359
+  },
+  {
+   "path": "networkx/algorithms/coloring/__init__.py",
+   "sha256": "3f5726aab02371a09d39b90d6757ba1e9fff669c41021431d22222a4e556f238",
+   "bytes": 182
+  },
+  {
+   "path": "networkx/algorithms/coloring/equitable_coloring.py",
+   "sha256": "b837336ba3c3f6a6efc153d45f530165ba2941dac010a364e83a42164734dad5",
+   "bytes": 16315
+  },
+  {
+   "path": "networkx/algorithms/coloring/greedy_coloring.py",
+   "sha256": "e89cdc738896e4ab91545104af5e6ff2b06f8a4de0e2669aeffc1c8d6cb24432",
+   "bytes": 20046
+  },
+  {
+   "path": "networkx/algorithms/communicability_alg.py",
+   "sha256": "d2d66f64a63efc651407b1ac4482f169b4b68c4a48e7551d83900323d003199c",
+   "bytes": 4545
+  },
+  {
+   "path": "networkx/algorithms/community/__init__.py",
+   "sha256": "d18adc0152d3c49b77bbe86d95a48f67e5d2467d0983e1102823113e65aec3e8",
+   "bytes": 1179
+  },
+  {
+   "path": "networkx/algorithms/community/asyn_fluid.py",
+   "sha256": "d24b6ca0e6b824a04a8ae137c2618370149480f945746bf33617aa20db5629b9",
+   "bytes": 5935
+  },
+  {
+   "path": "networkx/algorithms/community/centrality.py",
+   "sha256": "632bf99327f585ffcbee243f65b1bcfc50243fadfc49cff7378b424a807a275c",
+   "bytes": 6635
+  },
+  {
+   "path": "networkx/algorithms/community/community_utils.py",
+   "sha256": "b148be01c3d8c86ad88678c8f73b6dfafad21cb976f25297c5324f7e2e4dd1cf",
+   "bytes": 908
+  },
+  {
+   "path": "networkx/algorithms/community/divisive.py",
+   "sha256": "c8570a7ca92223a16a1159415712dad5f6ea23561e8aa7bf0397e93e762f9401",
+   "bytes": 6655
+  },
+  {
+   "path": "networkx/algorithms/community/kclique.py",
+   "sha256": "0d3afd8944ff5d6bf44b763bf4a425e8e5de7e3ced34c73d4801d685d14ec5c5",
+   "bytes": 2460
+  },
+  {
+   "path": "networkx/algorithms/community/kernighan_lin.py",
+   "sha256": "bcf53c31ba64eff36c70c0be828acda1786c42390e8602b662228ea3ebba0ef6",
+   "bytes": 4349
+  },
+  {
+   "path": "networkx/algorithms/community/label_propagation.py",
+   "sha256": "2e1cc05d21c508f436906feb3e05dbd3a60a769a4eedbb80a64b020b8188e30f",
+   "bytes": 11878
+  },
+  {
+   "path": "networkx/algorithms/community/louvain.py",
+   "sha256": "ce1e61d7a8515b3813bfd214a968a224a167b598506c1fc41cd6081958b03dab",
+   "bytes": 15365
+  },
+  {
+   "path": "networkx/algorithms/community/lukes.py",
+   "sha256": "833aa7ba9f79451d94cd488fa48b7caa47a9cd9f5d096a871904953c8243331f",
+   "bytes": 8115
+  },
+  {
+   "path": "networkx/algorithms/community/modularity_max.py",
+   "sha256": "833c99ac61cd32d4d9caaa4b15c247c60cf322c6abd66e4392d49c383a149e09",
+   "bytes": 18082
+  },
+  {
+   "path": "networkx/algorithms/community/quality.py",
+   "sha256": "75522457e08529d028bb45a38080e67e19e9208a9179169e2f8a1d837f570189",
+   "bytes": 11939
+  },
+  {
+   "path": "networkx/algorithms/components/__init__.py",
+   "sha256": "0edef82995a9fdc27f8f494be6177f4b9d3f8626b90ca702d928ee467b9bafa3",
+   "bytes": 173
+  },
+  {
+   "path": "networkx/algorithms/components/attracting.py",
+   "sha256": "e9acf7960a968474d7696514b8e3d97d6f6dee8925880868a05468b506392683",
+   "bytes": 2712
+  },
+  {
+   "path": "networkx/algorithms/components/biconnected.py",
+   "sha256": "ffd18974f660aaeb062992f3a93f6d5128f55d9af60e0a21893ea17075728a5e",
+   "bytes": 12782
+  },
+  {
+   "path": "networkx/algorithms/components/connected.py",
+   "sha256": "afe8cd249931a03b457188aea2d7b265bddada81078748f458175dc2c5e3fdae",
+   "bytes": 4459
+  },
+  {
+   "path": "networkx/algorithms/components/semiconnected.py",
+   "sha256": "05a04c165436d3cbee1cea39cb5c5e5743c3108df20d47c7eb315bfe391c5614",
+   "bytes": 2030
+  },
+  {
+   "path": "networkx/algorithms/components/strongly_connected.py",
+   "sha256": "8b8d6f0de6b374d1aa1b8c1eb9f00a77a6b168dda704a98ccd445906ced6b0b2",
+   "bytes": 9542
+  },
+  {
+   "path": "networkx/algorithms/components/weakly_connected.py",
+   "sha256": "8c51c7af4a93647e7b23214843c883e607a481ccd05d33d11ebb58a1755860f3",
+   "bytes": 4455
+  },
+  {
+   "path": "networkx/algorithms/connectivity/__init__.py",
+   "sha256": "12f60ac3c2c99fbc3264408702cb8490869297e715f8b872991eada9c9fdd29f",
+   "bytes": 281
+  },
+  {
+   "path": "networkx/algorithms/connectivity/connectivity.py",
+   "sha256": "2aebd56c9d1d0261b6879d6e168f4874120ad46d4f61a4d9f97153efc92c644a",
+   "bytes": 29367
+  },
+  {
+   "path": "networkx/algorithms/connectivity/cuts.py",
+   "sha256": "77d3ba1b77ee863834184b834a6e90c98866dce4c128565e1c2ed3cfa219d0c8",
+   "bytes": 23015
+  },
+  {
+   "path": "networkx/algorithms/connectivity/disjoint_paths.py",
+   "sha256": "4741c31ebae1748d44fdda3753ab7aa2c797b2b189946ecf0bcf645c23c2d6ff",
+   "bytes": 14649
+  },
+  {
+   "path": "networkx/algorithms/connectivity/edge_augmentation.py",
+   "sha256": "484ec290b8edc46faae8364f647df783a3097180352ac2601e6f8f9b9ef98240",
+   "bytes": 44061
+  },
+  {
+   "path": "networkx/algorithms/connectivity/edge_kcomponents.py",
+   "sha256": "86a00171f0aa67eadbe39234a9813e5f836db2db0a25bc65dfb159cf39a85c0e",
+   "bytes": 20894
+  },
+  {
+   "path": "networkx/algorithms/connectivity/kcomponents.py",
+   "sha256": "4ed884be968a7e591dc49debdfb42c8f5aab4b3076aed1f30dcc420cefc0ab64",
+   "bytes": 8171
+  },
+  {
+   "path": "networkx/algorithms/connectivity/kcutsets.py",
+   "sha256": "cd8a21ce0911d853838bf130d8cf6e30b6ff6bd64fe5f36a717270318cba3fba",
+   "bytes": 9371
+  },
+  {
+   "path": "networkx/algorithms/connectivity/stoerwagner.py",
+   "sha256": "5a876c244a8a82c9934dcc94064daedf057f0977a89fe700cef7968081a01660",
+   "bytes": 5431
+  },
+  {
+   "path": "networkx/algorithms/connectivity/utils.py",
+   "sha256": "80bf0b9999cae062806507083c48553589958b5f0caacab08383b88ff7ade7ab",
+   "bytes": 3217
+  },
+  {
+   "path": "networkx/algorithms/core.py",
+   "sha256": "d9041850fa0cb3d175ae0194958808023e844f2e1579f4161b5ae5d113247fda",
+   "bytes": 19184
+  },
+  {
+   "path": "networkx/algorithms/covering.py",
+   "sha256": "69bb756d106688f8b527de74b9461f4e4e184b8a55873d736a7634d6fc6a34b8",
+   "bytes": 5294
+  },
+  {
+   "path": "networkx/algorithms/cuts.py",
+   "sha256": "f89e63e988b60ab945b2b5f86cafb9905ced0fa8b85fa822857c319850b5cd84",
+   "bytes": 9990
+  },
+  {
+   "path": "networkx/algorithms/cycles.py",
+   "sha256": "7ab90bbca66461f183c326ba3e7fe8f1c4790a712761e277d188b8906af9c6f9",
+   "bytes": 43237
+  },
+  {
+   "path": "networkx/algorithms/d_separation.py",
+   "sha256": "dceff94485b388f439c70467fb20231f6f31ae449a54855b085a70ecad8f6b60",
+   "bytes": 27283
+  },
+  {
+   "path": "networkx/algorithms/dag.py",
+   "sha256": "cb61e1666d3ea2545969b828f717338ec59ff0e6d2786fbe5499773c8121f5c1",
+   "bytes": 45070
+  },
+  {
+   "path": "networkx/algorithms/distance_measures.py",
+   "sha256": "79ab9c912f349734d3ff40a9659875251eed2c2cde8860af89a0110cad4c37c9",
+   "bytes": 34195
+  },
+  {
+   "path": "networkx/algorithms/distance_regular.py",
+   "sha256": "fb540218bcbb38fa0db95d9b6090d8e23568b7ed0b18ca1b050d03b9b8db8462",
+   "bytes": 7053
+  },
+  {
+   "path": "networkx/algorithms/dominance.py",
+   "sha256": "4ffcf7ee3c7f5926d8fc731f620a992fa7d3fa9e8f3009598d2c0456c68b7cb1",
+   "bytes": 3450
+  },
+  {
+   "path": "networkx/algorithms/dominating.py",
+   "sha256": "7780a44adfe199cc25745e4568e89acd9a5385887102e6ac46126019d1311a37",
+   "bytes": 2669
+  },
+  {
+   "path": "networkx/algorithms/efficiency_measures.py",
+   "sha256": "54a6cb28981d21b9e8f989c968b68266ded33575e740f773f0df7db890a8ef8f",
+   "bytes": 4741
+  },
+  {
+   "path": "networkx/algorithms/euler.py",
+   "sha256": "c82a8a68672115244f4d10d7abbbb57c7d885d917de3059ff52d742bdf8277a5",
+   "bytes": 14205
+  },
+  {
+   "path": "networkx/algorithms/flow/__init__.py",
+   "sha256": "ad5b4c532e9d5623cb7b08c3467b669f5e501746d0c220dd41b659c7d8fb0eb7",
+   "bytes": 341
+  },
+  {
+   "path": "networkx/algorithms/flow/boykovkolmogorov.py",
+   "sha256": "a85729a66897cf854a28577845b0ec8963aa24e0ed0d31db36bf7f5054e341a5",
+   "bytes": 13334
+  },
+  {
+   "path": "networkx/algorithms/flow/capacityscaling.py",
+   "sha256": "f2b9e0daa3b991ac0d4b1ab64bc04d95432676f352a02e91f1e92204653c2f15",
+   "bytes": 14469
+  },
+  {
+   "path": "networkx/algorithms/flow/dinitz_alg.py",
+   "sha256": "2399e7655b23d1a53cfbd0a37b4ba67b2e34edea45ce977b043269908e8448ae",
+   "bytes": 8341
+  },
+  {
+   "path": "networkx/algorithms/flow/edmondskarp.py",
+   "sha256": "3c42302dfb5ebd2d95607693cf364c48e2cfcbb41204fb163de763c75951e82b",
+   "bytes": 8056
+  },
+  {
+   "path": "networkx/algorithms/flow/gomory_hu.py",
+   "sha256": "12e89b6b13e5eb9b2118cf49c6f69af56330326a1ccc3bd75dcd9bd04f3572a3",
+   "bytes": 6345
+  },
+  {
+   "path": "networkx/algorithms/flow/maxflow.py",
+   "sha256": "dffbf4154107ba516b39e48333514c726385df24d8bf151b2c6bf730d4cda754",
+   "bytes": 22795
+  },
+  {
+   "path": "networkx/algorithms/flow/mincost.py",
+   "sha256": "1b33182274b841c35ed322261ab5572746d177bb794d248c6bd8d279e9c8a0e9",
+   "bytes": 12853
+  },
+  {
+   "path": "networkx/algorithms/flow/networksimplex.py",
+   "sha256": "df6b9eb686568feffb28f3b6389a6eb4fd05a53aec43fa89c67b42f17c4856bd",
+   "bytes": 25185
+  },
+  {
+   "path": "networkx/algorithms/flow/preflowpush.py",
+   "sha256": "094299d3eed7f65ecfeea1ffda7d889a66dff26166f2fa1c1f6498d2d2308c6a",
+   "bytes": 15721
+  },
+  {
+   "path": "networkx/algorithms/flow/shortestaugmentingpath.py",
+   "sha256": "8175dd918de71f8774857567d0fdbe9337c2dc31dcb8276bb9d15dc5eb5f94a2",
+   "bytes": 10372
+  },
+  {
+   "path": "networkx/algorithms/flow/utils.py",
+   "sha256": "6c27a21408b215ee3ea6d902a29a3f3e740a17dc58e4cf01afcee1253ddf4564",
+   "bytes": 6084
+  },
+  {
+   "path": "networkx/algorithms/graph_hashing.py",
+   "sha256": "d2371f85763bb42845055e0dd206b8a090890874706b0aec0c3c8dcb5d6e2659",
+   "bytes": 12556
+  },
+  {
+   "path": "networkx/algorithms/graphical.py",
+   "sha256": "d4d765857b861205241cfa38ec4a0d4d650c7dd793a62bfb04154cf6dcb68afc",
+   "bytes": 15831
+  },
+  {
+   "path": "networkx/algorithms/hierarchy.py",
+   "sha256": "fca161085d407ebd93ae43e1ab1fb53d751712d7d82e16d14a10b9f1929b0c61",
+   "bytes": 1786
+  },
+  {
+   "path": "networkx/algorithms/hybrid.py",
+   "sha256": "cf7b0814c3a98dad70963fa523c608e8e21b48b6561ebebab92ab25444995976",
+   "bytes": 6209
+  },
+  {
+   "path": "networkx/algorithms/isolate.py",
+   "sha256": "e2b0c7fe2198d963398a0252fa505c2156f5d4caca7686858492e278b6780401",
+   "bytes": 2301
+  },
+  {
+   "path": "networkx/algorithms/isomorphism/__init__.py",
+   "sha256": "80f450fbf5fac4dda52593d0370f3a2158f835e98699b4184de8dfe72277d8de",
+   "bytes": 406
+  },
+  {
+   "path": "networkx/algorithms/isomorphism/ismags.py",
+   "sha256": "4e964fe710f12c84c218e93c0d3e040556960db6e3cc4513e593820cd180868d",
+   "bytes": 43239
+  },
+  {
+   "path": "networkx/algorithms/isomorphism/isomorph.py",
+   "sha256": "620d80ba4bf4b5564843aea3c730d2e033c18d7e8330ac13d3f58d1f5d9fb209",
+   "bytes": 7114
+  },
+  {
+   "path": "networkx/algorithms/isomorphism/isomorphvf2.py",
+   "sha256": "fc8751d58466f0df73f87697d97b733d1abeda3dff8ea95c27c592aef0321398",
+   "bytes": 46785
+  },
+  {
+   "path": "networkx/algorithms/isomorphism/matchhelpers.py",
+   "sha256": "3da67b3e398d36c24ef4aa1e46b7fd2607031c8705af5b5972441cfe89787bd2",
+   "bytes": 10884
+  },
+  {
+   "path": "networkx/algorithms/isomorphism/temporalisomorphvf2.py",
+   "sha256": "fb5356f3597c90cf68ad0da78bdb5c362cd0cc484e504f416812578d45aa8622",
+   "bytes": 10948
+  },
+  {
+   "path": "networkx/algorithms/isomorphism/tree_isomorphism.py",
+   "sha256": "7e3d5c52ca52a23515c2601d58a1b35c41ea39ac143498337cef508c21273cbb",
+   "bytes": 9454
+  },
+  {
+   "path": "networkx/algorithms/isomorphism/vf2pp.py",
+   "sha256": "58d5dfee0d2eddcf11dc8b17d98b8fde0594e6c8dbd2eaa3b834af9ada1bfd01",
+   "bytes": 36421
+  },
+  {
+   "path": "networkx/algorithms/isomorphism/vf2userfunc.py",
+   "sha256": "1e23f0cabee7245d504bdc3af4ccca7fac06bcef1c823bdd4b9bd6e7d8b009ec",
+   "bytes": 7371
+  },
+  {
+   "path": "networkx/algorithms/link_analysis/__init__.py",
+   "sha256": "5247204c3773b08bbe8ec2788c1c0ff2c1760ac44f0b561c6594feab95a58f72",
+   "bytes": 118
+  },
+  {
+   "path": "networkx/algorithms/link_analysis/hits_alg.py",
+   "sha256": "389d833ca9ffa860c1896ed3967f3fbcbb491af064cd66cec7295b1e7f799dee",
+   "bytes": 10421
+  },
+  {
+   "path": "networkx/algorithms/link_analysis/pagerank_alg.py",
+   "sha256": "06526be9db037d435d534987f019aa58bb7c1f3adafb00705a64051c0ad325cf",
+   "bytes": 17191
+  },
+  {
+   "path": "networkx/algorithms/link_prediction.py",
+   "sha256": "518a3f2c982855770cd622cc5ecc0cda0e23bd4266bf1967ddee5b55f5f1435d",
+   "bytes": 22253
+  },
+  {
+   "path": "networkx/algorithms/lowest_common_ancestors.py",
+   "sha256": "c4fd2191a273c2b8f87afcda858bc88ed5216a8763e0562fe09079d4f5b05697",
+   "bytes": 9198
+  },
+  {
+   "path": "networkx/algorithms/matching.py",
+   "sha256": "6c4be15d315c45af9930dba0232335e2b27940071091c6768fe609f8f4c6437c",
+   "bytes": 44550
+  },
+  {
+   "path": "networkx/algorithms/minors/__init__.py",
+   "sha256": "71e78a76c67a5351f8d040fe2a6b551a46c00f1796313546d3b25af0fecdfcf8",
+   "bytes": 587
+  },
+  {
+   "path": "networkx/algorithms/minors/contraction.py",
+   "sha256": "12f892b91971e44b0689635b1ab4927c061f3d5d7d8f320df07fe5e7de981db2",
+   "bytes": 22870
+  },
+  {
+   "path": "networkx/algorithms/mis.py",
+   "sha256": "04432ffdd5bc47a0a330c5c94062214b81e94bc03c0242c92569f3dc6b2db92e",
+   "bytes": 2344
+  },
+  {
+   "path": "networkx/algorithms/moral.py",
+   "sha256": "cf9969e3693892a624eedfc57eccd58f92800bb0715dee807629374f6aaf03aa",
+   "bytes": 1535
+  },
+  {
+   "path": "networkx/algorithms/node_classification.py",
+   "sha256": "6b69953bb348d88405e02776331ed330ba1312ee47346f51079b041d0d7d59dc",
+   "bytes": 6469
+  },
+  {
+   "path": "networkx/algorithms/non_randomness.py",
+   "sha256": "51a839e20162e43479b8040d157c8a2b239142ea304cfba1abf42c8d9695309e",
+   "bytes": 3068
+  },
+  {
+   "path": "networkx/algorithms/operators/__init__.py",
+   "sha256": "749df1397bc7c52cf3337f9871fbe319327f9ddc542c5d53c9b908473512f3b6",
+   "bytes": 201
+  },
+  {
+   "path": "networkx/algorithms/operators/all.py",
+   "sha256": "a4d20a8c48920418946bacdc6191d0222887ab70bd8676b34b2688a5ab2f071c",
+   "bytes": 9652
+  },
+  {
+   "path": "networkx/algorithms/operators/binary.py",
+   "sha256": "99182416c3e8030d8fbaa308c11992e7dbd80b6285278edd07f95cb791d1021e",
+   "bytes": 12948
+  },
+  {
+   "path": "networkx/algorithms/operators/product.py",
+   "sha256": "15091221db8ebfecf592d57389dd93e34ef9f52f819807d39726bcf15cadb997",
+   "bytes": 19632
+  },
+  {
+   "path": "networkx/algorithms/operators/unary.py",
+   "sha256": "128db279383e179b8e0c6592591fe29b955a29943decbc804c8b8a65c005411f",
+   "bytes": 1795
+  },
+  {
+   "path": "networkx/algorithms/planar_drawing.py",
+   "sha256": "017ba84f7685804b4278c9c0694b11aa3c4200174d619f0ea3db0638a050b68d",
+   "bytes": 16254
+  },
+  {
+   "path": "networkx/algorithms/planarity.py",
+   "sha256": "3e12219de70f9daf89fefeed6a88fe21ed7be5759ac957dcb8c0c7923d9b58b7",
+   "bytes": 47249
+  },
+  {
+   "path": "networkx/algorithms/polynomials.py",
+   "sha256": "88fdf4fe670e963f3556bcede2207f659c58891a24b9bb3e3b58bd456e29813c",
+   "bytes": 11278
+  },
+  {
+   "path": "networkx/algorithms/reciprocity.py",
+   "sha256": "d563212db48c9153f144f95f52f6e03b916056f2479f57685d01785aea922d09",
+   "bytes": 2855
+  },
+  {
+   "path": "networkx/algorithms/regular.py",
+   "sha256": "94485808fe18caccfca1377163c9b8d28a9971d863289b83b048fe3f7d749682",
+   "bytes": 6794
+  },
+  {
+   "path": "networkx/algorithms/richclub.py",
+   "sha256": "900473b28dcceb09d4700268da0f206bf66d8a02f67330cdcde503cc1b517eaa",
+   "bytes": 4892
+  },
+  {
+   "path": "networkx/algorithms/shortest_paths/__init__.py",
+   "sha256": "466c6db237be98f750c9e62113c4cfd8d21dfa26443aee1e02c5a15519b65ea9",
+   "bytes": 285
+  },
+  {
+   "path": "networkx/algorithms/shortest_paths/astar.py",
+   "sha256": "1215142b043a90604f557540ee29c9377b5be67af8e4cf7d9040f281570b3dff",
+   "bytes": 8967
+  },
+  {
+   "path": "networkx/algorithms/shortest_paths/dense.py",
+   "sha256": "add313940c2b6e864c680f078f44666c4a6a34d53dce60719392e3b30b20dfb5",
+   "bytes": 8211
+  },
+  {
+   "path": "networkx/algorithms/shortest_paths/generic.py",
+   "sha256": "e8ddb629fd6dfbb1c53e7dbe4282ea6e6d642522a4e5d5828a6362f14b98ccce",
+   "bytes": 25738
+  },
+  {
+   "path": "networkx/algorithms/shortest_paths/unweighted.py",
+   "sha256": "dd4a74005f37e69492812423ce64caf1fc38da8d0219cfadb2b8de9d345f8d07",
+   "bytes": 15642
+  },
+  {
+   "path": "networkx/algorithms/shortest_paths/weighted.py",
+   "sha256": "0065f7e004e5cc48b5fdcc9ac91cf17949c43e36ae4266dcfa72819e0eb000bd",
+   "bytes": 82465
+  },
+  {
+   "path": "networkx/algorithms/similarity.py",
+   "sha256": "332d8c784ec0b08ac27d71245fe2187dba5b70d2f73bb654905b65cf317e8fff",
+   "bytes": 61093
+  },
+  {
+   "path": "networkx/algorithms/simple_paths.py",
+   "sha256": "2c5745365b69b7ead123de31ec7543428a0d6e09bebab9331900b15477c84794",
+   "bytes": 30320
+  },
+  {
+   "path": "networkx/algorithms/smallworld.py",
+   "sha256": "df14fecf6fc255da79f80a7cbc5e9fb1ddc389abc362db2914d66b7307295c6d",
+   "bytes": 13565
+  },
+  {
+   "path": "networkx/algorithms/smetric.py",
+   "sha256": "fc08f804832769f8976c9b4b92f01f02720431d23d39c56f332ea493d28a4e7b",
+   "bytes": 770
+  },
+  {
+   "path": "networkx/algorithms/sparsifiers.py",
+   "sha256": "e13f2932587ebac107036fab64587e0a665b058f5d7172078e8a91fa8276852c",
+   "bytes": 10048
+  },
+  {
+   "path": "networkx/algorithms/structuralholes.py",
+   "sha256": "092f3d3f8e7f9b52461469d2180f85942db19edd0162adcee64cb5ce48d81032",
+   "bytes": 9342
+  },
+  {
+   "path": "networkx/algorithms/summarization.py",
+   "sha256": "0b2813b12b61c82287b3465366c0a05a7c9a4fc6a79d06cba54b5a8667d8f52c",
+   "bytes": 23251
+  },
+  {
+   "path": "networkx/algorithms/swap.py",
+   "sha256": "35564c9a59e4771830c0dc39183adcf3068d11171d0aee76c9d1dc05d380fe1c",
+   "bytes": 14744
+  },
+  {
+   "path": "networkx/algorithms/threshold.py",
+   "sha256": "d4704ead04f211a129daea081ec0254c4329600617a119d1fba3da38a2237591",
+   "bytes": 31150
+  },
+  {
+   "path": "networkx/algorithms/time_dependent.py",
+   "sha256": "3c0789ed8b7c914a9b0e0bc16b3fd97d415983ec3ebdfd603c2d073ba828fd32",
+   "bytes": 5762
+  },
+  {
+   "path": "networkx/algorithms/tournament.py",
+   "sha256": "9f1f8f49e7e8a32c980308456bd6bb49165244bfe4cb946ad7d9583fbf7ed04f",
+   "bytes": 11579
+  },
+  {
+   "path": "networkx/algorithms/traversal/__init__.py",
+   "sha256": "62d16b7cd8dc8aa4ce23a8c678f41a274d6d4521105d31ea4c618d8431036fff",
+   "bytes": 142
+  },
+  {
+   "path": "networkx/algorithms/traversal/beamsearch.py",
+   "sha256": "567d14e16724f08092848006820bf7b55b505955b4001133fe1701b06aea97aa",
+   "bytes": 3473
+  },
+  {
+   "path": "networkx/algorithms/traversal/breadth_first_search.py",
+   "sha256": "88513eaec9189fea0e38423ca1c09b083dd0307e4f5f8d513fc5dbd8aadbd87f",
+   "bytes": 18288
+  },
+  {
+   "path": "networkx/algorithms/traversal/depth_first_search.py",
+   "sha256": "d95e13ded1ae8dc02d5775ba59c4d052318001eddbd6baa29ce368c1484bb1af",
+   "bytes": 16795
+  },
+  {
+   "path": "networkx/algorithms/traversal/edgebfs.py",
+   "sha256": "b3c96e813d25e89f0746607c742b370f553165af794861c6c8fd9609f68004e7",
+   "bytes": 6244
+  },
+  {
+   "path": "networkx/algorithms/traversal/edgedfs.py",
+   "sha256": "fecf4de1429a122f2c46d27ad38a8f1e5fcd20cf76ace2e481e73d64fc19629d",
+   "bytes": 5957
+  },
+  {
+   "path": "networkx/algorithms/tree/__init__.py",
+   "sha256": "c26fc58d7dc6ee1a897f2366784689b118d923ef0a92fd0d6f98c0990357cd27",
+   "bytes": 149
+  },
+  {
+   "path": "networkx/algorithms/tree/branchings.py",
+   "sha256": "07473fb8aa5c9d5d92c093192512b404c133f0b92f21c3a1bf5cb4008d204e76",
+   "bytes": 34339
+  },
+  {
+   "path": "networkx/algorithms/tree/coding.py",
+   "sha256": "b85a862fa8354168c60b817d302aeccfff2b8d67ae309af91d4ba618db2a5d5e",
+   "bytes": 13464
+  },
+  {
+   "path": "networkx/algorithms/tree/decomposition.py",
+   "sha256": "958febab1f49c672c4929d70880bf4997eb63c63f0190e925b8269e3ca3c6a2c",
+   "bytes": 3071
+  },
+  {
+   "path": "networkx/algorithms/tree/mst.py",
+   "sha256": "9ef6aaa2d8f4d299ea00c63afe63abf182c001ddaef80a5e7d7cf3594ff8255a",
+   "bytes": 46140
+  },
+  {
+   "path": "networkx/algorithms/tree/operations.py",
+   "sha256": "d4de801f4bdf636432c98047fce384d1bedd4bb771f7ea53ddc393415984d40d",
+   "bytes": 4042
+  },
+  {
+   "path": "networkx/algorithms/tree/recognition.py",
+   "sha256": "6d89da0cdd1968859382ad2d6cf10701c771401599a43bd6ca965aac16c0df7e",
+   "bytes": 7569
+  },
+  {
+   "path": "networkx/algorithms/triads.py",
+   "sha256": "19fd1fea58b080046cccbf91e324257bea20187e2626417e82eade7944f11b26",
+   "bytes": 16853
+  },
+  {
+   "path": "networkx/algorithms/vitality.py",
+   "sha256": "f0cd5cb9b23274ee3d125da4c150944476765300ad7c65457864bcf8962dd64a",
+   "bytes": 2289
+  },
+  {
+   "path": "networkx/algorithms/voronoi.py",
+   "sha256": "d3b4a74a9c4b0f3e24e8ae7d268f954cd03e432e649da1df042fb2ff9bc038b4",
+   "bytes": 3183
+  },
+  {
+   "path": "networkx/algorithms/walks.py",
+   "sha256": "d0938b86903278dce617c12d95595839610f249bc2225b6deed6e4d55c79d9d2",
+   "bytes": 2427
+  },
+  {
+   "path": "networkx/algorithms/wiener.py",
+   "sha256": "58e506d0be710caa58e2eb29c88fa80e8d615ae1f16d49d315911effe200c793",
+   "bytes": 7639
+  },
+  {
+   "path": "networkx/classes/__init__.py",
+   "sha256": "43da0e349ae74c5b3cef8486a7071b57f9322530dcacb23af4616df7d32213a2",
+   "bytes": 364
+  },
+  {
+   "path": "networkx/classes/coreviews.py",
+   "sha256": "f64a1128e468024234b2907ec8c0a4a97bebcbb98c77a86648f84169bdd2cdc1",
+   "bytes": 13143
+  },
+  {
+   "path": "networkx/classes/digraph.py",
+   "sha256": "16ea7519b0030a95ca2c0d7633aed16e1034726e811a2ff8708c412ec8c712d7",
+   "bytes": 48101
+  },
+  {
+   "path": "networkx/classes/filters.py",
+   "sha256": "3c2cbb06ca086f2f1571a9aa0e365088d01eff97a023458a52afb2e6773dba74",
+   "bytes": 2817
+  },
+  {
+   "path": "networkx/classes/function.py",
+   "sha256": "1fa868fc4b54f3345336fe1509a2dbfc163fe7a3e995289fb64b64f8e92a75c5",
+   "bytes": 38898
+  },
+  {
+   "path": "networkx/classes/graph.py",
+   "sha256": "6dce721c2783bb45f27c1391d27471f6b10c3a9af2f4575ecf1aa208860f1f51",
+   "bytes": 71102
+  },
+  {
+   "path": "networkx/classes/graphviews.py",
+   "sha256": "ba55132e8cc42bf863ff84c61dd82fc6f791dbeadbf76435e238f11f8a07e06a",
+   "bytes": 8520
+  },
+  {
+   "path": "networkx/classes/multidigraph.py",
+   "sha256": "68eaa37d227a2f1f65fb5cf008830d6115b4996d703c39e211c45643c80a9986",
+   "bytes": 36351
+  },
+  {
+   "path": "networkx/classes/multigraph.py",
+   "sha256": "3d2651ed0832b3394ee4fab387123de782f24aa2c7abee7cf4e42b08eb42f69c",
+   "bytes": 47248
+  },
+  {
+   "path": "networkx/classes/reportviews.py",
+   "sha256": "bb484d66a6965c27cb30ffe5abcdf95c22154ad919409f476903de0cf3e8a3cf",
+   "bytes": 46132
+  },
+  {
+   "path": "networkx/convert.py",
+   "sha256": "c81fcc4e5dc612f35bdc2803701882ae120de0b955e4dfc137d034ca4841afb1",
+   "bytes": 16025
+  },
+  {
+   "path": "networkx/convert_matrix.py",
+   "sha256": "ee473aebed17146414a31ddf559b9aa54578a82a6b83dd8409ef413237d2a421",
+   "bytes": 45383
+  },
+  {
+   "path": "networkx/drawing/__init__.py",
+   "sha256": "ae74c53732dce1f8acd614c01299d64c2f349de011f3cfa595543e2ce6cdfa2e",
+   "bytes": 160
+  },
+  {
+   "path": "networkx/drawing/layout.py",
+   "sha256": "780e58276c40f806032f55852021134ea7e797b6a68d161f9203891096e282fc",
+   "bytes": 50243
+  },
+  {
+   "path": "networkx/drawing/nx_agraph.py",
+   "sha256": "6dbb4bbaeb036f8bcdbba10f17dae005d26c3fe0da205cb33e0c419f92840352",
+   "bytes": 13937
+  },
+  {
+   "path": "networkx/drawing/nx_latex.py",
+   "sha256": "cd21983e99f7c1ec1668404225eaeaea045be5198a3fd498d2c2d6872a83f17a",
+   "bytes": 24805
+  },
+  {
+   "path": "networkx/drawing/nx_pydot.py",
+   "sha256": "6ff5125119837dfcb5296876b9ed6f31ff7dfb30898844e57480d2ec71878ad7",
+   "bytes": 9591
+  },
+  {
+   "path": "networkx/drawing/nx_pylab.py",
+   "sha256": "593aa4b58e67891179eb1e1bb28b5b1ab6acb5c711b6051cb318ea62df0e7bfb",
+   "bytes": 66369
+  },
+  {
+   "path": "networkx/exception.py",
+   "sha256": "842f1e7cf7c8cce168d238968906d33da34ab8d4ee530869f513f0fbea5dbf85",
+   "bytes": 3787
+  },
+  {
+   "path": "networkx/generators/__init__.py",
+   "sha256": "128601e5ce59138aec34a66f9754d1432d95a360f74f61fe62e9f20f68bab1ad",
+   "bytes": 1366
+  },
+  {
+   "path": "networkx/generators/atlas.py",
+   "sha256": "d3b5de8338f98ff4a202983382f7b6ad24d7a749e65b00b0efed647948dbbd1a",
+   "bytes": 5606
+  },
+  {
+   "path": "networkx/generators/classic.py",
+   "sha256": "ebc9429d27a8e74b95d72a1ce99be39dc911ee501bae151d9e2c84a20733bc1e",
+   "bytes": 32000
+  },
+  {
+   "path": "networkx/generators/cographs.py",
+   "sha256": "f96478ff2acd93f5f99e3ede81bec0db678a3d5ca639d21833e21fb52447e160",
+   "bytes": 1891
+  },
+  {
+   "path": "networkx/generators/community.py",
+   "sha256": "fe9ff839f22d6e0f274b46f712fa2309767c70449d0bed068faed5e70daf7ae3",
+   "bytes": 34911
+  },
+  {
+   "path": "networkx/generators/degree_seq.py",
+   "sha256": "f7b5d402981066ba52c725ce0e054b3fd76b5f9ac417e5dbe346d8a9a0464a3d",
+   "bytes": 30173
+  },
+  {
+   "path": "networkx/generators/directed.py",
+   "sha256": "55c834cde5854b6f85f7d6c59a15e3e26ce50b2ff2a01baeaa39d2c7923e0dca",
+   "bytes": 15696
+  },
+  {
+   "path": "networkx/generators/duplication.py",
+   "sha256": "8666001c905ecfb5a57dd54619adbcf09154047a0851d56a1060a8740a4a3abe",
+   "bytes": 5831
+  },
+  {
+   "path": "networkx/generators/ego.py",
+   "sha256": "4d9fa8d39169bd53c07571412e38df6b616701c670960aabff58cc74b4f31528",
+   "bytes": 1900
+  },
+  {
+   "path": "networkx/generators/expanders.py",
+   "sha256": "9c9332b389073476730b98e4c8215fb70d56ffa705febf367864ea9fb70dac3a",
+   "bytes": 14455
+  },
+  {
+   "path": "networkx/generators/geometric.py",
+   "sha256": "702af1d477652dcd3c9253ba6c1cdbfa0d0651f17601a92d0ab24e9a10d2594a",
+   "bytes": 39610
+  },
+  {
+   "path": "networkx/generators/harary_graph.py",
+   "sha256": "37abf35caad6f9953ec4373665317f19fee46f42d141545f2b6a0b050bf254ef",
+   "bytes": 6159
+  },
+  {
+   "path": "networkx/generators/internet_as_graphs.py",
+   "sha256": "63fa5068685ed7cdd7e9d5c7e2872a20adc3cd7473d285c4f802b0b0bd720879",
+   "bytes": 14172
+  },
+  {
+   "path": "networkx/generators/intersection.py",
+   "sha256": "1059b400e8e7ab2a7c29c4fb9065aa00dabefefabd910d1dff40f35724323fea",
+   "bytes": 4101
+  },
+  {
+   "path": "networkx/generators/interval_graph.py",
+   "sha256": "65399d8106c1c7733ab32b065976c6ca781860e0b54c05c3dcece4c3875e405c",
+   "bytes": 2204
+  },
+  {
+   "path": "networkx/generators/joint_degree_seq.py",
+   "sha256": "9f2a7ce8d0bfe17bf3bf0a70c332abac24b3d62ff86c44920ed5635afa645858",
+   "bytes": 24773
+  },
+  {
+   "path": "networkx/generators/lattice.py",
+   "sha256": "9150af4da8563d018d6e893a99a5df6aa1b39bcf14bb184fec3f4190a8465b5a",
+   "bytes": 13500
+  },
+  {
+   "path": "networkx/generators/line.py",
+   "sha256": "e26147eb412c1ef6f8c16df8138e41ca5feb5e30cf2020f9f5c6a802d384f152",
+   "bytes": 17531
+  },
+  {
+   "path": "networkx/generators/mycielski.py",
+   "sha256": "c415f69bbeec0b3ba6a07e5c0068ad92cbc4116fa871b0a76dd68dedf294b559",
+   "bytes": 3314
+  },
+  {
+   "path": "networkx/generators/nonisomorphic_trees.py",
+   "sha256": "804eee3c1fae684eab11f6a29a647d6eaa1bb28e727257021babbccf06654b8f",
+   "bytes": 6453
+  },
+  {
+   "path": "networkx/generators/random_clustered.py",
+   "sha256": "8bf35dbef7211efb2f6f0810b6859263fa4bc2f84ef4b874d8c4995f38066fb7",
+   "bytes": 4183
+  },
+  {
+   "path": "networkx/generators/random_graphs.py",
+   "sha256": "aa2fc08d3f47c7933aba38137be0c1548b18f4bc2a3cf663b801c530869038e7",
+   "bytes": 51346
+  },
+  {
+   "path": "networkx/generators/small.py",
+   "sha256": "5ecf49353b682e24a183b7c5eff55127e1b5f09192b78244326861b694b9d6bf",
+   "bytes": 28171
+  },
+  {
+   "path": "networkx/generators/social.py",
+   "sha256": "2145605953149916941b6f14d0acc1fbed03b4a2dd0850f3e78b6427af56e26b",
+   "bytes": 23437
+  },
+  {
+   "path": "networkx/generators/spectral_graph_forge.py",
+   "sha256": "905e12084ddd720c0103d6cccace4efa609fe76f5d161adac37666cbd1919d0e",
+   "bytes": 4240
+  },
+  {
+   "path": "networkx/generators/stochastic.py",
+   "sha256": "420f6f5a6f443ae8363905481cbfdd6791eb5dcd7a9719d6cb35f9d8a58d10f2",
+   "bytes": 1981
+  },
+  {
+   "path": "networkx/generators/sudoku.py",
+   "sha256": "90b33600fd07e3debab9888d3b5a001449afe6a05fb54fdb39f62e711c5ec4cd",
+   "bytes": 4288
+  },
+  {
+   "path": "networkx/generators/time_series.py",
+   "sha256": "fc332263d5fde4effdb0ad8149e7936f6c8c59f4ad0702855b09fa1543973784",
+   "bytes": 2439
+  },
+  {
+   "path": "networkx/generators/trees.py",
+   "sha256": "d9af0cb0a4f341f14b044486e68a1c6d368cbf47185f4bed79d143dbd7a23850",
+   "bytes": 36533
+  },
+  {
+   "path": "networkx/generators/triads.py",
+   "sha256": "ee449c4dfdc84c38b7aac49af88bc63296bd76211a17042746e21fdd3bf85012",
+   "bytes": 2452
+  },
+  {
+   "path": "networkx/lazy_imports.py",
+   "sha256": "b58c4fd77b59de9f3e421fbe31ecb865766a4215a04006c8ef1601651ac1cf0d",
+   "bytes": 5764
+  },
+  {
+   "path": "networkx/linalg/__init__.py",
+   "sha256": "ee2c8d67f61806796c5bccd27e1520bc4932c0ead459fa48bb24bce9938a946f",
+   "bytes": 568
+  },
+  {
+   "path": "networkx/linalg/algebraicconnectivity.py",
+   "sha256": "de7396f20db5ffc07f27f7028fa518315a86507108fd3dfcdbb2dcca84b126f2",
+   "bytes": 21149
+  },
+  {
+   "path": "networkx/linalg/attrmatrix.py",
+   "sha256": "3308b0e5dbc8be30d8ec1c256f8b32f392b37e83f4d8417ae027c6fc6bc9b2ba",
+   "bytes": 15509
+  },
+  {
+   "path": "networkx/linalg/bethehessianmatrix.py",
+   "sha256": "222e0d5fa9a8f745b7329a4245c627f5d456fccb04915740f531fac7b2615fca",
+   "bytes": 2697
+  },
+  {
+   "path": "networkx/linalg/graphmatrix.py",
+   "sha256": "348b36b96192ffc949279210f0e83d6885876b0821b650835a27ea388295dbe7",
+   "bytes": 5623
+  },
+  {
+   "path": "networkx/linalg/laplacianmatrix.py",
+   "sha256": "8911c769b99bf52e028433f1dd89f6f9620440577f7e5143dc066403893ea326",
+   "bytes": 20536
+  },
+  {
+   "path": "networkx/linalg/modularitymatrix.py",
+   "sha256": "47f5484ed8089067a7c65b022cde2ee826318f7fc788f5df794dbdc9aae7b51a",
+   "bytes": 4706
+  },
+  {
+   "path": "networkx/linalg/spectrum.py",
+   "sha256": "69163b02962fe47c6b3bfe0ef1baf1a59470dd2254ddf63396033084421772b7",
+   "bytes": 4215
+  },
+  {
+   "path": "networkx/readwrite/__init__.py",
+   "sha256": "4ef49b9c610743917d098dad9298d660ecab523e81796dec73a3f8fc87336ca0",
+   "bytes": 561
+  },
+  {
+   "path": "networkx/readwrite/adjlist.py",
+   "sha256": "16355d2e5ad62e2ee656e287cced7a00ee82545a80e93089bb71b12f148e5db5",
+   "bytes": 8435
+  },
+  {
+   "path": "networkx/readwrite/edgelist.py",
+   "sha256": "a639c6fe8dffbac9a0b61229b1c4112561d967c6f7fb7f54aa08f4385f6a13f8",
+   "bytes": 14237
+  },
+  {
+   "path": "networkx/readwrite/gexf.py",
+   "sha256": "c2ae744f0cf6a3d5eea1e47a6b035871fb590cff8c452ced9ecba498a884ddc4",
+   "bytes": 39693
+  },
+  {
+   "path": "networkx/readwrite/gml.py",
+   "sha256": "e5359a106690bf7ddff05e62e48722429f186cad0c28dc5bd44e4641c282d363",
+   "bytes": 31150
+  },
+  {
+   "path": "networkx/readwrite/graph6.py",
+   "sha256": "ab50a66abcd9fe35bf035e5f5376322859793a1b4dfaa594ad571f734653bfac",
+   "bytes": 11401
+  },
+  {
+   "path": "networkx/readwrite/graphml.py",
+   "sha256": "d7628a2972c3c8c2227fe281e1959dbcca609ee46a436104ab063d4d7de3923f",
+   "bytes": 39318
+  },
+  {
+   "path": "networkx/readwrite/json_graph/__init__.py",
+   "sha256": "dfb5c93cc9a295cc30a3c2aaa2e2d6525cbb62fe6d67b20aada3076c1471ddf2",
+   "bytes": 677
+  },
+  {
+   "path": "networkx/readwrite/json_graph/adjacency.py",
+   "sha256": "58ce9f767715f3b5832cf39f17e21b3a538e04c5f4bad523274f54b31b70440a",
+   "bytes": 4716
+  },
+  {
+   "path": "networkx/readwrite/json_graph/cytoscape.py",
+   "sha256": "917ebfa76e05e029c3753d03e6562b0f4fa3ca9c8c766aa7190117291d7f907e",
+   "bytes": 5338
+  },
+  {
+   "path": "networkx/readwrite/json_graph/node_link.py",
+   "sha256": "414adedad8f68fa3d7770cfa277131c72a0bb1f5fe56ce650f08dc6108d20dc3",
+   "bytes": 10792
+  },
+  {
+   "path": "networkx/readwrite/json_graph/tree.py",
+   "sha256": "2b8ac5e0a76ce20d0986070f4ebad1fc8dcfb30a737bcc82547e0cf9617d9e7d",
+   "bytes": 3851
+  },
+  {
+   "path": "networkx/readwrite/leda.py",
+   "sha256": "563a7251878058f0f84d04b2bdc0be7ed7137a0e8fa30f73249a8dba2199d335",
+   "bytes": 2797
+  },
+  {
+   "path": "networkx/readwrite/multiline_adjlist.py",
+   "sha256": "ff7481dbbd7d71e05d26360f93201950fb8279b7075ff67093a9900ece0e7134",
+   "bytes": 11301
+  },
+  {
+   "path": "networkx/readwrite/p2g.py",
+   "sha256": "d0c8bccaf5741f2e81a3871b08a623369d3fd002d898d34250c7abe30d5b92b6",
+   "bytes": 3092
+  },
+  {
+   "path": "networkx/readwrite/pajek.py",
+   "sha256": "f63dec4632f33d0c6a405744a1308ec080a97407fb1b7f5c765b34e1d844ae7b",
+   "bytes": 8738
+  },
+  {
+   "path": "networkx/readwrite/sparse6.py",
+   "sha256": "3058a1e0f08d252638505b89c41371623053f7fd7552921b3d0af2492884f5b8",
+   "bytes": 10315
+  },
+  {
+   "path": "networkx/readwrite/text.py",
+   "sha256": "f6ee3777f9b6c5ca092a5e6b290fb737490876bde6e31cd7da2d72d39c430db3",
+   "bytes": 29163
+  },
+  {
+   "path": "networkx/relabel.py",
+   "sha256": "d07a6d0103814e82a12d9cf1b1c77a150a7354234c9589a21e31ee97af5cb7ca",
+   "bytes": 10300
+  },
+  {
+   "path": "networkx/utils/__init__.py",
+   "sha256": "ee9c65791369056b8bdc5110cf70b328b9f5edbebf792c2433b76a9cbd689039",
+   "bytes": 302
+  },
+  {
+   "path": "networkx/utils/backends.py",
+   "sha256": "a578a8296977dd024470bf7f143b9f936c6fd76ffc6e98189e2258a2e244ab83",
+   "bytes": 113169
+  },
+  {
+   "path": "networkx/utils/configs.py",
+   "sha256": "bf7a7d7973cf96509c32a5f7dd585541455e5ce9bb7809fdc5d0120c4a8c98ff",
+   "bytes": 15023
+  },
+  {
+   "path": "networkx/utils/decorators.py",
+   "sha256": "6a3d3b9d5cfb096d53698301a52887751bb0fd4dffa345dd1a84722ccac97978",
+   "bytes": 44836
+  },
+  {
+   "path": "networkx/utils/heaps.py",
+   "sha256": "1d466e1131df10b12a89774c04f983f5f0362a2002561a7a8846a172b8c5c583",
+   "bytes": 10391
+  },
+  {
+   "path": "networkx/utils/mapped_queue.py",
+   "sha256": "59d211936ec3fc0ae63ecf6d769bd02d0095e139aeb36d76050871b0520c6209",
+   "bytes": 10184
+  },
+  {
+   "path": "networkx/utils/misc.py",
+   "sha256": "04dfd5b1c663a22b21c606e3c319b53d51bf27f8c7aa9b8c77d6df7f02ba4393",
+   "bytes": 21293
+  },
+  {
+   "path": "networkx/utils/random_sequence.py",
+   "sha256": "2b32a1d0144cae2d0c059973c4734c977a914f2d839c17b15b7783ce6c4a69be",
+   "bytes": 4237
+  },
+  {
+   "path": "networkx/utils/rcm.py",
+   "sha256": "f6da5748afb0c0b5c572adf2a578a560d01a2402ab98c88cc29e11efc38bbee2",
+   "bytes": 4624
+  },
+  {
+   "path": "networkx/utils/union_find.py",
+   "sha256": "3712a5065c92ef50355a59eddbc2fec3266823d13166f26d87fd1ed97495ae2b",
+   "bytes": 3338
+  }
+ ]
+}

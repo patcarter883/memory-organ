@@ -226,3 +226,17 @@ Under `--out` (default for the full run: `scratchpad/nm/m1b/`):
 
 The runner aborts a stage cleanly if the child's RSS exceeds 11 GB, and dependants then select among the remaining
 candidates.
+
+## 10. Which run is canonical (amendment 2026-11-10, written before any arm result was read)
+
+The full run started in the dev container on 2026-11-10 08:46 UTC. A self-hosted CPU runner was added the same day
+(`runner/README.md`), with every input pinned by content (`runner/inputs/inputs.lock.json`) and verified before a
+run starts. Code changes made for the runner leave the dev container's paths and texts unchanged.
+
+- If the dev-container run completes, it is the M1b result. A runner run of the same grid, if any, is reported
+  only as a reproducibility check and never replaces or is pooled with it.
+- If the dev container is reclaimed before the run completes, the M1b result is a fresh runner run of the same
+  `grid.json` (same sha256) from stage B0. Stages finished in the container are not combined with runner stages,
+  because training is not bit-identical across machines.
+- Any further CPU experiments (the λ̃₁ sweep, an L2 fix) get their own pre-registration and are compared only with
+  arms trained on the same machine.

@@ -15,7 +15,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-QWEN25 = "/root/.cache/huggingface/hub/models--Qwen--Qwen2.5-0.5B/snapshots/060db6499f32faf8b98477b0a26969ef7d8b9987"
+from ngram_memory import paths as _paths  # noqa: E402
+QWEN25 = str(_paths.qwen25())
 
 
 def main() -> None:
@@ -39,7 +40,7 @@ def main() -> None:
     if a.ref_vocab_cache and Path(a.ref_vocab_cache).exists():
         ref = tc.reference_vocab([], a.ref_vocab_cache)
     else:
-        ref = tc.reference_vocab(tc.default_reference_dirs(), a.ref_vocab_cache or out / "ref_vocab.json")
+        ref = tc.default_reference_vocab(a.ref_vocab_cache or out / "ref_vocab.json")
     items = qa.generate_items(texts, split_of=split_of, commit=sp.commit, ref_vocab=ref, project=a.project,
                               env_prefix=a.env_prefix)
     qa.write_jsonl(items, out / "qa_items.jsonl")

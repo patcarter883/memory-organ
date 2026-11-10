@@ -58,18 +58,19 @@ def paired_mc(base: Sequence[dict], arm: Sequence[dict]) -> dict:
 def load_items(task: str, n: int = 1000, seed: int = 0) -> list[dict]:
     """MMLU (cais/mmlu all/test), ARC-Challenge (allenai/ai2_arc test), HellaSwag (Rowan/hellaswag validation)."""
     from datasets import load_dataset
+    from ...paths import dataset_rev
     rng = np.random.default_rng(seed)
     if task == "arc_challenge":
-        ds = load_dataset("allenai/ai2_arc", "ARC-Challenge", split="test")
+        ds = load_dataset("allenai/ai2_arc", "ARC-Challenge", split="test", revision=dataset_rev("allenai/ai2_arc"))
         rows = [dict(id=r["id"], task=task, context=f"Question: {r['question']}\nAnswer:",
                      choices=[" " + c for c in r["choices"]["text"]], label=r["choices"]["label"].index(r["answerKey"]))
                 for r in ds if r["answerKey"] in r["choices"]["label"]]
     elif task == "mmlu":
-        ds = load_dataset("cais/mmlu", "all", split="test")
+        ds = load_dataset("cais/mmlu", "all", split="test", revision=dataset_rev("cais/mmlu"))
         rows = [dict(id=f"mmlu{i}", task=task, context=f"Question: {r['question']}\nAnswer:",
                      choices=[" " + c for c in r["choices"]], label=int(r["answer"])) for i, r in enumerate(ds)]
     elif task == "hellaswag":
-        ds = load_dataset("Rowan/hellaswag", split="validation")
+        ds = load_dataset("Rowan/hellaswag", split="validation", revision=dataset_rev("Rowan/hellaswag"))
         rows = [dict(id=r["ind"], task=task, context=r["ctx"], choices=[" " + e for e in r["endings"]],
                      label=int(r["label"])) for r in ds]
     else:

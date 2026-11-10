@@ -30,9 +30,9 @@ ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 PY = sys.executable
-QWEN25 = "/root/.cache/huggingface/hub/models--Qwen--Qwen2.5-0.5B/snapshots/060db6499f32faf8b98477b0a26969ef7d8b9987"
-FOREIGN = ("/tmp/claude-0/-home-user-memory-organ/8d3a7b83-cc3c-5a8e-b480-88fd8f40a919/scratchpad/nm/m0/eval/foreign/"
-           "networkx-3.4.2")
+from ngram_memory import paths as _paths  # noqa: E402
+QWEN25 = str(_paths.qwen25())          # HF cache at the pinned revision
+FOREIGN = str(_paths.foreign_dir())     # NM_FOREIGN_DIR
 T0 = time.time()
 
 

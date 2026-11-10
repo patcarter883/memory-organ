@@ -28,14 +28,14 @@ sys.path.insert(0, str(ROOT))
 from ngram_memory.ingest import corpus as C  # noqa: E402
 from ngram_memory.ingest import rowpolicy as RP  # noqa: E402
 
-QWEN25 = Path("/root/.cache/huggingface/hub/models--Qwen--Qwen2.5-0.5B/snapshots/060db6499f32faf8b98477b0a26969ef7d8b9987")
-STDLIB = Path("/usr/lib/python3.13")
+from ngram_memory import paths as _paths  # noqa: E402
+QWEN25 = _paths.qwen25()
+STDLIB = _paths.stdlib_anchor_dir()     # NM_STDLIB (a frozen bundle carries order.json)
 # the stdlib files the §I.8 proxy used for its R2 evaluation: never used as anchors
 STDLIB_EVAL = {"argparse.py", "dataclasses.py", "functools.py", "typing.py", "json/decoder.py", "json/encoder.py",
                "asyncio/tasks.py", "asyncio/queues.py", "collections/__init__.py", "logging/__init__.py",
                "subprocess.py", "threading.py", "inspect.py", "enum.py", "contextlib.py", "shutil.py"}
-WIKI = Path("/root/.cache/huggingface/hub/datasets--Salesforce--wikitext/snapshots/"
-            "b08601e04326c79dfdd32d625aee71d232d685c3/wikitext-2-raw-v1/train-00000-of-00001.parquet")
+WIKI = _paths.wikitext_dir() / "train-00000-of-00001.parquet"
 T0 = time.time()
 
 
@@ -93,11 +93,29 @@ def cmd_splits(a) -> int:
 
 
 # --------------------------------------------------------------------------------------------- anchors
-def stdlib_texts(cap_tokens: int, seed: int, tok: C.TokenizerJSON) -> list[np.ndarray]:
+def stdlib_anchor_files(seed: int, root: Path | None = None, cap_tokens: int | None = None) -> list[Path]:
+    """The D_near anchor files in reading order. A frozen bundle (NM_STDLIB made by `runner_inputs.py freeze`)
+    carries order.json, the list the dev container's rglob + seeded shuffle produced, so another machine reads
+    the same texts in the same order; otherwise the tree is scanned as before."""
+    root = Path(root) if root is not None else STDLIB
+    order = root / "order.json"
+    if order.exists():
+        import json
+        spec = json.loads(order.read_text())
+        if int(spec["seed"]) != int(seed):
+            raise ValueError(f"{order} was frozen for seed {spec['seed']}, asked for seed {seed}")
+        if cap_tokens is not None and int(cap_tokens) > int(spec["cap_tokens"]):
+            raise ValueError(f"{order} holds {spec['cap_tokens']} anchor tokens, asked for {cap_tokens}")
+        return [root / f for f in spec["files"]]
     ex = ("test", "tests", "idlelib", "tkinter", "lib2to3", "site-packages", "__pycache__")
-    fs = sorted(p for p in STDLIB.rglob("*.py") if not any(x in p.parts for x in ex)
-                and str(p.relative_to(STDLIB)) not in STDLIB_EVAL)
+    fs = sorted(p for p in root.rglob("*.py") if not any(x in p.parts for x in ex)
+                and str(p.relative_to(root)) not in STDLIB_EVAL)
     random.Random(seed).shuffle(fs)
+    return fs
+
+
+def stdlib_texts(cap_tokens: int, seed: int, tok: C.TokenizerJSON) -> list[np.ndarray]:
+    fs = stdlib_anchor_files(seed, cap_tokens=cap_tokens)
     out, n = [], 0
     for p in fs:
         try:

@@ -1,0 +1,22 @@
+{
+ "source": "/usr/local/lib/python3.13",
+ "python": "3.13.18",
+ "files": [
+  "argparse.py",
+  "dataclasses.py",
+  "functools.py",
+  "typing.py",
+  "json/decoder.py",
+  "json/encoder.py",
+  "asyncio/tasks.py",
+  "asyncio/queues.py",
+  "collections/__init__.py",
+  "logging/__init__.py",
+  "subprocess.py",
+  "threading.py",
+  "inspect.py",
+  "enum.py",
+  "contextlib.py",
+  "shutil.py"
+ ]
+}
