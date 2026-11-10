@@ -240,3 +240,14 @@ run starts. Code changes made for the runner leave the dev container's paths and
   because training is not bit-identical across machines.
 - Any further CPU experiments (the λ̃₁ sweep, an L2 fix) get their own pre-registration and are compared only with
   arms trained on the same machine.
+
+## 11. Running stages side by side (amendment 2026-11-10, before any arm result was read)
+
+On the self-hosted runner (32 cores, 42 GB), `run.py --parallel N` runs up to N stages at once, each as soon as
+every stage listed in its `after` has finished, exactly the dependency order in `grid.json`. It changes when a
+stage runs, not what it computes: the grid, budgets, selection rules and data discipline are unchanged, every
+selection still reads only the dev results of its listed candidates, and the Split-A test stage still starts only
+after the operating point is fixed. The free threads are split among stages started together and each stage's
+thread count is fixed at its start and recorded in `progress.json` and its `result.json` (`threads`). Thread
+count changes floating-point summation order only. The anchor KL targets are computed once and shared through a
+file lock, so concurrent arms train against the same targets.

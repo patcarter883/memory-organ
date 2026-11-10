@@ -2,8 +2,11 @@
 """M1b runner (pre-registered in experiments/m1b/PREREG.md, grid in experiments/m1b/grid.json).
 
     python experiments/m1b/run.py --out DIR [--smoke] [--threads 4] [--rss-limit-gb 11] [--stop-after STAGE]
+                                  [--parallel N [--max-stage-threads T] [--launch-min-free-gb G]]
 
-Stages run sequentially in the pre-registered dependency order (grid.json "stages"). Every stage writes
+Stages run in the pre-registered dependency order (grid.json "stages"): one at a time by default, or with
+--parallel N up to N stages whose dependencies are all met run side by side, sharing --threads between them
+(each stage's thread count is fixed when it starts and recorded; PREREG §11). Every stage writes
 DIR/<stage>/result.json when it finishes; a stage whose result.json exists is skipped (resumable). Training
 stages checkpoint every `ckpt_every` steps and resume from DIR/<arm>/checkpoint.pt. Each stage runs in a child
 process whose resident set is polled; above --rss-limit-gb the child is killed and the stage is recorded as
@@ -18,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import threading
 import json
 import os
 import signal
@@ -235,12 +239,15 @@ def worker_train(a) -> int:
             h.update(w.ids.tobytes()); h.update(w.labels.tobytes())
         cp = cache / f"kl_{name}_{h.hexdigest()[:16]}.safetensors"
         t = time.time()
-        if cp.exists():
-            tg = KL.KLTargets.load(cp)
-        else:
-            tg = KL.compute_kl_targets(host, aw, k=B["topk"], meta=dict(set=name))
-            tg.save(str(cp) + ".part")
-            os.replace(str(cp) + ".part", cp)
+        import fcntl
+        with open(str(cp) + ".lock", "w") as lk:     # concurrent arms (--parallel): one computes, the rest load it
+            fcntl.flock(lk, fcntl.LOCK_EX)
+            if cp.exists():
+                tg = KL.KLTargets.load(cp)
+            else:
+                tg = KL.compute_kl_targets(host, aw, k=B["topk"], meta=dict(set=name))
+                tg.save(str(cp) + f".part{os.getpid()}")
+                os.replace(str(cp) + f".part{os.getpid()}", cp)
         anchors[name] = (aw, tg)
         log(f"KL targets {name}: {len(tg)} windows, {time.time() - t:.1f}s")
 
@@ -350,6 +357,8 @@ class Runner:
         self.out.mkdir(parents=True, exist_ok=True)
         self.grid = load_grid(a.smoke)
         self.ppath = self.out / "progress.json"
+        self._lock = threading.RLock()                 # progress.json is shared by concurrent stages
+        self._tl = threading.local()                   # per-stage thread count (set by the stage's runner thread)
         self.progress = jload(self.ppath) if self.ppath.exists() else dict(created=time.strftime("%Y-%m-%d %H:%M:%S"),
                                                                             smoke=a.smoke, stages={})
         if self.progress.get("smoke") != a.smoke:
@@ -360,13 +369,19 @@ class Runner:
         self.save()
 
     def save(self) -> None:
-        self.progress["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
-        self.progress["elapsed_s_this_invocation"] = time.time() - T0
-        jdump(self.ppath, self.progress)
+        with self._lock:
+            self.progress["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
+            self.progress["elapsed_s_this_invocation"] = time.time() - T0
+            jdump(self.ppath, self.progress)
 
     def mark(self, stage: str, **kw) -> None:
-        self.progress["stages"].setdefault(stage, {}).update(kw)
-        self.save()
+        with self._lock:
+            self.progress["stages"].setdefault(stage, {}).update(kw)
+            self.save()
+
+    def threads(self) -> int:
+        """Threads for the stage running on the calling thread (--threads when stages run one at a time)."""
+        return getattr(self._tl, "threads", self.a.threads)
 
     def done(self, stage: str) -> bool:
         return (self.out / stage / "result.json").exists()
@@ -387,7 +402,7 @@ class Runner:
         d = self.out / stage / "eval"
         E = self.grid["eval_flags"]
         cmd = [PY, str(ROOT / "scripts/evaluate.py"), "--splits", str(self.splits_json()), "--host", QWEN25,
-               "--out", str(d), "--sets", sets, "--conditions", conditions, "--threads", str(self.a.threads),
+               "--out", str(d), "--sets", sets, "--conditions", conditions, "--threads", str(self.threads()),
                "--context", str(E["context"]), "--stride", str(E["stride"]), "--min-context", str(E["min_context"]),
                "--retention-tokens", str(E["retention_tokens"]), "--tune-files", str(E["tune_files"]),
                "--ref-vocab-cache", str(self.out / "_cache" / "ref_vocab.json")]
@@ -406,7 +421,7 @@ class Runner:
             jdump(fm, fmt_map)
             cmd += ["--fmt-map", str(fm)]
         cmd += extra or []
-        r = run_guarded(cmd, self.out / stage / "eval.log", self.a.rss_limit_gb * 1024, self.a.threads)
+        r = run_guarded(cmd, self.out / stage / "eval.log", self.a.rss_limit_gb * 1024, self.threads())
         if r["aborted"] or r["returncode"] != 0:
             raise StageFailed(stage, r)
         s = jload(d / "summary.json")
@@ -429,8 +444,8 @@ class Runner:
         if not (d / "train.json").exists():
             self.mark(name, status="training", config=arm)
             cmd = [PY, str(Path(__file__).resolve()), "--worker", "train", "--stage", name, "--out", str(self.out),
-                   "--threads", str(self.a.threads)] + (["--smoke"] if self.a.smoke else [])
-            r = run_guarded(cmd, d / "train.log", self.a.rss_limit_gb * 1024, self.a.threads)
+                   "--threads", str(self.threads())] + (["--smoke"] if self.a.smoke else [])
+            r = run_guarded(cmd, d / "train.log", self.a.rss_limit_gb * 1024, self.threads())
             if r["aborted"] or r["returncode"] != 0:
                 raise StageFailed(name, r)
         tr = jload(d / "train.json")
@@ -535,8 +550,8 @@ class Runner:
         if not (d / "train.json").exists():
             self.mark(name, status="training", config=arm)
             cmd = [PY, str(Path(__file__).resolve()), "--worker", "train", "--stage", name, "--out", str(self.out),
-                   "--threads", str(self.a.threads)] + (["--smoke"] if self.a.smoke else [])
-            r = run_guarded(cmd, d / "train.log", self.a.rss_limit_gb * 1024, self.a.threads)
+                   "--threads", str(self.threads())] + (["--smoke"] if self.a.smoke else [])
+            r = run_guarded(cmd, d / "train.log", self.a.rss_limit_gb * 1024, self.threads())
             if r["aborted"] or r["returncode"] != 0:
                 raise StageFailed(name, r)
         tr = jload(d / "train.json")
@@ -550,8 +565,8 @@ class Runner:
         d.mkdir(parents=True, exist_ok=True)
         if not (d / "pruned.json").exists():
             cmd = [PY, str(Path(__file__).resolve()), "--worker", "frontier", "--stage", name, "--out", str(self.out),
-                   "--threads", str(self.a.threads)] + (["--smoke"] if self.a.smoke else [])
-            r = run_guarded(cmd, d / "frontier.log", self.a.rss_limit_gb * 1024, self.a.threads)
+                   "--threads", str(self.threads())] + (["--smoke"] if self.a.smoke else [])
+            r = run_guarded(cmd, d / "frontier.log", self.a.rss_limit_gb * 1024, self.threads())
             if r["aborted"] or r["returncode"] != 0:
                 raise StageFailed(name, r)
         ks = st["top_k"]
@@ -655,47 +670,122 @@ class Runner:
         return dict(operating_point=op["selected"], r3=ev["summary"]["sets"].get("r3"))
 
     # ---------------------------------------------------------------------------------- main loop
+    def kinds(self) -> dict:
+        return dict(base=self.stage_base, train_eval=self.stage_train_eval, lora=self.stage_lora,
+                    select=self.stage_select, test=self.stage_test, splitb=self.stage_splitb, r3=self.stage_r3,
+                    frontier=self.stage_frontier, report=self.stage_report)
+
+    def waiting_for(self, st: dict) -> list[str]:
+        return [x for x in st.get("after", []) if not self.done(x)
+                and not self.progress["stages"].get(x, {}).get("aborted")]
+
+    def run_stage(self, st: dict, threads: int | None = None) -> str:
+        """Run one stage on the calling thread. Returns 'done', 'aborted' (RSS guard; dependants go on without
+        it), 'failed' (StageFailed, not aborted) or 'error' (a code error)."""
+        name = st["name"]
+        if threads is not None:
+            self._tl.threads = threads
+        log("start", name, st["kind"], f"threads {self.threads()}")
+        self.mark(name, status="running", started=time.strftime("%Y-%m-%d %H:%M:%S"), threads=self.threads())
+        t = time.time()
+        try:
+            res = self.kinds()[st["kind"]](st)
+        except Exception as e:  # noqa: BLE001  (a code error in a stage: record it and stop)
+            if not isinstance(e, StageFailed):
+                import traceback
+                log("ERROR", name, repr(e))
+                self.mark(name, status="failed", error=traceback.format_exc()[-4000:])
+                return "error"
+            log("FAILED", name, e.info)
+            self.mark(name, status="aborted" if e.info.get("aborted") else "failed", aborted=bool(e.info.get("aborted")),
+                      error=e.info)
+            return "aborted" if e.info.get("aborted") else "failed"
+        res["stage_wall_s"] = time.time() - t
+        res["threads"] = self.threads()
+        jdump(self.out / name / "result.json", res)
+        self.mark(name, status="done", wall_s=res["stage_wall_s"], finished=time.strftime("%Y-%m-%d %H:%M:%S"))
+        log("done", name, f"{res['stage_wall_s']:.0f}s")
+        return "done"
+
     def run(self) -> int:
-        kinds = dict(base=self.stage_base, train_eval=self.stage_train_eval, lora=self.stage_lora,
-                     select=self.stage_select, test=self.stage_test, splitb=self.stage_splitb, r3=self.stage_r3,
-                     frontier=self.stage_frontier, report=self.stage_report)
+        rc = self.run_serial() if self.a.parallel <= 1 else self.run_parallel()
+        with self._lock:
+            self.progress["finished"] = all(self.done(s["name"]) for s in self.grid["stages"])
+            self.save()
+        return rc
+
+    def run_serial(self) -> int:
         for st in self.grid["stages"]:
             name = st["name"]
             if self.done(name):
                 log("skip (done)", name)
                 continue
-            need = [x for x in st.get("after", []) if not self.done(x) and not self.progress["stages"].get(x, {}).get("aborted")]
+            need = self.waiting_for(st)
             if need:
                 log("blocked", name, "waiting for", need)
                 self.mark(name, status="blocked", waiting_for=need)
                 continue
-            log("start", name, st["kind"])
-            self.mark(name, status="running", started=time.strftime("%Y-%m-%d %H:%M:%S"))
-            t = time.time()
-            try:
-                res = kinds[st["kind"]](st)
-            except Exception as e:  # noqa: BLE001  (a code error in a stage: record it and stop)
-                if not isinstance(e, StageFailed):
-                    import traceback
-                    log("ERROR", name, repr(e))
-                    self.mark(name, status="failed", error=traceback.format_exc()[-4000:])
-                    return 1
-                log("FAILED", name, e.info)
-                self.mark(name, status="aborted" if e.info.get("aborted") else "failed", aborted=bool(e.info.get("aborted")),
-                          error=e.info)
-                if not e.info.get("aborted") and not self.a.keep_going:
-                    return 1
-                continue
-            res["stage_wall_s"] = time.time() - t
-            jdump(self.out / name / "result.json", res)
-            self.mark(name, status="done", wall_s=res["stage_wall_s"], finished=time.strftime("%Y-%m-%d %H:%M:%S"))
-            log("done", name, f"{res['stage_wall_s']:.0f}s")
-            if self.a.stop_after and name == self.a.stop_after:
+            r = self.run_stage(st)
+            if r == "error" or (r == "failed" and not self.a.keep_going):
+                return 1
+            if r == "done" and self.a.stop_after and name == self.a.stop_after:
                 log("stop-after reached")
                 return 0
-        self.progress["finished"] = all(self.done(s["name"]) for s in self.grid["stages"])
-        self.save()
         return 0
+
+    def run_parallel(self) -> int:
+        """Up to --parallel stages at once, each started as soon as every stage it depends on has finished (or
+        was RSS-aborted). The free threads are split evenly among the stages started together, capped at
+        --max-stage-threads. A new stage starts only while MemAvailable >= --launch-min-free-gb. After a failure
+        (or once --stop-after's stage is done) no new stage starts; running ones finish."""
+        from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+        order = self.grid["stages"]
+        for st in order:
+            if self.done(st["name"]):
+                log("skip (done)", st["name"])
+        pending = [st for st in order if not self.done(st["name"])]
+        running: dict = {}                              # future -> (stage name, threads)
+        rc, stop = 0, False
+        cap = self.a.max_stage_threads or self.a.threads
+        with ThreadPoolExecutor(max_workers=self.a.parallel) as ex:
+            while True:
+                if not stop:
+                    ready = [st for st in pending if not self.waiting_for(st)]
+                    slots = min(self.a.parallel - len(running), len(ready))
+                    free = self.a.threads - sum(t for _, t in running.values())
+                    for i, st in enumerate(ready[:slots]):
+                        if free < 1 or (running and mem_available_gb() < self.a.launch_min_free_gb):
+                            break
+                        t = max(1, min(cap, free // (slots - i)))
+                        free -= t
+                        pending.remove(st)
+                        running[ex.submit(self.run_stage, st, t)] = (st["name"], t)
+                if not running:
+                    break
+                fin, _ = wait(list(running), timeout=30, return_when=FIRST_COMPLETED)
+                for f in fin:
+                    name, _t = running.pop(f)
+                    r = f.result()
+                    if r == "error" or (r == "failed" and not self.a.keep_going):
+                        rc, stop = 1, True
+                    if r == "done" and self.a.stop_after and name == self.a.stop_after:
+                        log("stop-after reached; letting running stages finish")
+                        stop = True
+        for st in pending:
+            need = self.waiting_for(st)
+            if need:
+                self.mark(st["name"], status="blocked", waiting_for=need)
+        return rc
+
+
+def mem_available_gb() -> float:
+    try:
+        for ln in open("/proc/meminfo"):
+            if ln.startswith("MemAvailable:"):
+                return int(ln.split()[1]) / 2**20
+    except OSError:
+        pass
+    return float("inf")
 
 
 class StageFailed(Exception):
@@ -736,6 +826,10 @@ def main() -> int:
     ap.add_argument("--rss-limit-gb", type=float, default=11.0)
     ap.add_argument("--stop-after", default=None)
     ap.add_argument("--keep-going", action="store_true", help="continue after a failed (not RSS-aborted) stage")
+    ap.add_argument("--parallel", type=int, default=1, help="stages run side by side when their dependencies allow")
+    ap.add_argument("--max-stage-threads", type=int, default=0, help="--parallel: thread cap per stage (0: --threads)")
+    ap.add_argument("--launch-min-free-gb", type=float, default=8.0,
+                    help="--parallel: start another stage only while MemAvailable is at least this")
     ap.add_argument("--worker", default=None)
     ap.add_argument("--stage", default=None)
     ap.add_argument("--max-steps", type=int, default=0, help="worker: cap the steps (timing probes only)")
