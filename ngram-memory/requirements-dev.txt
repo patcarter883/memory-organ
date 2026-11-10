@@ -1,0 +1,8 @@
+# Development / test requirements for ngram_memory (CPU is enough for the M0 suite).
+# torch and transformers are the training-side dependencies; the hashing/spec modules are numpy-only.
+numpy>=1.26
+torch>=2.4
+transformers==5.22.2
+safetensors>=0.4
+pytest>=8
+pytest-xdist>=3
