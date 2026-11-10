@@ -740,17 +740,34 @@ class Runner:
         (or once --stop-after's stage is done) no new stage starts; running ones finish."""
         from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
         order = self.grid["stages"]
+        settled = set()                                 # done before this invocation, or finished/aborted in it
         for st in order:
             if self.done(st["name"]):
                 log("skip (done)", st["name"])
-        pending = [st for st in order if not self.done(st["name"])]
+                settled.add(st["name"])
+        pending = [st for st in order if st["name"] not in settled]
         running: dict = {}                              # future -> (stage name, threads)
         rc, stop = 0, False
         cap = self.a.max_stage_threads or self.a.threads
+
+        def reap(futs) -> None:
+            nonlocal rc, stop
+            for f in futs:
+                name, _t = running.pop(f)
+                r = f.result()
+                if r in ("done", "aborted"):
+                    settled.add(name)
+                if r == "error" or (r == "failed" and not self.a.keep_going):
+                    rc, stop = 1, True
+                if r == "done" and self.a.stop_after and name == self.a.stop_after:
+                    log("stop-after reached; letting running stages finish")
+                    stop = True
+
         with ThreadPoolExecutor(max_workers=self.a.parallel) as ex:
             while True:
+                reap([f for f in list(running) if f.done()])   # collect every finished stage before deciding
                 if not stop:
-                    ready = [st for st in pending if not self.waiting_for(st)]
+                    ready = [st for st in pending if set(st.get("after", [])) <= settled]
                     slots = min(self.a.parallel - len(running), len(ready))
                     free = self.a.threads - sum(t for _, t in running.values())
                     for i, st in enumerate(ready[:slots]):
@@ -762,15 +779,7 @@ class Runner:
                         running[ex.submit(self.run_stage, st, t)] = (st["name"], t)
                 if not running:
                     break
-                fin, _ = wait(list(running), timeout=30, return_when=FIRST_COMPLETED)
-                for f in fin:
-                    name, _t = running.pop(f)
-                    r = f.result()
-                    if r == "error" or (r == "failed" and not self.a.keep_going):
-                        rc, stop = 1, True
-                    if r == "done" and self.a.stop_after and name == self.a.stop_after:
-                        log("stop-after reached; letting running stages finish")
-                        stop = True
+                wait(list(running), timeout=30, return_when=FIRST_COMPLETED)
         for st in pending:
             need = self.waiting_for(st)
             if need:
