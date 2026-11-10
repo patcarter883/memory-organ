@@ -1,0 +1,296 @@
+{
+ "split_file": {
+  "n_train": 219,
+  "n_held": 31,
+  "held_bytes": 338031,
+  "verbatim_line_dup_frac_median": 0.09090909090909091,
+  "files_dup_gt_0p5": [
+   "python/minisgl/mamba2/__init__.py",
+   "python/minisgl/models/llama.py"
+  ],
+  "dup_frac_by_file": {
+   "minisgl/cam/__init__.py": 0.1,
+   "minisgl/cam/graph_capture.py": 0.091,
+   "minisgl/engine/pm4_replay.py": 0.059,
+   "minisgl/gdn/hf_patch.py": 0.087,
+   "minisgl/kvcache/__init__.py": 0.087,
+   "minisgl/kvcache/fp8_scales.py": 0.076,
+   "minisgl/kvcache/mla_pool.py": 0.202,
+   "minisgl/layers/activation.py": 0.143,
+   "minisgl/layers/attention.py": 0.109,
+   "minisgl/layers/base.py": 0.158,
+   "minisgl/mamba2/__init__.py": 0.778,
+   "minisgl/models/base.py": 0.086,
+   "minisgl/models/dflash_cca.py": 0.209,
+   "minisgl/models/llama.py": 0.818,
+   "minisgl/moe/fused.py": 0.103,
+   "minisgl/ple/runtime.py": 0.041,
+   "minisgl/ple/source.py": 0.088,
+   "minisgl/quant/method.py": 0.064,
+   "minisgl/rsa/inproc.py": 0.357,
+   "minisgl/scheduler/cache.py": 0.083,
+   "minisgl/scheduler/cca_slots.py": 0.357,
+   "minisgl/scheduler/ep.py": 0.237,
+   "minisgl/scheduler/gdn_slots.py": 0.097,
+   "minisgl/scheduler/table.py": 0.077,
+   "minisgl/spec/accept.py": 0.04,
+   "minisgl/spec/mtp.py": 0.346,
+   "minisgl/spec/proposer.py": 0.114,
+   "minisgl/spec/sampling.py": 0.036,
+   "minisgl/tokenizer/server.py": 0.057,
+   "minisgl/utils/mp.py": 0.015,
+   "minisgl/weights/cpu_native.py": 0.025
+  }
+ },
+ "split_time": {
+  "cut": "a4a55431aeeec6c39079dcd943dfc2d6129beb01",
+  "commits_after": 110,
+  "files_with_added_lines": 52,
+  "added_lines": 4142,
+  "new_files": [
+   "python/minisgl/diffusion/clover_block.py",
+   "python/minisgl/gdn/bd.py",
+   "python/minisgl/models/clover.py",
+   "python/minisgl/models/gemma3.py",
+   "python/minisgl/quant/mlx.py",
+   "python/minisgl/spec/clover_accept.py"
+  ]
+ },
+ "defs": {
+  "defined_names": 2921,
+  "defined_not_in_reference": 2358,
+  "toplevel_names": 2142
+ },
+ "heldout_token_classes": {
+  "string": 0.3226,
+  "comment": 0.2165,
+  "id_general": 0.1364,
+  "ws": 0.1112,
+  "id_proj": 0.0888,
+  "op": 0.0753,
+  "keyword": 0.0314,
+  "id_builtin": 0.0105,
+  "number": 0.0073
+ },
+ "heldout_identifier_occurrences": {
+  "keyword": 2716,
+  "keyword_first": 458,
+  "id_general": 8928,
+  "id_general_first": 1718,
+  "id_proj": 2323,
+  "id_proj_first": 810,
+  "xfile": 1508,
+  "xfile_first": 426,
+  "keyword_repeat": 2258,
+  "id_general_repeat": 7210,
+  "xfile_repeat": 1082,
+  "id_builtin": 878,
+  "id_builtin_first": 251,
+  "id_proj_repeat": 1513,
+  "id_builtin_repeat": 627
+ },
+ "heldout_tokens": 86374,
+ "base_nll_per_token": {
+  "all": {
+   "nll": 2.661,
+   "n": 25573
+  },
+  "comment": {
+   "nll": 3.9931,
+   "n": 5699
+  },
+  "id_any": {
+   "nll": 1.5367,
+   "n": 5451
+  },
+  "id_builtin": {
+   "nll": 1.4082,
+   "n": 262
+  },
+  "id_general": {
+   "nll": 1.3015,
+   "n": 2807
+  },
+  "id_proj": {
+   "nll": 1.8281,
+   "n": 2382
+  },
+  "keyword": {
+   "nll": 0.9468,
+   "n": 780
+  },
+  "non_id": {
+   "nll": 2.9655,
+   "n": 20122
+  },
+  "number": {
+   "nll": 0.4882,
+   "n": 167
+  },
+  "op": {
+   "nll": 0.6448,
+   "n": 1536
+  },
+  "string": {
+   "nll": 3.5741,
+   "n": 9474
+  },
+  "ws": {
+   "nll": 0.5047,
+   "n": 2466
+  }
+ },
+ "base_nll_per_identifier_span": {
+  "id_builtin": {
+   "nll": 1.5,
+   "n": 246
+  },
+  "id_builtin_first": {
+   "nll": 2.368,
+   "n": 92
+  },
+  "id_builtin_repeat": {
+   "nll": 0.981,
+   "n": 154
+  },
+  "id_general": {
+   "nll": 1.787,
+   "n": 2039
+  },
+  "id_general_first": {
+   "nll": 4.104,
+   "n": 612
+  },
+  "id_general_repeat": {
+   "nll": 0.793,
+   "n": 1427
+  },
+  "id_proj": {
+   "nll": 5.853,
+   "n": 744
+  },
+  "id_proj_first": {
+   "nll": 11.353,
+   "n": 343
+  },
+  "id_proj_repeat": {
+   "nll": 1.148,
+   "n": 401
+  },
+  "keyword": {
+   "nll": 0.947,
+   "n": 780
+  },
+  "keyword_first": {
+   "nll": 1.194,
+   "n": 224
+  },
+  "keyword_repeat": {
+   "nll": 0.847,
+   "n": 556
+  },
+  "xfile_first": {
+   "nll": 8.169,
+   "n": 184
+  },
+  "xfile_repeat": {
+   "nll": 0.886,
+   "n": 263
+  }
+ },
+ "base_tf_exact_match": {
+  "id_builtin": {
+   "em": 0.6423,
+   "n": 246
+  },
+  "id_builtin_first": {
+   "em": 0.4674,
+   "n": 92
+  },
+  "id_builtin_repeat": {
+   "em": 0.7468,
+   "n": 154
+  },
+  "id_general": {
+   "em": 0.6498,
+   "n": 2039
+  },
+  "id_general_first": {
+   "em": 0.3072,
+   "n": 612
+  },
+  "id_general_repeat": {
+   "em": 0.7968,
+   "n": 1427
+  },
+  "id_proj": {
+   "em": 0.4315,
+   "n": 744
+  },
+  "id_proj_first": {
+   "em": 0.1079,
+   "n": 343
+  },
+  "id_proj_repeat": {
+   "em": 0.7082,
+   "n": 401
+  },
+  "keyword": {
+   "em": 0.7385,
+   "n": 780
+  },
+  "keyword_first": {
+   "em": 0.6339,
+   "n": 224
+  },
+  "keyword_repeat": {
+   "em": 0.7806,
+   "n": 556
+  },
+  "line": {
+   "em": 0.1251,
+   "n": 1335
+  },
+  "xfile_first": {
+   "em": 0.1793,
+   "n": 184
+  },
+  "xfile_repeat": {
+   "em": 0.7567,
+   "n": 263
+  }
+ },
+ "score_sec_per_1k_tok": 8.92,
+ "qa_seed": {
+  "counts": {
+   "defines_module": 1065,
+   "signature": 317,
+   "env_var_reader": 250
+  },
+  "env_vars_total": 273,
+  "defines_attested_import": 175,
+  "defines_heldout_file": 84
+ },
+ "qa_base": {
+  "env_var_reader": {
+   "n": 27,
+   "nl_tf_em": 0.0,
+   "nl_mc4": 0.407,
+   "answer_nll": 25.228
+  },
+  "defines_module": {
+   "n": 133,
+   "nl_tf_em": 0.0,
+   "nl_mc4": 0.323,
+   "answer_nll": 29.422,
+   "code_mc4": 0.346
+  },
+  "defines_module_attested": {
+   "n": 24,
+   "nl_tf_em": 0.0,
+   "nl_mc4": 0.417,
+   "answer_nll": 25.803,
+   "code_mc4": 0.5
+  }
+ }
+}

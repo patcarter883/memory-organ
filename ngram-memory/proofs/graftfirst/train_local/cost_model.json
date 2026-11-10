@@ -1,0 +1,70 @@
+{
+ "Qwen3.6-35B-A3B": {
+  "flop_per_tok_GFLOP": 18.3,
+  "attn_share": 0.037,
+  "TFLOP_per_Mtok": 18349,
+  "gdn_cpu_factor": 1.84,
+  "gpu_eff_TFLOPs": [
+   19,
+   68
+  ],
+  "gpu_h_per_Mtok": [
+   0.09,
+   0.41
+  ],
+  "gpu_dequant_s_per_Mtok": 12.9,
+  "bf16_stream_s_per_step": 7.2,
+  "compute_s_per_step_16k": [
+   4.4,
+   15.8
+  ],
+  "cpu_h_per_Mtok": [
+   11.1,
+   35.0
+  ],
+  "cpu_io_h_per_Mtok": 0.97,
+  "vram_GB": {
+   "weights_q4_text": 21.5,
+   "ckpt_activations": 2.68,
+   "layer_work": 0.69,
+   "dequant_bufs": 3.35,
+   "lm_head_ce_chunk": 2.03,
+   "rows": 0.067
+  },
+  "vram_total_GB": 30.3
+ },
+ "Qwen3.8-27B": {
+  "flop_per_tok_GFLOP": 155.4,
+  "attn_share": 0.01,
+  "TFLOP_per_Mtok": 155358,
+  "gdn_cpu_factor": 1.4,
+  "gpu_eff_TFLOPs": [
+   54,
+   122
+  ],
+  "gpu_h_per_Mtok": [
+   0.37,
+   0.96
+  ],
+  "gpu_dequant_s_per_Mtok": 9.4,
+  "bf16_stream_s_per_step": 5.6,
+  "compute_s_per_step_16k": [
+   20.9,
+   46.9
+  ],
+  "cpu_h_per_Mtok": [
+   61.8,
+   204.5
+  ],
+  "cpu_io_h_per_Mtok": 0.82,
+  "vram_GB": {
+   "weights_q4_text": 18.2,
+   "ckpt_activations": 10.74,
+   "layer_work": 1.58,
+   "dequant_bufs": 1.52,
+   "lm_head_ce_chunk": 2.03,
+   "rows": 0.168
+  },
+  "vram_total_GB": 34.2
+ }
+}

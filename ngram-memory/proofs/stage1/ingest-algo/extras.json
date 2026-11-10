@@ -1,0 +1,91 @@
+{
+ "hf_parity": {
+  "files": 21,
+  "positions": 11405,
+  "mismatched_positions": 0,
+  "hf_multipliers": [
+   23703573157769,
+   20109073645365,
+   8052911324071
+  ],
+  "hf_total_rows": 320001446
+ },
+ "scope_py": {
+  "tokens": 1418418,
+  "distinct_2gram": 295195,
+  "distinct_3gram": 662289,
+  "rows_per_head_2g_mean": 293046.125,
+  "rows_per_head_3g_mean": 651449.75,
+  "rows_total": 7555967,
+  "fp32_GiB": 4.50370728969574,
+  "bf16_GiB": 2.25185364484787
+ },
+ "scope_all_text": {
+  "tokens": 1440935,
+  "distinct_2gram": 300228,
+  "distinct_3gram": 672294,
+  "rows_per_head_2g_mean": 298005.0,
+  "rows_per_head_3g_mean": 661124.375,
+  "rows_total": 7673035,
+  "fp32_GiB": 4.573485255241394,
+  "bf16_GiB": 2.286742627620697,
+  "files": 261
+ },
+ "framing_cat_n_numbered": {
+  "tokens": 1933378,
+  "distinct_2gram": 295236,
+  "distinct_3gram": 672950,
+  "rows_per_head_2g_mean": 293089.25,
+  "rows_per_head_3g_mean": 661732.625,
+  "rows_total": 7638575,
+  "fp32_GiB": 4.552945494651794,
+  "bf16_GiB": 2.276472747325897,
+  "rows_shared_with_bare": 6990951,
+  "rows_new_vs_bare": 647624,
+  "rows_union_with_bare": 8203591,
+  "positions_fully_covered_by_bare_rows": 0.7722892264213206
+ },
+ "framing_chat_fenced": {
+  "tokens": 1426498,
+  "distinct_2gram": 295502,
+  "distinct_3gram": 663059,
+  "rows_per_head_2g_mean": 293349.5,
+  "rows_per_head_3g_mean": 652193.75,
+  "rows_total": 7564346,
+  "fp32_GiB": 4.50870156288147,
+  "bf16_GiB": 2.254350781440735,
+  "rows_shared_with_bare": 7554476,
+  "rows_new_vs_bare": 9870,
+  "rows_union_with_bare": 7565837,
+  "positions_fully_covered_by_bare_rows": 0.9949968384112701
+ },
+ "git_history": {
+  "first_parent_commits": 205,
+  "distinct_py_blobs": 566,
+  "tokens_all_blobs": 7405293,
+  "rows_all_blobs": 7719279,
+  "rows_live_at_head": 7555967,
+  "rows_only_in_history": 163312,
+  "fp32_GiB_all_blobs": 4.601048827171326
+ },
+ "row_load_skew": {
+  "head0": {
+   "top1000": 0.3105748799014113,
+   "top10000": 0.540233555975742,
+   "top50000": 0.7502203158730361,
+   "top100000": 0.8450132471528139,
+   "rows_for_50pct_reads": 7069,
+   "rows_for_90pct_reads": 151181,
+   "singleton_rows_frac": 0.5672202087215295
+  },
+  "head8": {
+   "top1000": 0.15160975114529004,
+   "top10000": 0.2950822677095186,
+   "top50000": 0.46358689751540094,
+   "top100000": 0.5609178676525538,
+   "rows_for_50pct_reads": 65973,
+   "rows_for_90pct_reads": 509588,
+   "singleton_rows_frac": 0.7369275853546587
+  }
+ }
+}

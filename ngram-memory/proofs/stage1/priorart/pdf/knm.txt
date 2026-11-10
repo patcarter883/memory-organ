@@ -1,0 +1,2273 @@
+Domain Adaptive Code Completion via Language
+Models and Decoupled Domain Databases
+Ze Tang1 , Jidong Ge1 ∗ , Shangqing Liu2 ∗ , Tingwei Zhu1 , Tongtong Xu3 , Liguo Huang4 , Bin Luo1
+1
+
+arXiv:2308.09313v2 [cs.SE] 20 Sep 2023
+
+National Key Laboratory for Novel Software Technology, Nanjing University, China
+2
+Nanyang Technological University, Singapore
+3
+Huawei Software Engineering Application Technology, China
+4
+Department of Computer Science, Southern Methodist University, USA
+{zetang, tingweizhu33}@smail.nju.edu.cn, {gjd, luobin}@nju.edu.cn, liu.shangqing@ntu.edu.sg,
+xutongtong9@huawei.com, lghuang@lyle.smu.edu
+
+Abstract—Large Language Models (LLMs) have demonstrated
+remarkable performance in code completion. However, due to
+the lack of domain-specific knowledge, they may not be optimal
+in completing code that requires intensive domain knowledge
+for example completing the library names. Although there are
+several works that have confirmed the effectiveness of fine-tuning
+techniques to adapt language models for code completion in
+specific domains. They are limited by the need for constant finetuning of the model when the project is in constant iteration.
+To address this limitation, in this paper, we propose kNM-LM,
+a retrieval-augmented language model (R-LM), that integrates
+domain knowledge into language models without fine-tuning.
+Different from previous techniques, our approach is able to
+automatically adapt to different language models and domains.
+Specifically, it utilizes the in-domain code to build the retrievalbased database decoupled from LM, and then combines it
+with LM through Bayesian inference to complete the code.
+The extensive experiments on the completion of intra-project
+and intra-scenario have confirmed that kNM-LM brings about
+appreciable enhancements when compared to CodeGPT and
+UnixCoder. A deep analysis of our tool including the responding
+speed, storage usage, specific type code completion, and API
+invocation completion has confirmed that kNM-LM provides
+satisfactory performance, which renders it highly appropriate for
+domain adaptive code completion. Furthermore, our approach
+operates without the requirement for direct access to the language
+model’s parameters. As a result, it can seamlessly integrate with
+black-box code completion models, making it easy to integrate
+our approach as a plugin to further enhance the performance of
+these models.
+Index Terms—domain adaptive code completion, retrievalaugment language model
+
+I. I NTRODUCTION
+Large language models (LLM) [1]–[5], have achieved stateof-art performance in code completion, and some of them have
+been successfully used as the auto-completion plugin (e.g.
+GitHub Copilot [6] and ChatGPT [7]) in modern Integrated
+Development Environment (IDE). Nevertheless, code in IDE
+has distinctive domain-specific features, such as imported
+third-party libraries and intra-project references. These features can vary significantly across domains and are continuously updated. Thus, LLMs, which are developed for
+∗ Corresponding author.
+
+completing general code, may not perform well when applied
+to new domains such as personal projects, as noted in prior
+works [8]–[10].
+A standard practice to adapt a pre-trained model to a new
+domain (i.e., domain adaptation) is model fine-tuning [11].
+By fine-tuning a language model on a new domain, the
+model’s performance on that domain can be improved without
+having to retrain the entire model from scratch. Nevertheless,
+fine-tuning can be infeasible for large language models. For
+instance, language models such as GPT-3 or GPT-4, are
+often deployed as black-box systems. The black-box limitation renders the parameters inaccessible to users, thereby
+preventing them from fine-tuning. More importantly, domainspecific features in code are subject to frequent changes.
+This is due to the continuous development of projects and the
+incessant updates of third-party libraries utilized in the code.
+Consequently, the employment of fine-tuning for domainintensive code completion may not be a feasible option.
+In recent years, a series of retrieval-augmented language
+models (R-LM) [12]–[15] have emerged to address this challenge. The key ingredient of R-LMs is their ability to utilize
+the domain database at test time without having to rely on
+the information encoded in the model’s weights only. In these
+models, the retrieval component first searches for nearest
+neighbor examples in an external datastore (e.g., code from the
+same project); then, the base model references these examples
+during the prediction. One prominent example of such a
+retrieval-based model is k-nearest neighbors language model
+(kNN-LM), which predicts a token by linearly interpolating
+the base LM’s output with a non-parametric nearest neighbor
+distribution. This distribution is constructed by searching for
+the k-nearest neighbors (kNN) in the datastore and weighing
+them according to their distance to the current test context.
+Notably, kNN-LM requires a large datastore that stores each
+token in the domain and is sensitive to the manual-selected
+interpolated weight for soft voting, making them challenging
+to apply to code completion. Developers may not have the
+resources or patience to find suitable hyper-parameters for their
+own code.
+In this paper, we introduce a plug-and-play auto-completion
+
+solution that does not need careful configuration, the k-nearest
+mistakes language model (kNM-LM). Unlike prior R-LMs,
+kNM-LM retrieves information from a separate database that
+is decoupled from the language model. This is because the
+weights in the language model already contain some content
+knowledge about the program language, such as grammar and
+built-in methods. Thus, storing this information redundantly in
+the database would be both wasteful and meaningless. To overcome this challenge, we split the domain knowledge into two
+subsets: what the language model knows and what it doesn’t.
+The latter is saved as a decoupled database, which is a subset
+of the domain database that stores only tokens that cannot
+be correctly predicted by the language model (i.e., mistakes
+collection). Decoupling offers two primary benefits. Firstly, the
+decoupled database requires less storage and search resources.
+Secondly, the decoupled database and language model are
+two distinct and non-intersecting systems. As a result, we do
+not need to manually select the interpolated weight but can
+leverage statistical approaches, such as Bayesian inference, to
+automatically combine the database and language model from
+a statistical perspective.
+Specifically, we start by creating a datastore at the token level. This datastore only contains code tokens that the
+language model fails to predict correctly. We then retrieve
+tokens from the datastore that are most like the code being
+completed and normalize them into a distribution. Next, we
+adopt the error rate of the language model on the original
+domain database as the prior probability and assess whether
+the language model can predict the code tokens prior to the
+completion position as new evidence (likelihood probability).
+The posterior probability is then calculated and utilized to
+merge the distributions obtained from the datastore and the
+language model.
+We conducted an evaluation of kNM-LM on intra-project
+and intra-scenario code completion, revealing the performance
+improvement in both CodeGPT and UnixCoder through our
+proposed approach. We further performed validation on three
+key aspects that could affect the user experience when using
+kNM-LM as a code completion plugin. These included completion speed and space utilization, the performance in completing specific code types and completing specific API calls
+from third-party libraries. Our experimental results demonstrate that kNM-LM outperforms several baseline models
+and is better suited for domain adaptive code completion
+than other R-LMs. Additionally, kNM-LM does not require
+access to the language model’s weights, making it suitable
+for situations where only black-box access to the language
+model is available. In summary, the primary contributions of
+this paper are as follows:
+•
+
+We propose kNM-LM, a retrieval-augmented language
+model (R-LM), that can be used for domain adaptive
+code completion without fine-tuning. All code, data, and
+results can be found at our anonymous repository1 .
+
+1 https://github.com/zetang94/ASE2023 kNM-LM
+
+Different from previous R-LMs, kNM-LM retrieves from
+a decoupled database and uses Bayesian inference to
+interpolate between the database and language model.
+• Experimental results on intra-project and intra-scenario
+code completion demonstrate that kNM-LM improves the
+performance of both CodeGPT and UniXcoder.
+• We also investigate potential issues that may impact user
+experience when using kNM-LM as a code completion
+plugin. Our results indicate that kNM-LM performs satisfactorily across all considered factors.
+•
+
+II. BACKGROUND
+A. k-Nearest Neighbors Language Model
+k-Nearest Neighbors Language Model (kNN-LM) [15] is
+a retrieval-augmented language model (R-LM), in which uses
+a nearest neighbor retrieval mechanism to augment the pretrained language model, without any additional fine-tuning.
+Given a sequence of tokens ct = (x1 , x2 , . . . , xt−1 ), autoregressive language models, such as GPT-3, estimate pLM (y|ct ),
+the probability distribution over the next token.
+Datastore. Let fe (·) be the encoding function that maps a
+context ct to a fixed-length vector representation computed
+by the pre-trained language model. First, kNN-LM generates
+the key-value datastore by running the encoding function
+fe (·) over a corpus D. Typically, each key kt is the vector
+representation fe (ct ) of the context ct , and each value vt is
+the next token xt for the context ct , as:
+(K, V ) = {(fe (ct ), xt )|(ct , xt ) ∈ D}
+
+(1)
+
+Inference. At test time, given the input context ct , the pretrained language model generates the probability distribution
+over the next token pLM (y|ct ) and the context representation
+fe (ct ). kNN-LM queries the datastore to retrieve k-nearest
+keys according to a vector distance function d(·, ·). Then, the
+model computes a softmax over the (negative) distances, which
+gives a distribution over the next token:
+X
+pkN N (y|ct ) ∝
+1y=vt exp(−d(kt , fe (ct ))) (2)
+(kt ,vt )∈D
+
+The prediction is then interpolated with the prediction from
+the language model:
+p(y|ct ) = λpkN N (y|ct ) + (1 − λ)pLM (y|ct )
+
+(3)
+
+where λ is a hyper-parameter that ranges from 0 to 1 and
+needs to be carefully selected.
+B. Bayesian Inference
+Bayesian inference is a fundamental concept in probability
+theory that allows us to update our beliefs about an event
+considering new evidence or information. It states that the
+probability of a hypothesis or event (A) given some observed
+evidence (C) can be calculated using Bayes’ rule:
+p(A|C) ∝ p(A) × p(C|A)
+
+(4)
+
+where p(A) is the prior probability of A, p(C|A) is the probability of observing C given that A is true (the likelihood), and
+
+Leftward Contexts ct
+
+...
+
+Value xt
+
+… def open ( self ) self .
+… def put ( self , obj ) : self .
+… frig . open ( ) frig .
+......
+
+LM
+
+state
+data
+put
+…
+
+fe(ct)
+
+k nearest search
+
+Codes in the
+same domain
+
+LM
+(fe(ct), xt))
+
+insert
+
+fe(ct)
+Database M
+Classification
+Layer
+ypred != xt
+
+Keys
+yes
+
+else
+drop
+step 1. Decoupled Database Construction
+
+DB prediction
+state 0.01
+data 0.02
+put 0.44
+… …
+
+Classification
+Layer
+
+def put_elephant_into_frig():
+fridge = Fridge()
+fridge.open()
+elephant = Elephant('Dumbo')
+elephant.magic_compress()
+fridge.?
+
+LM prediction
+open 0.7
+put 0.22
+data 0.05
+state 0.03
+… …
+
+Code to be completed
+
+step 2. Inference with LM
+
+Combined prediction
+open 0.28
+put 0.35
+data 0.03
+state 0.02
+… …
+
+Bayes
+Inference
+
+step 3. Inference with DB
+
+step 4. Combination of Inference Results
+
+Fig. 1. The primary workflow of our proposed kNM-LM. A grey box indicates that this part needs to access the (black-box) language model.
+
+p(A|C) is the posterior probability of A given C. Bayesians
+consider θ = p(A) and use p(θ) to describe the distribution of
+p(A). Specifically, if p(θ) = Beta(a, b), and event C indicates
+that A occurs α times in N new observations. Then we have
+the following conclusions:
+Likelihood:
+
+p(C|θ) = θ(α−1) (1 − θ)(N −α−1)
+
+Posterior:
+
+p(θ|C) = Beta(a + α, b + N − α)
+(a + α)
+Expectation: p(A|C) = E(p(θ|C)) =
+(a + b + N )
+
+(5)
+
+III. A PPROACH
+The code completion task aims to predict the next token
+or the next line of code given a known code sequence
+ct = (x1 , x2 , . . . , xt−1 ). For domain-adaptive code completion, we assume that some in-domain code can be obtained
+(e.g., code already written in current project or code from
+other projects that are developed for the same application
+scenario). Retrieval-augmented language models (R-LMs) can
+be employed to enhance the performance of general (blackbox) LMs for completing domain-intensive code. The primary
+workflow of our proposed method, k-nearest mistakes language model (kNM-LM), is illustrated in Fig. 1.
+Initially, we analyze the R-LMs from a statistical perspective (section III-A), discovering that manual selection of
+combination coefficient in previous R-LMs can be avoided by
+decoupling the retrieval module and LM. Next, we discuss the
+construction of the decoupled retrieval database (section III-B).
+During the inference phase, we separately predict the next
+token probability using the LM (section III-C) and the retrieval
+module (section III-D). Finally, we employ Bayesian inference
+to combine the inferences (section III-E).
+A. Analysis of R-LM from a Statistical Perspective
+We initiate our discussion by defining two distinct events
+associated with predicting the next token using LM:
+
+Event E: The LM correctly predicts the next token of ct .
+leftmargin=*
+• Set notation: E = {xt | arg max(pLM (y|ct )) = xt }
+• Description: The predicted token y with the highest
+probability matches the ground truth xt .
+Event E ′ : The LM incorrectly predicts the next token of ct .
+leftmargin=*
+′
+• Set notation: E = {xt | arg max(pLM (y|ct )) ̸= xt }
+• Description: The predicted token y with the highest
+probability does not match the ground truth xt .
+The primary goal of retrieval-augmented approaches is to
+enhance the base LM’s performance through error correction.
+Ideally, for tokens belonging to Event E, the retrieval module
+should not impact the final prediction, allowing the predictions
+from the LM to be utilized directly. Conversely, for tokens
+belonging to Event E ′ , the retrieval module aims to “correct”
+the erroneous prediction by searching for previously similar
+mistakes made by the LM and using the corresponding ground
+truths as predictions. The idea is similar to the way that
+humans use a “collection of mistakes” to remind themselves
+not to make the same mistake twice. We can use the total
+probability theorem to formulate the retrieval-argument process, as:
+p(y|ct ) = p(y|ct , E ′ ∪ E)
+= p(y|ct , E ′ )p(E ′ |ct ) + p(y|ct , E)p(E|ct )
+
+(6)
+
+= pRetrieval (y|ct )p(E ′ |ct ) + pLM (y|ct )p(E|ct )
+From Equation 6, it is essential to decouple the retrieval
+module’s abilities from the LM, as they predict tokens that
+belong to distinct events. Previous R-LMs do not decouple
+the retrieval module from the LM, necessitating the use of an
+ensemble strategy [16] to combine their strengths. However,
+the ensemble strategy requires manual and empirical determination of the combination coefficient. Inappropriate coefficient
+may even lead to a decline in performance. By decoupling
+
+the retrieval module, the combination coefficient p(E ′ |ct ) can
+be computed mathematically. Moreover, p(E ′ |ct ) is associated
+with both the domain-specific context and the LM, facilitating
+the adaptation of code completion tasks with different LMs
+across various domains. In the subsequent section, we will
+discuss the construction of the decoupled database.
+
+New observations：𝐸′appears α times and 𝐸 appears N-α times.
+𝐸
+
+𝐸′
+
+𝐸
+
+...
+
+𝐸′
+
+𝑦𝑖 = 𝑥𝑖+1 →𝐸; 𝑦𝑖 ≠𝑥𝑖+1 →𝐸′
+
+y0
+
+...
+
+yt-N-1
+
+yt-N+1
+
+yt-N+1
+
+...
+
+yt-2
+
+ypred
+
+xt-N+1
+
+...
+
+xt-2
+
+xt-1
+
+B. Step 1. Decoupled Database Construction
+Given the known in-domain code D, we build the decoupled
+database M as a key-value store. The values consist of tokens
+associated with event E ′ , while the corresponding keys are the
+embedded vectors of their preceding contexts:
+M = {(fe (ct ), xt )|(ct , xt ) ∈ D, xt ∈ E ′ }
+
+||M||
+||D||
+
+x0
+
+...
+
+xt-N-1
+
+xt-N
+
+code context to be completed ct
+
+(7)
+
+Here, fe (·) denotes a function that maps a code sequence to
+a fixed-length representation with dimension d. In CodeGPT,
+for example, fe (·) might be the output of the last selfattention layer. It is worth noting that the decoupled database
+is considerably smaller than the one constructed in kNN-LM,
+which saves storage space and search time. The reduction ratio
+is inversely proportional to the LM’s error rate err in D, as:
+p(E ′ ) = err =
+
+LM
+
+(8)
+
+|| · || signifies the set size. Importantly, the error rate also represents the probability of event E ′ occurring in D. Assuming
+that the code to be completed are independent and identically
+distributed (i.i.d.) with code in D, we can use the error rate
+as the prior probability p(E ′ ) at inference time.
+C. Step 2. Inference with LM
+Language models are treated as a black-box system in
+our approach, as we do not need to access their parameters.
+We input the code context ct into the LM and obtain the
+probability of the next token pLM (y|ct ). Additionally, we need
+to acquire the embedded context vector fe (ct ). All of this
+can be achieved by utilizing the corresponding APIs provided
+by the LM. For example, GPT-3 offers APIs that support
+embedding context [17] and obtaining the probabilities of
+next tokens based on the context [18]. After obtaining the
+embedded code context, we use it as the key to search the
+database.
+D. Step 3. Inference with DB
+We follow Khandelwal et al. [15] to generate the probability
+of the next token from the datastore. With the embedded
+context vector fe (ct ) generated by the LM, the retrieval
+module searches for keys similar to fe (ct ) in the datastore
+using k-nearest neighbors search. Similarity is defined by the
+vector distance d(·, ·) (we employ Euclidean distance in our
+experiments). The model then computes the distribution over
+the retrieved results as follows:
+X
+pkN M (y|ct ) ∝
+1y=vi exp(−d(ki , fe (ct ))) (9)
+(ki ,vi )∈M
+
+1 is an indicator function, which aggregates probability mass
+
+for each vocabulary item across all its occurrences in the
+
+Fig. 2. Calculation of p(ct |E ′ ). As the code context to be completed is
+known, we leverage the LM to make predictions for each token within the
+context and determine if the predictions are accurate. These new observations
+can be used to calculate likelihood probability and to update the combined
+beliefs of the LM and retrieval module. Noted that for decoder-only models
+like GPT-3, this process does not incur additional computational costs.
+
+retrieved targets, and probabilities for items not appearing in
+the retrieved targets are set to zero.
+E. Step 4. Combination of Inference Results
+Combination of inference results from the LM and database
+is achievable by utilizing Equation 6. Nevertheless, calculating p(E ′ |ct ) directly poses challenges, as it represents the
+probability about the subsequent token of ct , which remains
+unknown. We employ Bayes’ rule to solve this, as:
+p(E ′ |ct ) ∝ p(E ′ ) × p(ct |E ′ )
+
+(10)
+
+The prior probability, denoted as p(E ′ ), has been computed
+using Equation 8. The likelihood probability p(ct |E ′ ) represents the probability of observing ct given the event E ′ . This
+likelihood probability indicates that the combination coefficient is also influenced by the code context being completed.
+Given that we already know ct , for each token xi ∈ ct , we
+can predict the token yi by inputting the context x0:i−1 into
+the language model. If yi = xi+1 , we label it as event E,
+otherwise, it is classified as event E ′ . Bayesian analysis treats
+these newly occurring events as new observations, and they
+are utilized to update the prior probability.
+In the context of parallel computing, our focus is on the
+latest N − 1 observations within ct (can also be viewed as
+N-gram assumption). For illustration, as depicted in Fig. 2,
+we utilize yt−N −1:t−2 as the newly considered observations.
+Assuming that event E ′ occurs α times, then event E occurs
+N − α times. The computation of the likelihood probability
+p(ct |E ′ ) is expressed as follows:
+p(ct |E ′ ) ≈ p(xt−N −1:t−2 |E ′ ) = p(E ′ )α (1 − p(E ′ ))N −α
+(11)
+From the perspective of Bayesian inference, p(E ′ ) is not a
+fixed number but a distribution represented by θ = p(E ′ ).
+Given that the distribution’s expectation equals to err (Equation 8), it is reasonable to consider p(θ) ∼ Beta(err · N, (1 −
+
+err) · N )2 . With the new evidence on ct , we can deduce that
+the conditional distribution p(θ|ct ) ∼ Beta(err ∗ N + α, (1 −
+err) ∗ N + N − α). As a result, the calculation of p(y|ct ) can
+be formulated as:
+p(y|ct ) = λpkN M (y|ct ) + (1 − λ)pLM (y|ct )
+1 α
+||M||
+λ = p(E ′ |ct ) = ( +
+)
+2 N
+||D||
+
+(12)
+
+Equation 12 incorporates two hyper-parameters: k and N . In
+this context, k is employed for the k-nearest neighbor search
+to compute pkN M (y|ct ), while N represents the number of
+observations utilized for calculating the likelihood probability.
+The values of α, ||D||, and ||M|| in Equation 12 are
+determined by three key components pertaining to the completion process: the code context to be completed, the specific
+language model utilized, and the chosen database. Specifically,
+when the error rate of the LM on the database and code
+context ct is elevated, λ is correspondingly large, leading the
+combined approach to favor the prediction outcome of the
+retrieval module. In contrast, when the model’s error rate on
+the database and code context ct is low, λ is reduced, and
+the combination strategy tends to rely more on the prediction
+results generated by the LM.
+IV. E XPERIMENTAL S ETUP
+To assess the efficacy of kNM-LM, we have formulated two
+research questions: leftmargin=*
+• RQ1: What is the performance of kNM-LM for intraproject code completion?
+• RQ2: What is the performance of kNM-LM for intrascenario code completion?
+Furthermore, in relation to RQ1, we have explored the ability of kNM-LM to complete specific types of code. Regarding
+RQ2, we have investigated the effectiveness of kNM-LM in
+completing lines that involve Android API calls, along with
+an ablation study.
+A. Baselines
+As our proposed kNM-LM is a retrieval-augmented framework, for code completion, we choose two state-of-art pretrained models as the base model: leftmargin=*
+• CodeGPT [1] is a GPT-based pre-trained model trained on
+the CodeSearchNet dataset [20] for code completion and
+generation tasks. Specifically, we use CodeGPT-smalljava-adaptedGPT2 for Java code and CodeGPT-small-pyadaptedGPT2 for Python code.
+• UniXcoder [2] is also pre-trained on the CodeSearchNet
+dataset and utilizes cross-modal content from code. It
+applies mask attention matrices with prefix adapters to
+control the model behavior. As UniXcoder is a crosslanguage model, we use UniXcoder-base for both Java
+and Python code.
+2 The choice of the Beta distribution is informed by its flexibility and
+suitability for modeling probabilities between 0 and 1 [19]. Additionally, we
+assume equal significance of prior beliefs and new observations, leading us
+to utilize the same N for the Beta distribution.
+
+We also compare kNM-LM with other competitive retrievalaugmented frameworks, including: leftmargin=*
+• BM25 [14] is a block R-LM. It saves domain code
+as a document datastore, then searches the datastore
+to find code like the code to be completed based on
+the BM25 [21] algorithm. Finally, the search results are
+concatenated with the unfinished code and jointly fed into
+the language model.
+• ReACC [13] is also a block R-LM. Different from BM25,
+it uses GraphCodeBERT [22] to train a retrieve model,
+and then encodes the domain code into a fixed length
+vector to store. ReACC only published their fine-tuned
+retrieval model on Python language, we only use it for
+Python language.
+• Hybrid (BM25+ReACC) [13] is an ensemble approach
+based on BM25 and ReACC. It combines search results
+from both BM25 and ReACC, then uses the re-ranked
+results to generate the next code token. Due to the need
+of using ReACC, we only use it for Python language.
+• kNN-LM [15] is a token R-LM, which saves each token
+in the domains code into a key-value datastore, and use
+kNN algorithm to retrieve similar code tokens.
+B. Implementation Details
+In order to enable comparison with model fine-tuning
+(section VII-B), we employ the pre-trained Code-GPT and
+UniXcoder models as the base models, rather than relying
+on the black-box GPT-3 model. We utilize Elasticsearch for
+BM25 algorithm. ReACC is implemented using the released
+“microsoft/reacc-py-retriever” as the retriever model. Hybrid
+uses the combination weight 0.9 from their original paper. In
+the case of kNN-LM and kNM-LM, we set k (the number of
+retrieved nearest neighbors) to 8 for RQ1 and 1024 for RQ2
+and employ L2 distance as the distance function for neighbor
+retrieval. We set λ to 0.1 and window size N to 8. In kNMLM, we let the retrieval module to participate in computing
+the likelihood probability, if yi can be both correctly predicted
+by the LM and the retrieval module, we just ignore this token.
+Faiss-gpu [23] is used for accelerated k nearest neighbors
+search, same as Khandelwal et al. [24].
+Metrices Accuracy, representing the ratio of correctly predicting the next token, serves as the evaluation metric for token
+completion, while the metric for line completion involves
+Exact Match accuracy (EM) and Levenshtein Edit Similarity
+(ES) [25]. To ensure fairness in the analysis of time and
+space complexity, all experiments are performed on a machine
+equipped with 2 NVIDIA 3090Ti-24GB GPU cards.
+V. RQ1: I NTRA -P ROJECT C ODE C OMPLETION
+A. Study Design
+Auto code completion plugins are widely used in projects
+to streamline the coding process, with other files in the project
+often containing helpful information for code completion.
+Consequently, we have developed the intra-project code completion task. In this research question, we utilize Git commit
+history to determine the creation time of various methods in
+
+TABLE I
+S TATISTICS OF INTRA - PROJECT COMPLETION DATASET. (·) INDICATES
+THE PROJECT ’ S COMMIT ID . T HE TEST SET CONTAINS METHODS CREATED
+FROM THE OLD COMMIT TO THE LATEST COMMIT.
+
+the project. We then select the project snapshot at a specific
+commit as the basis for the written code used to build the
+database. Methods created after that commit serve as a test
+set to evaluate the performance of different approaches.
+B. Dataset
+We compile an intra-project code completion dataset by
+collecting 10 large projects (over 1M in size) and 10 small
+projects (under 1M in size) from the test set of Java-mid [26].
+The dataset’s statistics are displayed in Table IV-B. Following
+the approach of Bogomolov et al. [9], we gather the Git history
+for each project and extract all method creation commits using
+Miner [27]. These methods are sorted by commit time, and we
+select the commit at which the first 80% of methods have been
+created. The project snapshot at this commit is used to build
+the database, while the remaining 20% of methods serve as
+the test set. Then, we separately evaluate the performance on
+each project.
+C. Results
+Token Completion Accuracy. As illustrated in Fig. 3, our proposed approach, kNM-LM, exhibits a significant improvement
+for all projects in the dataset. kNM-LM achieves the most
+substantial improvement on the “hover” project, with a 26.67%
+and 35.99% increase with CodeGPT and UniXcoder, respectively. The trend of the curve indicates that larger projects
+benefit more from using kNM-LM. This may be because large
+projects contain more code in the database, making it more
+likely to find useful information from the database. We also
+observe that the performance boost gained by using the prompt
+method (BM25) is inconsistent across different projects. In
+some cases, it may be worse than the base model, such as with
+CodeGPT on the “android-priority-jobqueue” project, where
+it decreases from 52.03% to 51.84%. This discrepancy may
+arise due to the absence of code in the database that closely
+
+CodeGPT
++BM25
+
++kNN-LM
++kNM-LM
+
+UniXcoder
++BM25
+
++kNN-LM
++kNM-LM
+
+75
+70
+65
+60
+55
+50
+45
+40
+85
+80
+75
+70
+65
+60
+55
+50
+45
+40
+
+Froyo_Email
+dropwizard
+AmazeFileManager
+rest-assured
+logging-log4j1
+feign
+requery
+eureka
+galaxy
+interview
+android-priority-jobqueue
+lottie-android
+xUtils3
+Fragmentation
+VirtualAPK
+spring-boot-starter
+DiscreteScrollView
+flow
+hover
+StickyHeaderListView
+
+Test
+388K (56e48 → 508c9)
+388K (04c45 → ad30b)
+292K (d01c5 → 5c3cd)
+274K (0c8f0 → 246ba)
+353K (0d9e1 → e5c56)
+140K (6989b → d42fc)
+164K (a3f71 → 1d6fa)
+184K (22528 → fc4e0)
+166K (0ed70 → 8fcc6)
+164K (ed0d5 → 94be5)
+69K (0287d → f807c)
+88K (c32f1 → 42b48)
+35K (0d10d → 4f3c3)
+59K (0e972 → d5e79)
+15K (e6174 → 01b73)
+16K (f0951 → a634e)
+15K (49671 → 9d979)
+18K (489b2 → 06eb0)
+14K (7e95c → 03e44)
+6K (00265 → b871c)
+
+Accuracy
+
+Database
+2.4M (56e48)
+2.2M (04c45)
+1.9M (d01c5)
+1.8M (0c8f0)
+1.4M (0d9e1)
+1.3M (6989b)
+1.3M (a3f71)
+1.2M (22528)
+1.2M (0ed70)
+1.1M (ed0d5)
+592K (0287d)
+541K (c32f1)
+472K (0d10d)
+408K (0e972)
+308K (e6174)
+181K (f0951)
+147K (49671)
+108K (489b2)
+259K (7e95c)
+117K (00265)
+
+80
+
+Accuracy
+
+Repo Name
+Froyo Email
+dropwizard
+AmazeFileManager
+rest-assured
+logging-log4j1
+feign
+requery
+eureka
+galaxy
+interview
+android-priority-jobqueue
+lottie-android
+xUtils3
+Fragmentation
+VirtualAPK
+spring-boot-starter
+DiscreteScrollView
+flow
+hover
+StickyHeaderListView
+
+85
+
+Fig. 3. Token completion accuracy on intra-project dataset. The abscissa is
+the project name, ordered from large to small based on the project size.
+
+resembles the code requiring completion. When we merge the
+retrieved result with the input and feed them into the language
+model, there is a potential to introduce irrelevant noise that
+does not contribute to the accurate completion.
+Analysis of Completing Different Code Token Types. Language models often face greater difficulties when dealing with
+certain code token types. For instance, predicting identifiers
+(such as variable or function names) is more challenging than
+predicting keywords (like “if” or “for”). However, developers
+primarily utilize code completion plugins to finalize intraproject APIs [28]. Hence, we follow previous works [29]
+to investigate the performance of models when predicting
+different types of tokens. Results are presented in Table II.
+From the results, we observe that all retrieval-augmented
+models can enhance the code completion performance of the
+base model in intra-project contexts, with kNM-LM showing
+the most significant improvement. Specifically, for completing punctuation, which is related to programming language
+syntax, kNM-LM improves the base models with increases
+
+TABLE II
+T OKEN COMPLETION ACCURACY OF DIFFERENT CODE TYPES ON INTRA - PROJECT DATASET. N UMBERS ARE SHOWN IN PERCENTAGE (%).
+
+Large Projects
+
+Small Projects
+
+Types
+All
+Punctuation
+Identifier
+Operator
+Keyword
+Literals
+All
+Punctuation
+Identifier
+Operator
+Keyword
+Literals
+
+Percent
+100.00
+34.56
+30.63
+19.51
+8.02
+7.28
+100.00
+37.30
+32.06
+17.54
+10.55
+2.56
+
+CodeGPT
+54.59
+64.97
+38.37
+70.02
+49.96
+39.87
+53.71
+63.86
+37.76
+69.83
+48.92
+27.44
+
++BM25
+56.12
+66.74
+40.72
+70.66
+51.17
+38.67
+55.10
+65.39
+39.11
+70.86
+50.12
+29.84
+
++kNN-LM
+58.69
+68.10
+41.48
+71.39
+53.82
+59.08
+56.59
+67.38
+40.29
+70.46
+50.00
+48.26
+
+TABLE III
+S TATISTICS OF I NTRA - SCENARIO C OMPLETION DATASET (API-B ENCH ).
+PL
+Java
+
+Python
+
+Domain
+Android
+ML
+Security
+Test
+DL
+ML
+Security
+Test
+
+#num of projects
+Database
+Test
+292
+85
+38
+14
+42
+16
+41
+14
+191
+116
+165
+159
+95
+47
+57
+22
+
+#num of functions
+Database
+Test
+53,646
+29,211
+27,962
+10,435
+14,202
+4,698
+16,439
+5,341
+24,546
+12,778
+23,990
+20,533
+10,823
+4,527
+4,761
+3,303
+
+ranging from 17.66% to 21.71%. For completing identifiers
+and literals, which are project-specific components, the base
+models are subpar. This supports our assumption that general
+code completion language models lack domain-specific knowledge. Using kNM-LM, the accuracy of completing identifiers
+exhibited improvements of 9.31% and 8.90% in large projects,
+and 6.72% and 4.14% in small projects, respectively. This
+notable enhancement can be attributed to kNM-LM’s use of
+project code as the retrieval database, allowing domain-specific
+knowledge, such as custom functions and objects within the
+project, to be incorporated into the LM.
+▶RQ1◀ Results indicate that utilizing historical project
+code with R-LMs improves intra-project code completion,
+with kNM-LM exhibiting the most substantial improvement
+across all projects compared with baselines.
+VI. RQ2: I NTRA -S CENARIO C ODE C OMPLETION
+A. Study Design
+Completing code across different scenarios necessitates
+specialized knowledge, primarily manifested in understanding
+and utilizing the specific third-party libraries. For instance,
+mobile development code uses the Android library, while deep
+learning code depends on the PyTorch library. However, large
+language models may lack insight into the usage of these thirdparty libraries, due to their proprietary or frequently updated
+nature. In this research, we leverage projects that use the
+same third-party libraries to build the code scenario database.
+These projects contain scenario-specific knowledge, including
+
++kNM-LM
+69.66
+86.07
+47.68
+77.05
+56.97
+76.54
+66.70
+85.57
+44.48
+73.48
+55.62
+74.59
+
+UniXcoder
+53.11
+67.24
+38.43
+64.84
+28.96
+41.36
+51.00
+64.77
+35.96
+63.05
+32.01
+30.09
+
++BM25
+59.16
+73.40
+46.69
+69.74
+34.46
+42.01
+56.92
+71.70
+42.49
+66.79
+37.19
+30.96
+
++kNN-LM
+57.46
+70.70
+41.42
+66.29
+32.21
+63.87
+54.05
+68.01
+38.47
+64.41
+35.09
+45.87
+
++kNM-LM
+68.96
+84.90
+47.33
+81.08
+46.51
+75.86
+64.19
+85.05
+40.10
+76.12
+43.19
+72.29
+
+distinct API usage patterns. Then, we explore the potential
+advantages of using this scenario database for intra-scenario
+code completion. Furthermore, we evaluate the effectiveness
+of completing lines of code that involve Android API calls.
+B. Dataset
+We utilize the API-Bench dataset [30] to facilitate code
+completion within specific scenarios. This dataset encompasses four distinct code scenarios, involving both Java and
+Python. In each of these scenarios, we employ the train set to
+construct a datastore and then evaluate token completion using
+the corresponding test set. For a comprehensive overview of
+the dataset’s statistics, refer to Table III.
+In addition, we curate an extra test set designed to evaluate
+the effectiveness of completing lines containing Android API
+calls. To achieve this, we leverage JavaParser3 to extract the
+object type associated with the method call, filtering out API
+calls from the Android library. Subsequently, we utilize the
+code context preceding the API call to facilitate completion
+of the entire code line, encompassing the API name and input
+parameters. This dedicated test set comprises 49,344 lines
+featuring Android API usage. Notably, the database employed
+for this task is identical to the one used for token completion
+within the Android dataset.
+C. Results
+Token Completion Accuracy. Results in Table IV suggest that
+R-LMs do not consistently outperform the base LMs in intrascenario completion task. For example, in Java, BM25 has
+a negative impact on Android, ML, and Security. Similarly,
+in Python, both BM25 and ReACC perform worse than the
+base LMs across all four scenarios. While the Hybrid and
+kNN-LM models show some improvement, their performance
+gains are smaller than those observed in the intra-project
+completion. This is mainly because code within the same
+project is more similar than those in the same scenario [8],
+making it harder for the retrieval-augmented approaches to find
+useful code. On the other hand, kNM-LM shows a significant
+performance improvement of approximately 6-12% compared
+to the base LMs. This improvement can be attributed to the
+3 https://github.com/javaparser/javaparser
+
+TABLE IV
+T OKEN COMPLETION ACCURACY ON INTRA - SCENARIO DATASET (API-B ENCH ). N UMBERS ARE SHOWN IN PERCENTAGE (%). kNM-LM W / O BAYESIAN
+USES THE MANUALLY SET λ LIKE kNN-LM [15], AND kNM-LM W / O NEW OBSERVATIONS USES p(E ′ ) AS λ.
+Models
+CodeGPT
++BM25
++ReACC
++Hybrid
++kNN
++kNM
++kNM w/o Bayesian
++kNM w/o new observations
+UniXcoder
++BM25
++ReACC
++Hybrid
++kNN
++kNM
++kNM w/o Bayesian
++kNM w/o new observations
+
+Android
+66.77
+66.75
+69.88
+72.34
+69.38
+72.17
+67.75
+67.59
+69.83
+74.86
+69.76
+74.83
+
+Java
+ML
+Security
+64.98
+65.4
+64.28
+63.92
+67.68
+68.14
+71.00
+71.40
+67.45
+67.86
+70.90
+71.30
+67.65
+66.80
+66.51
+65.60
+71.28
+69.20
+76.08
+74.84
+71.22
+69.15
+76.10
+74.70
+
+decoupled database construction. Traditional R-LMs retain
+all data when constructing the database, leading to the code
+that use the specific API call not being retrieved due to
+the few samples problem. In contrast, kNM-LM constructs a
+decoupled database that only retains code that the LM cannot
+predict accurately. This strategy increases the ratio of those
+specific API calls that cannot be correctly predicted by LM in
+the datastore, thus improving performance.
+Ablation Study of kNM-LM. Table IV also includes an
+ablation study on the use of Bayesian inference. Specifically,
+two variants of the kNM-LM are evaluated: kNM-LM w/o
+Bayesian, which relies on a manually set λ value, and kNMLM w/o new observations, which sets the prior probability
+of p(E ′ ) as λ. The results indicate that manually setting the
+combination coefficient has the least favorable effect, while
+employing Bayesian inference has the most favorable effect in
+most cases. This is primarily because determining the optimal
+λ value for different scenarios and LMs can be challenging,
+while Bayesian inference can take into account the impact of
+both the scenarios and LMs and dynamically adjust λ based
+on the code text being completed.
+Performance of Completing Lines that involve Android
+APIs. Table V presents an experimental evaluation of completing lines containing Android API. The results show that the
+performance of the basic LM is not satisfactory, as indicated
+by the EM metrics of 5.99% and 2.74% for completion
+of lines that contain Android API calls. However, the EM
+metrics of kNM-LM are significantly improved, increasing
+by 7.75% and 8.94%, respectively. Moreover, we utilize the
+Venn diagram [31] to examine the precision of each model’s
+completion on a per-method basis. The analysis demonstrates
+that kNM-LM outperforms other models in terms of accuracy,
+with 4,245 more accurately predicted code lines than all other
+models combined.
+
+Test
+64.74
+64.08
+67.12
+70.54
+66.90
+70.36
+65.65
+64.88
+67.63
+73.12
+67.55
+73.07
+
+DL
+51.71
+49.96
+49.92
+52.16
+53.65
+59.50
+53.46
+59.49
+59.53
+56.99
+56.30
+56.10
+62.30
+67.03
+62.24
+67.07
+
+Python
+ML
+Security
+51.81
+52.77
+49.94
+50.27
+49.98
+50.45
+52.32
+52.94
+53.76
+56.83
+59.27
+64.85
+53.58
+56.59
+59.26
+64.68
+59.77
+63.01
+56.66
+61.49
+56.29
+59.32
+56.41
+59.76
+62.59
+69.86
+67.02
+75.56
+62.55
+69.88
+67.07
+75.56
+
+Test
+50.09
+47.14
+47.71
+50.37
+53.98
+60.87
+53.66
+60.73
+60.30
+56.90
+56.53
+57.20
+65.88
+70.09
+65.84
+70.09
+
+TABLE V
+P ERFORMANCE OF COMPLETING LINES THAT CONTAIN A NDROID API S .
+
+Base
++BM25
++kNN-LM
++kNM-LM
+
+CodeGPT
+ES
+EM
+44.38
+5.99
+44.65
+6.02
+48.48
+7.91
+54.10
+13.74
+
+UniXcoder
+ES
+EM
+42.87
+2.74
+42.77
+2.71
+44.79
+3.40
+49.59
+11.68
+
+TABLE VI
+C OMPARISON OF RESOURCE USAGE IN kNN-LM AND kNM-LM.
+
+Model
+CodeGPT
++kNN-LM
++kNM-LM
+UniXcoder
++kNN-LM
++kNM-LM
+
+Large projects
+Speed
+DB size
+(tokens/s)
+(MB)
+3063.40
+1242.25
+780.48
+1282.68
+391.12
+2730.87
+1175.03
+713.76
+1252.48
+428.96
+
+Small Projects
+Speed
+DB size
+(tokens/s)
+(MB)
+1773.92
+990.71
+156.78
+953.27
+79.17
+1625.89
+937.06
+142.42
+948.49
+86.85
+
+▶RQ2◀ Utilizing code from the same scenario can improve
+intra-scenario code completion, with kNM-LM exhibits
+maximum enhancement. Also, Bayesian inference is important in determining the optimal combination coefficient.
+
+VII. D ISCUSSION
+In this chapter, our primary focus is on assessing the
+effectiveness of kNM-LM from three key angles. As kNMLM is an improvement over kNN-LM, we begin by discussing
+the distinctions between these two methods. Following this,
+since the aim of kNM-LM is to enable domain-specific code
+completion without the need of fine-tuning, we proceed to
+compare it with fine-tuned models. Lastly, we conduct case
+studies to provide concrete examples that validate the efficacy
+of our proposed approach.
+
+653
+359
+
+11
+
+3543
+
+4
+2554
+
+5
+
+5
+
+0.2
+
+0.4 0.6 0.8
+
+2
+4
+6
+8
+10
+
+( k)
+log
+
+2
+4
+6
+8
+10
+
+1
+
+2
+
+0.80
+0.70
+0.60
+0.50
+
+1
+
+UniXcoder
+
+51
+
++kNM-LM
+
+3
+266
+
+7
+18
+
+4245
+
+0
+1199
+
+2
+4
+6
+8
+10
+
+0.2 0.4
+
+0.6 0.8
+
+2
+
+8
+31
+
+2
+4
+6
+8
+10
+
+( k)
+log
+
+104
+
+0.80
+0.70
+0.60
+0.50
+
+Accuracy
+
++kNN-LM
+
+3
+
+( k)
+log
+Small Projects
+
++BM25
+
+0.80
+0.70
+0.60
+0.50
+
+Accuracy
+
++kNM-LM
+
+10
+24
+
+kNM-LM
+
+8 10
+2 4 6 )
+
+log(N
+
+0.80
+0.70
+0.60
+0.50
+
+Accuracy
+
+310
+
+( k)
+log
+Large Projects
+
+9
+
+CodeGPT
+
+kNN-LM
+
++kNN-LM
+
+Accuracy
+
++BM25
+
+8 10
+2 4 6 )
+
+log(N
+
+1
+1
+
+0.500 0.525 0.550 0.575 0.600 0.625 0.650 0.675 0.700
+Fig. 4. Venn diagram of completing lines that contain Android APIs. It shows
+the number of samples that are completed correctly.
+
+A. Compared with kNN-LM.
+Speed and Space Usage Analysis. Table VI demonstrates
+that both kNN-LM and kNM-LM have a negative impact
+on completion speed. However, even with the worst-case
+scenario, the completion of 937.06 words can be achieved
+within 1 second. As developers typically anticipate receiving
+the completion results within 200 milliseconds [32], we think
+that the impact on completion speed is not significant. Storage
+space consumption, on the other hand, is a more significant consideration. Both models require database storage, but
+kNM-LM uses considerably less space than kNN-LM. In large
+projects, kNM-LM saves 284.83MB and 389.36MB compared
+to kNN-LM, while in small projects, it saves 55.57MB and
+67.61MB. Given the significant performance gain from kNMLM, the additional storage space required is acceptable.
+Influence of Hyper-parameters. We compare the performance of kNM-LM and kNN-LM with varying hyperparameter settings for intra-project code completion. Results,
+shown in Fig. 5, indicate that hyper-parameters have a significant impact on the performance of kNN-LM. In contrast,
+kNM-LM is less sensitive to hyper-parameters and achieves
+good performance for most settings. Therefore, kNM-LM is
+more suitable for domain adaptive code completion task, as
+it can provide satisfactory results without the carefully hyperparameters configuration.
+B. Compared with Fine-tuning.
+We compared kNM-LM and fine-tuning on intra-scenario
+code completion task, as presented in Fig. 6. We found that
+fine-tuning is more effective than kNM-LM, but using kNMLM after fine-tuning can still lead to some improvement. It is
+
+Fig. 5. Influence of hyper-parameters settings in kNN-LM and kNM-LM.
+The base LM is CodeGPT and the task is intra-project code completion. The
+number of searched neighbors k is used in both. kNN-LM needs to set the
+combination coefficient λ, and kNM-LM needs to set the window size N .
+The above two sub-figures are the results on large projects, and the below
+two are results on small projects.
+
+worth noting that fine-tuning may not be a practical solution
+for domain adaptive code completion due to the continuously
+updated domain features and the black-box constraint of LM.
+In contrast, kNM-LM may be more suitable for individual
+users to obtain personalized code completion service.
+C. Qualitative Analysis.
+In this study, we conducted a qualitative analysis on completing lines that contain Android API calls, presented in
+Fig. 7. The study also included three examples that demonstrated the capabilities of the models used. For instance, Example ID=3877 showed that kNM-LM accurately completed
+complex API names, which a general model without Androidspecific knowledge would fail to predict accurately. Example
+ID=40542 demonstrated that kNM-LM accurately predicted
+the API name and correctly filled in the corresponding input parameters. On the other hand, the BM25 and kNNLM models failed to correct the API name and also incorrectly completed additional input parameters. Lastly, example
+ID=45427 verified that kNM-LM can ignore irrelevant code
+and accurately complete the intended code. In contrast, other
+models were affected by irrelevant code, including file writing
+semantics in the completed code.
+VIII. THREATS TO VALIDITY
+The first threat is related to the base LMs selected for the
+experiment. To mitigate this threat, we chose two state-of-theart pretrained LMs, CodeGPT and UniXcoder, for the code
+
+Base
+Base+kNM-LM
+
+UniXcoder
+
+TABLE VII
+
+Finetuned
+Finetuned+kNM-LM
+
+Q UALITATIVE EXAMPLES .
+
+80
+
+Base
+Base+kNM-LM
+
+UniXcoder
+78
+
+Accuracy
+
+Accuracy
+
+80
+78
+
+Finetuned
+Finetuned+kNM-LM
+
+// the ability of completing the complex API name.
+public void setUpTheme ( ) {
+Utils.setUpPopupTheme(context,settings);
+actionBar=getActionBar();
+actionBar.
+
+76
+74
+
+76
+74
+66
+64
+
+Android
+
+ML
+
+Security
+
+Test
+
+66
+
+Base
+Finetuned
+ML
+Security
+Test
+Base+kNM-LM
+Finetuned+kNM-LM
+
+CodeGPT
+Android
+
+64
+82
+80
+
+Base
+Base+kNM-LM
+
+CodeGPT
+
+78
+
+Finetuned
+Finetuned+kNM-LM
+
+Accuracy
+
+Accuracy
+
+82
+80
+78
+
+72
+70
+68
+
+72 66
+70
+68
+66
+
+64
+62
+60
+
+Android
+
+ML
+
+Security
+
+Test
+
+64
+62
+60
+
+ID: 3877
+
+Fig. 6. Finetune VS kNM-LM.
+
+Android
+
+ML
+
+Security
+
+Test
+
+Fig. 6. Finetune VS kNM-LM.
+
+completion task. We want to compare our proposed method
+with fine-tuning, hence we do not use black-box LM systems,
+such as Codex or ChatGPT. However, in section III-C, we
+introduced how to use our approach in GPT-3 through API
+completion
+task.second
+We want
+to compare
+calling. The
+threat
+is related our
+to proposed
+the settingmethod
+of the
+with
+fine-tuning,
+hence
+we
+do
+not
+use
+black-box
+LM
+systems,
+domain database and test set on intra-project code
+completion,
+such
+as Codex
+or from
+ChatGPT.
+However,
+in mitigate
+section III-C,
+we
+as both
+use code
+the same
+project. To
+this threat,
+introduced
+how
+to
+use
+our
+approach
+in
+GPT-3
+through
+API
+we use the Git commit history to split the code for building
+calling.
+The second
+the setting
+of code
+the
+the database
+and thethreat
+code is
+forrelated
+testing, toensuring
+that the
+domain
+database
+and
+test
+set
+on
+intra-project
+code
+completion,
+in the test set were developed after those in the database. The
+as third
+both use
+code
+thetosame
+threat,
+threat
+is from
+related
+the project.
+fact thatTo
+wemitigate
+did notthis
+verify
+the
+weeffect
+use the
+commit
+for building
+of Git
+ReACC
+and history
+Hybrid toonsplit
+the the
+Javacode
+language,
+as the
+theauthors
+database
+andreleased
+the code
+forpretrained
+testing, ensuring
+thatPython.
+the code
+only
+their
+models on
+To
+in mitigate
+the test set
+developed
+after
+those in the
+thiswere
+threat,
+we chose
+to compare
+our database.
+approach The
+with
+third
+threatwhich
+is related
+to theperformance
+fact that wecompared
+did not verify
+the
+BM25,
+has similar
+to ReACC
+effect
+ReACC
+and Hybrid
+on paper.
+the Java
+language,
+as the
+and of
+Hybrid
+as reported
+in their
+Lastly,
+in the context
+authors
+only released
+pretrained
+To
+of intra-project
+codetheir
+completion,
+ourmodels
+choice on
+of Python.
+the commit
+point atthis
+which
+80%we
+of chose
+the code
+already our
+written
+introduces
+mitigate
+threat,
+to is
+compare
+approach
+witha
+potential
+concern.
+This choice
+does not compared
+always reflect
+practical
+BM25,
+which
+has similar
+performance
+to ReACC
+wereported
+intend toininvestigate
+theLastly,
+impactinofthe
+varying
+the
+andscenarios,
+Hybrid as
+their paper.
+context
+size
+of
+the
+intra-project
+database
+in
+our
+future
+work.
+To
+ensure
+of intra-project code completion, our choice of the commit
+transparency
+and enable
+verification
+by other
+researchers,
+point
+at which 80%
+of the code
+is already
+written
+introduceswe
+a
+open-sourced
+all
+our
+code,
+data,
+and
+experimental
+potential concern. This choice does not always reflectresults.
+practical
+scenarios, we intend to investigate the impact of varying the
+size of the intra-project database in our future work. To ensure
+transparency and enable verification by other researchers, we
+open-sourced all our code, data, and experimental results.
+
+UniXcoder: setupTheme(context, settings);
++BM25: setupTheme(context, settings);
++kNN-LM: . . . . . . ;
++kNM-LM: setDisplayHomeAsUpEnabled(true);
+Ground Truth: setDisplayHomeAsUpEnabled(true);
+ID:40542
+//the ability of filling arguments.
+private void drawBackground (Canvas canvas, float
+,→
+fromX, float toX){
+int count = canvas.save();
+canvas.clipRect(
+fromX, (canvas.getHeight()-mStrokeWidth)/2,
+toX, (canvas.getHeight()+mStrokeWidth)/2);
+mBackgroundDrawable.
+
+UniXcoder: drawBackground(canvas);
++BM25: drawBackground(canvas, fromX, toX);
++kNN-LM: drawBackground(canvas, count);
++kNM-LM: draw(canvas);
+Ground Truth: draw(canvas);
+ID: 45427
+//the ability of ignoring long useless codes.
+void createVideoThumbnail(String
+,→
+thumbnailSaveDir,
+String originalPath,
+,→
+int scale){
+Bitmap bitmap =
+,→
+ThumbnailUtils.createVideoThumbnail(
+originalPath,
+,→
+MediaStore.Video.Thumbnails.MINI_KIND);
+...
+fileOutputStream = new
+,→
+FileOutputStream(targetFile);
+bitmap.
+}
+
+UniXcoder: encode(fileOutputStream);
++BM25: write(fileOutputStream);
++kNN-LM: writePixels(0, 0, originalImageWidth);
++kNM-LM: recycle();
+Ground Truth: recycle();
+Fig. 7. Qualitative examples.
+
+IX. R ELATED WORK
+IX. R ELATED WORK
+A. Code Completion
+A. Code Completion
+Code completion can be divided into three categories based
+completion
+cancompleted:
+be divided API
+into name
+three categories
+based
+on Code
+the code
+type to be
+completion
+[33],
+on
+the
+code
+type
+to
+be
+completed:
+API
+name
+completion
+[34], variable name completion [35], [36] and arbitrary [33],
+token
+[34], variable
+name
+completion
+[35],
+[36] completion
+and arbitraryaims
+tokento
+completion
+[29],
+[37]–[39].
+API
+name
+complete API calls from a specific third-party library by
+extracting API call sequence [40]. Variable name completion
+recommends variable references from declared variables, using
+data-flow graphs [36] or pointer network [35]. Arbitrary token
+
+completion aims to complete arbitrary tokens in the code
+sequence or the abstract syntax tree (AST) of code, using Treebased NN [41], [42], Graph NN [36], [43] or Transformer [44].
+For example, CodeFill [29] improves GPT-2 [25] by predicting
+the code type when completing the next token, while Grammformer [37] generates code completions with “holes” inserted
+in places where the model is uncertain. Our approach belongs
+to completing arbitrary token in code sequence.
+Nowadays, many works begin to focus on code completion
+in specific domains, such as test code [45], [46] or repository
+level code completion [9], [47]. Our approach focuses on
+domain adaptive code completion, which is a generic approach
+that can adapt to different domains by switching the database.
+It does not require access to the parameters of the LM, hence
+can be used with black-box LLMs like GPT-4.
+B. Retrieval-augment Language Model
+Retrieval-augmented language models (R-LMs) utilize
+retrieval-based techniques to improve the performance of LMs
+and can be divided into two main categories: block R-LMs
+and token R-LMs. Block R-LMs [12], [13], [48] are similar
+to one-shot or few-shot learning [49], where one or a few
+examples are retrieved from a database instead of being
+randomly selected. Token R-LMs [15], [24], [50] retrieve
+tokens from database and then combine the retrieved results
+into the LM. Compared with block R-LMs, token R-LMs can
+update retrieval results at the same time of generating new
+tokens, hence our approach uses the architecture of token RLM. However, token R-LMs suffer from high storage costs and
+require hyper-parameters selection to combine the inference
+results from the database and language model.
+Various approaches have been proposed to address the
+limitations of token R-LMs. For example, kNN-Adapter [51]
+uses a trained network to determine the combination weights.
+To reduce the search cost, RetoMaton [52] uses the automaton
+states to save search time, while AdaptRet [53] uses a trained
+network to decide whether to use the retrieval module. GNNLM [50] selects similar texts and builds a contextual graph to
+incorporate into the language model. In contrast, our proposed
+approach does not require training or the addition of an
+additional module. By decoupling the datastore and language
+model, we can save the storage cost and utilize Bayesian
+inference to select suitable hyper-parameters at the same time.
+X. C ONCLUSION
+In this paper, we propose kNM-LM for domain adaptive
+code completion. By utilizing the in-domain code to construct
+the retrieval database, the language model can adapt to complete code in target domain without fine-tuning. Specifically,
+kNM-LM builds a decoupled domain database (saving only
+tokens that the langauge model cannot predict correctly) and
+employs Bayesian inference to combine the results from the
+language model and the database. Experiments have shown
+that kNM-LM achieves the best results on intra-project and
+intra-scenario code completion tasks. Notably, our approach
+does not require access to the weights in the language model,
+
+nor does it require adding any additional neural network
+modules, making it feasible for leveraging the black-box
+language models on other domain-intensive code-related tasks,
+such as code summarization [43], [54], bug identification [55],
+localization [56] and repair [57]. To these ends, we make all
+our code, data, and models publicly available.
+XI. ACKNOWLEDGMENTS
+We are grateful to the anonymous reviewers for their useful
+comments and suggestions. This work was supported by
+National Key Research and Development Program of China
+(2022YFF0711404), Natural Science Foundation of Jiangsu
+Province, China (BK20201250), Cooperation Fund of HuaweiNJU Creative Laboratory for the Next Programming and CCFHuawei Populus Grove Fund. Jidong Ge and Shangqing Liu
+are the corresponding authors.
+R EFERENCES
+[1] S. Lu, D. Guo, S. Ren, J. Huang, A. Svyatkovskiy, A. Blanco,
+C. Clement, D. Drain, D. Jiang, D. Tang et al., “CodeXGLUE: A
+machine learning benchmark dataset for code understanding and generation,” arXiv preprint arXiv:2102.04664, 2021.
+[2] D. Guo, S. Lu, N. Duan, Y. Wang, M. Zhou, and J. Yin, “UniXcoder:
+Unified cross-modal pre-training for code representation,” in Proceedings of the 60th Annual Meeting of the Association for Computational
+Linguistics (Volume 1: Long Papers), 2022, pp. 7212–7225.
+[3] W. Ahmad, S. Chakraborty, B. Ray, and K.-W. Chang, “Unified
+pre-training for program understanding and generation,” in Proceedings
+of the 2021 Conference of the North American Chapter of
+the Association for Computational Linguistics: Human Language
+Technologies. Online: Association for Computational Linguistics, Jun.
+2021, pp. 2655–2668. [Online]. Available: https://www.aclweb.org/
+anthology/2021.naacl-main.211
+[4] C. Niu, C. Li, V. Ng, J. Ge, L. Huang, and B. Luo, “SPT-code: sequenceto-sequence pre-training for learning source code representations,” in
+Proceedings of the 44th International Conference on Software Engineering ICSE, 2022, pp. 2006–2018.
+[5] C. Raffel, N. Shazeer, A. Roberts, K. Lee, S. Narang, M. Matena,
+Y. Zhou, W. Li, and P. J. Liu, “Exploring the limits of transfer
+learning with a unified text-to-text transformer,” The Journal of Machine
+Learning Research, vol. 21, no. 1, pp. 5485–5551, 2020.
+[6] “GitHub Copilot website.” [Online]. Available: https://github.com/
+features/copilot
+[7] “ChatGPT plugin in VSCode.” [Online]. Available: https://marketplace.
+visualstudio.com/items?itemName=timkmecl.chatgpt
+[8] F. F. Xu, J. He, G. Neubig, and V. J. Hellendoorn, “Capturing
+structural locality in non-parametric language models,” in The Tenth
+International Conference on Learning Representations, ICLR 2022,
+Virtual Event, April 25-29, 2022. OpenReview.net, 2022. [Online].
+Available: https://openreview.net/forum?id=nnU3IUMJmN
+[9] E. Bogomolov, S. Zhuravlev, E. Spirin, and T. Bryksin,
+“Assessing project-level fine-tuning of ML4SE models,” CoRR,
+vol. abs/2206.03333, 2022. [Online]. Available: https://doi.org/10.
+48550/arXiv.2206.03333
+[10] D. Zan, B. Chen, D. Yang, Z. Lin, M. Kim, B. Guan, Y. Wang,
+W. Chen, and J.-G. Lou, “CERT: Continual pre-training on sketches
+for library-oriented code generation,” in Proceedings of the Thirty-First
+International Joint Conference on Artificial Intelligence, IJCAI 2022,
+2022, pp. 2369–2375.
+[11] S. Gururangan, A. Marasovic, S. Swayamdipta, K. Lo, I. Beltagy,
+D. Downey, and N. A. Smith, “Don’t stop pretraining: Adapt language
+models to domains and tasks,” in Proceedings of the 58th Annual
+Meeting of the Association for Computational Linguistics, ACL 2020,
+Online, July 5-10, 2020, pp. 8342–8360.
+[12] K. Guu, K. Lee, Z. Tung, P. Pasupat, and M. Chang, “Retrieval
+augmented language model pre-training,” in International conference
+on machine learning. PMLR, 2020, pp. 3929–3938.
+
+[13] S. Lu, N. Duan, H. Han, D. Guo, S.-w. Hwang, and A. Svyatkovskiy,
+“ReACC: A retrieval-augmented code completion framework,” in Proceedings of the 60th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers), 2022, pp. 6227–6240.
+[14] M. R. Parvez, W. Ahmad, S. Chakraborty, B. Ray, and K.-W. Chang,
+“Retrieval augmented code generation and summarization,” in Findings
+of the Association for Computational Linguistics: EMNLP 2021, 2021,
+pp. 2719–2734.
+[15] U. Khandelwal, O. Levy, D. Jurafsky, L. Zettlemoyer,
+and M. Lewis, “Generalization through memorization: Nearest
+neighbor language models,” in 8th International Conference on
+Learning Representations, ICLR 2020, Addis Ababa, Ethiopia,
+April 26-30, 2020. OpenReview.net, 2020. [Online]. Available:
+https://openreview.net/forum?id=HklBjCEKvH
+[16] T. G. Dietterich, “Ensemble methods in machine learning,” in Multiple
+Classifier Systems, First International Workshop, MCS 2000, Cagliari,
+Italy, June 21-23, 2000, Proceedings, ser. Lecture Notes in Computer
+Science, J. Kittler and F. Roli, Eds., vol. 1857. Springer, 2000, pp.
+1–15. [Online]. Available: https://doi.org/10.1007/3-540-45014-9 1
+[17] “Openai’s text embedding api.” [Online]. Available: https://platform.
+openai.com/docs/guides/embeddings
+[18] “Openai’s completion api.” [Online]. Available: https://platform.openai.
+com/docs/api-reference/completions/create
+[19] J. JOYCE, “Bayes’ theorem,” Stanford Encyclopedia of Philosophy,
+2003.
+[20] H. Husain, H. Wu, T. Gazit, M. Allamanis, and M. Brockschmidt,
+“CodeSearchNet Challenge: Evaluating the state of semantic code
+search,” CoRR, vol. abs/1909.09436, 2019. [Online]. Available:
+http://arxiv.org/abs/1909.09436
+[21] S. Robertson, H. Zaragoza et al., “The probabilistic relevance framework: Bm25 and beyond,” Foundations and Trends® in Information
+Retrieval, vol. 3, no. 4, pp. 333–389, 2009.
+[22] D. Guo, S. Ren, S. Lu, Z. Feng, D. Tang, L. Shujie, L. Zhou, N. Duan,
+A. Svyatkovskiy, S. Fu et al., “GraphCodeBERT: Pre-training code
+representations with data flow,” in International Conference on Learning
+Representations ICLR, 2021.
+[23] J. Johnson, M. Douze, and H. Jégou, “Billion-scale similarity search
+with gpus,” IEEE Transactions on Big Data, vol. 7, no. 3, pp. 535–547,
+2019.
+[24] U. Khandelwal, A. Fan, D. Jurafsky, L. Zettlemoyer, and M. Lewis,
+“Nearest neighbor machine translation,” in 9th International Conference
+on Learning Representations, ICLR 2021, Virtual Event, Austria,
+May 3-7, 2021. OpenReview.net, 2021. [Online]. Available: https:
+//openreview.net/forum?id=7wCBOfJ8hJM
+[25] A. Svyatkovskiy, S. K. Deng, S. Fu, and N. Sundaresan, “IntelliCode
+Compose: Code generation using transformer,” in Proceedings of the
+28th ACM Joint Meeting on European Software Engineering Conference
+and Symposium on the Foundations of Software Engineering, 2020, pp.
+1433–1443.
+[26] U. Alon, S. Brody, O. Levy, and E. Yahav, “code2seq: Generating
+sequences from structured representations of code,” in International
+Conference on Learning Representations.
+[27] E. Spirin, E. Bogomolov, V. Kovalenko, and T. Bryksin, “Psiminer: A
+tool for mining rich abstract syntax trees from code,” in 2021 IEEE/ACM
+18th International Conference on Mining Software Repositories (MSR),
+2021, pp. 13–17.
+[28] V. J. Hellendoorn, S. Proksch, H. C. Gall, and A. Bacchelli, “When
+code completion fails: A case study on real-world completions,” in
+2019 IEEE/ACM 41st International Conference on Software Engineering
+(ICSE). IEEE, 2019, pp. 960–970.
+[29] M. Izadi, R. Gismondi, and G. Gousios, “Codefill: Multi-token code
+completion by jointly learning from structure and naming sequences,”
+in Proceedings of the 44th International Conference on Software Engineering, 2022, pp. 401–412.
+[30] Y. Peng, S. Li, W. Gu, Y. Li, W. Wang, C. Gao, and M. Lyu, “Revisiting,
+benchmarking and exploring api recommendation: How far are we?”
+IEEE Transactions on Software Engineering, 2022.
+[31] P. Bardou, J. Mariette, F. Escudié, C. Djemiel, and C. Klopp, “jvenn: an
+interactive venn diagram viewer,” BMC bioinformatics, vol. 15, no. 1,
+pp. 1–7, 2014.
+[32] C. Wang, J. Hu, C. Gao, Y. Jin, T. Xie, H. Huang, Z. Lei, and
+Y. Deng, “Practitioners’ expectations on code completion,” arXiv
+preprint arXiv:2301.03846, 2023.
+
+[33] X. He, L. Xu, X. Zhang, R. Hao, Y. Feng, and B. Xu, “Pyart: Python api
+recommendation in real-time,” in 2021 IEEE/ACM 43rd International
+Conference on Software Engineering (ICSE). IEEE, 2021, pp. 1634–
+1645.
+[34] A. Svyatkovskiy, Y. Zhao, S. Fu, and N. Sundaresan, “Pythia: Ai-assisted
+code completion system,” in Proceedings of the 25th ACM SIGKDD
+international conference on knowledge discovery & data mining, 2019,
+pp. 2727–2735.
+[35] J. Li, Y. Wang, M. R. Lyu, and I. King, “Code completion with neural
+attention and pointer networks,” in Proceedings of the 27th International
+Joint Conference on Artificial Intelligence, 2018, pp. 4159–25.
+[36] M. Allamanis, M. Brockschmidt, and M. Khademi, “Learning to represent programs with graphs,” in International Conference on Learning
+Representations.
+[37] D. Guo, A. Svyatkovskiy, J. Yin, N. Duan, M. Brockschmidt, and M. Allamanis, “Learning to complete code with sketches,” in International
+Conference on Learning Representations, 2021.
+[38] S. A. Hayati, R. Olivier, P. Avvaru, P. Yin, A. Tomasic, and G. Neubig,
+“Retrieval-based neural code generation,” in Proceedings of the 2018
+Conference on Empirical Methods in Natural Language Processing,
+Brussels, Belgium, October 31 - November 4, 2018, E. Riloff,
+D. Chiang, J. Hockenmaier, and J. Tsujii, Eds. Association for
+Computational Linguistics, 2018, pp. 925–930. [Online]. Available:
+https://doi.org/10.18653/v1/d18-1111
+[39] T. B. Hashimoto, K. Guu, Y. Oren, and P. Liang, “A retrieve-and-edit
+framework for predicting structured outputs,” in Advances in Neural
+Information Processing Systems 31: Annual Conference on Neural
+Information Processing Systems 2018, NeurIPS 2018, December 3-8,
+2018, Montréal, Canada, S. Bengio, H. M. Wallach, H. Larochelle,
+K. Grauman, N. Cesa-Bianchi, and R. Garnett, Eds., 2018, pp. 10 073–
+10 083. [Online]. Available: https://proceedings.neurips.cc/paper/2018/
+hash/cd17d3ce3b64f227987cd92cd701cc58-Abstract.html
+[40] H. Zhong, T. Xie, L. Zhang, J. Pei, and H. Mei, “Mapo: Mining and
+recommending api usage patterns,” in ECOOP 2009–Object-Oriented
+Programming: 23rd European Conference, Genoa, Italy, July 6-10, 2009.
+Proceedings 23. Springer, 2009, pp. 318–343.
+[41] K. S. Tai, R. Socher, and C. D. Manning, “Improved semantic representations from tree-structured long short-term memory networks,”
+in Proceedings of the 53rd Annual Meeting of the Association for
+Computational Linguistics and the 7th International Joint Conference
+on Natural Language Processing (Volume 1: Long Papers), 2015, pp.
+1556–1566.
+[42] W. Wang, K. Zhang, G. Li, S. Liu, Z. Jin, and Y. Liu, “A treestructured transformer for program representation learning,” arXiv
+preprint arXiv:2208.08643, 2022.
+[43] S. Liu, Y. Chen, X. Xie, J. K. Siow, and Y. Liu, “Retrieval-augmented
+generation for code summarization via hybrid gnn,” in International
+Conference on Learning Representations.
+[44] M. Chen, J. Tworek, H. Jun, Q. Yuan, H. P. d. O. Pinto, J. Kaplan,
+H. Edwards, Y. Burda, N. Joseph, G. Brockman et al., “Evaluating large
+language models trained on code,” arXiv preprint arXiv:2107.03374,
+2021.
+[45] E. Dinella, G. Ryan, T. Mytkowicz, and S. K. Lahiri, “Toga: a neural
+method for test oracle generation,” in Proceedings of the 44th International Conference on Software Engineering, 2022, pp. 2130–2141.
+[46] P. Nie, R. Banerjee, J. J. Li, R. J. Mooney, and M. Gligoric, “Learning
+deep semantics for test completion,” 2023.
+[47] F. Zhang, B. Chen, Y. Zhang, J. Liu, D. Zan, Y. Mao, J.-G. Lou,
+and W. Chen, “Repocoder: Repository-level code completion through
+iterative retrieval and generation,” arXiv preprint arXiv:2303.12570,
+2023.
+[48] G. Izacard, P. Lewis, M. Lomeli, L. Hosseini, F. Petroni, T. Schick,
+J. Dwivedi-Yu, A. Joulin, S. Riedel, and E. Grave, “Few-shot
+learning with retrieval augmented language models,” arXiv preprint
+arXiv:2208.03299, 2022.
+[49] Y. Wang, Q. Yao, J. T. Kwok, and L. M. Ni, “Generalizing from a
+few examples: A survey on few-shot learning,” ACM computing surveys
+(csur), vol. 53, no. 3, pp. 1–34, 2020.
+[50] Y. Meng, S. Zong, X. Li, X. Sun, T. Zhang, F. Wu, and J. Li, “Gnnlm: Language modeling based on global contexts via gnn,” in ICLR
+2022 Workshop on Deep Learning on Graphs for Natural Language
+Processing.
+
+[51] Y. Huang, D. Liu, Z. Zhong, W. Shi, and Y. T. Lee, “k nn-adapter:
+Efficient domain adaptation for black-box language models,” arXiv
+preprint arXiv:2302.10879, 2023.
+[52] U. Alon, F. Xu, J. He, S. Sengupta, D. Roth, and G. Neubig, “Neurosymbolic language modeling with automaton-augmented retrieval,” in
+International Conference on Machine Learning. PMLR, 2022, pp.
+468–485.
+[53] J. He, G. Neubig, and T. Berg-Kirkpatrick, “Efficient nearest neighbor
+language models,” in Proceedings of the 2021 Conference on Empirical
+Methods in Natural Language Processing, 2021, pp. 5703–5714.
+[54] X. Hu, G. Li, X. Xia, D. Lo, and Z. Jin, “Deep code comment generation,” in Proceedings of the 26th conference on program comprehension,
+2018, pp. 200–210.
+[55] Y. Zhou, S. Liu, J. Siow, X. Du, and Y. Liu, “Devign: Effective vulnerability identification by learning comprehensive program semantics
+via graph neural networks,” Advances in neural information processing
+systems, vol. 32, 2019.
+[56] F. Niu, W. K. G. Assunçao, L. Huang, C. Mayr-Dorn, J. Ge, B. Luo, and
+A. Egyed, “Rat: A refactoring-aware traceability model for bug localization,” in 2023 45th International Conference on Software Engineering
+(ICSE). IEEE, 2023, accepted.
+[57] W. Zhong, H. Ge, H. Ai, C. Li, K. Liu, J. Ge, and B. Luo, “Standup4npr:
+Standardizing setup for empirically comparing neural program repair
+systems,” in 37th IEEE/ACM International Conference on Automated
+Software Engineering, 2022, pp. 1–13.
+
+

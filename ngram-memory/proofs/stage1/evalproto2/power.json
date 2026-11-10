@@ -1,0 +1,106 @@
+{
+ "heldout": {
+  "base_mean": 3.2492,
+  "on_mean": 3.2127,
+  "delta_mean": -0.0366,
+  "rel_delta_pct": -1.13,
+  "boot95": [
+   -0.0447,
+   -0.0289
+  ],
+  "windows": 32,
+  "tok_per_window": 511,
+  "token_sd_delta": 0.3477,
+  "window_sd_delta": 0.0227,
+  "design_effect": 2.2,
+  "frac_windows_improved": 0.969,
+  "MDE_nats_at_n_tokens(80%power,a=.05)": {
+   "8192": 0.0159,
+   "16384": 0.0112,
+   "32768": 0.0079,
+   "65536": 0.0056,
+   "131072": 0.004,
+   "262144": 0.0028
+  },
+  "frac_tokens_|delta|>0.1": 0.4127,
+  "KL_proxy_note": "per-token NLL delta on the reference token, not full-distribution KL"
+ },
+ "stdlib_py": {
+  "base_mean": 1.5304,
+  "on_mean": 1.5431,
+  "delta_mean": 0.0127,
+  "rel_delta_pct": 0.83,
+  "boot95": [
+   0.0079,
+   0.0176
+  ],
+  "windows": 12,
+  "tok_per_window": 511,
+  "token_sd_delta": 0.1916,
+  "window_sd_delta": 0.009,
+  "design_effect": 1.1,
+  "frac_windows_improved": 0.083,
+  "MDE_nats_at_n_tokens(80%power,a=.05)": {
+   "8192": 0.0063,
+   "16384": 0.0045,
+   "32768": 0.0032,
+   "65536": 0.0022,
+   "131072": 0.0016,
+   "262144": 0.0011
+  },
+  "frac_tokens_|delta|>0.1": 0.2379,
+  "KL_proxy_note": "per-token NLL delta on the reference token, not full-distribution KL"
+ },
+ "general_text": {
+  "base_mean": 2.7363,
+  "on_mean": 2.7355,
+  "delta_mean": -0.0008,
+  "rel_delta_pct": -0.03,
+  "boot95": [
+   -0.0044,
+   0.0021
+  ],
+  "windows": 12,
+  "tok_per_window": 511,
+  "token_sd_delta": 0.0827,
+  "window_sd_delta": 0.0061,
+  "design_effect": 2.8,
+  "frac_windows_improved": 0.417,
+  "MDE_nats_at_n_tokens(80%power,a=.05)": {
+   "8192": 0.0042,
+   "16384": 0.003,
+   "32768": 0.0021,
+   "65536": 0.0015,
+   "131072": 0.0011,
+   "262144": 0.0008
+  },
+  "frac_tokens_|delta|>0.1": 0.0819,
+  "KL_proxy_note": "per-token NLL delta on the reference token, not full-distribution KL"
+ },
+ "train": {
+  "base_mean": 3.083,
+  "on_mean": 2.5029,
+  "delta_mean": -0.5801,
+  "rel_delta_pct": -18.82,
+  "boot95": [
+   -0.6385,
+   -0.5166
+  ],
+  "windows": 12,
+  "tok_per_window": 511,
+  "token_sd_delta": 0.9778,
+  "window_sd_delta": 0.1127,
+  "design_effect": 6.8,
+  "frac_windows_improved": 1.0,
+  "MDE_nats_at_n_tokens(80%power,a=.05)": {
+   "8192": 0.0788,
+   "16384": 0.0557,
+   "32768": 0.0394,
+   "65536": 0.0279,
+   "131072": 0.0197,
+   "262144": 0.0139
+  },
+  "frac_tokens_|delta|>0.1": 0.6543,
+  "KL_proxy_note": "per-token NLL delta on the reference token, not full-distribution KL"
+ }
+}

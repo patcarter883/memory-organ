@@ -1,0 +1,553 @@
+[
+ {
+  "target": "Flash-Next (native)",
+  "venue": "2x RDNA4, serve down, experts host-streamed, T=8192",
+  "train_tok_s": [
+   283.7,
+   1896.6
+  ],
+  "per_1M": [
+   "9 min",
+   "59 min"
+  ],
+  "per_10M": [
+   "88 min",
+   "9.8 h"
+  ],
+  "per_epoch": [
+   "13 min",
+   "85 min"
+  ],
+  "eval_tok_s": [
+   1225,
+   7209
+  ],
+  "eval_point": [
+   "1 min",
+   "9 min"
+  ],
+  "note": "compute-bound"
+ },
+ {
+  "target": "Flash-Next (native)",
+  "venue": "2x RDNA4, serve down, experts host-streamed, T=16384",
+  "train_tok_s": [
+   360.0,
+   2204.3
+  ],
+  "per_1M": [
+   "8 min",
+   "46 min"
+  ],
+  "per_10M": [
+   "76 min",
+   "7.7 h"
+  ],
+  "per_epoch": [
+   "11 min",
+   "67 min"
+  ],
+  "eval_tok_s": [
+   1225,
+   7209
+  ],
+  "eval_point": [
+   "1 min",
+   "9 min"
+  ],
+  "note": "compute-bound"
+ },
+ {
+  "target": "Flash-Next (native)",
+  "venue": "2x RDNA4, (e2) no expert Jacobian, T=8192 [approx. gradient]",
+  "train_tok_s": [
+   451.6,
+   3001.5
+  ],
+  "per_1M": [
+   "6 min",
+   "37 min"
+  ],
+  "per_10M": [
+   "56 min",
+   "6.2 h"
+  ],
+  "per_epoch": [
+   "8 min",
+   "53 min"
+  ],
+  "eval_tok_s": [
+   NaN,
+   NaN
+  ],
+  "eval_point": [
+   "-",
+   "-"
+  ],
+  "note": "gradient approx; cosine unmeasured"
+ },
+ {
+  "target": "Flash-Next (native)",
+  "venue": "CPU beside serve, 4 cores, 15G cap, T=2048",
+  "train_tok_s": [
+   2.4,
+   9.1
+  ],
+  "per_1M": [
+   "30.4 h",
+   "4.7 d"
+  ],
+  "per_10M": [
+   "12.7 d",
+   "47.3 d"
+  ],
+  "per_epoch": [
+   "43.9 h",
+   "6.8 d"
+  ],
+  "eval_tok_s": [
+   10,
+   40
+  ],
+  "eval_point": [
+   "4.4 h",
+   "17.5 h"
+  ],
+  "note": "overnight only"
+ },
+ {
+  "target": "Flash-Next (native)",
+  "venue": "CPU beside serve, 4 cores, 15G cap, T=3072",
+  "train_tok_s": [
+   2.7,
+   10.3
+  ],
+  "per_1M": [
+   "26.9 h",
+   "4.3 d"
+  ],
+  "per_10M": [
+   "11.2 d",
+   "42.6 d"
+  ],
+  "per_epoch": [
+   "38.8 h",
+   "6.1 d"
+  ],
+  "eval_tok_s": [
+   10,
+   40
+  ],
+  "eval_point": [
+   "4.4 h",
+   "17.5 h"
+  ],
+  "note": "overnight only"
+ },
+ {
+  "target": "Gemma-4-E4B (native PLE)",
+  "venue": "1 card (9070 XT)",
+  "train_tok_s": [
+   1157.9,
+   2508.8
+  ],
+  "per_1M": [
+   "7 min",
+   "14 min"
+  ],
+  "per_10M": [
+   "66 min",
+   "2.4 h"
+  ],
+  "per_epoch": [
+   "11 min",
+   "23 min"
+  ],
+  "eval_tok_s": [
+   3540,
+   7670
+  ],
+  "eval_point": [
+   "1 min",
+   "3 min"
+  ],
+  "note": "bf16 body 9.4 GB/card; table subset on GPU, rest CPU"
+ },
+ {
+  "target": "Gemma-4-E4B (native PLE)",
+  "venue": "2 cards, data-parallel replicas",
+  "train_tok_s": [
+   2020.7,
+   4378.1
+  ],
+  "per_1M": [
+   "4 min",
+   "8 min"
+  ],
+  "per_10M": [
+   "38 min",
+   "82 min"
+  ],
+  "per_epoch": [
+   "6 min",
+   "13 min"
+  ],
+  "eval_tok_s": [
+   6178,
+   13385
+  ],
+  "eval_point": [
+   "1 min",
+   "2 min"
+  ],
+  "note": "bf16 body 9.4 GB/card; table subset on GPU, rest CPU"
+ },
+ {
+  "target": "Gemma-4-E4B (native PLE)",
+  "venue": "1 card (9070, slower)",
+  "train_tok_s": [
+   862.8,
+   1869.3
+  ],
+  "per_1M": [
+   "9 min",
+   "19 min"
+  ],
+  "per_10M": [
+   "89 min",
+   "3.2 h"
+  ],
+  "per_epoch": [
+   "14 min",
+   "31 min"
+  ],
+  "eval_tok_s": [
+   2638,
+   5715
+  ],
+  "eval_point": [
+   "2 min",
+   "4 min"
+  ],
+  "note": ""
+ },
+ {
+  "target": "Gemma-4-E4B (native PLE)",
+  "venue": "CPU beside serve (bf16 9.4 GB in RAM)",
+  "train_tok_s": [
+   5.0,
+   20.1
+  ],
+  "per_1M": [
+   "13.8 h",
+   "2.3 d"
+  ],
+  "per_10M": [
+   "5.8 d",
+   "23.1 d"
+  ],
+  "per_epoch": [
+   "21.9 h",
+   "3.7 d"
+  ],
+  "eval_tok_s": [
+   15,
+   61
+  ],
+  "eval_point": [
+   "2.9 h",
+   "11.7 h"
+  ],
+  "note": "fits 15G cap barely; overnight"
+ },
+ {
+  "target": "Qwen3.6-35B-A3B (graft)",
+  "venue": "2x RDNA4 serve down, ~4-bit resident (19 GB), T=16384",
+  "train_tok_s": [
+   1047.3,
+   5051.1
+  ],
+  "per_1M": [
+   "3 min",
+   "16 min"
+  ],
+  "per_10M": [
+   "33 min",
+   "2.7 h"
+  ],
+  "per_epoch": [
+   "5 min",
+   "23 min"
+  ],
+  "eval_tok_s": [
+   3435,
+   17350
+  ],
+  "eval_point": [
+   "1 min",
+   "3 min"
+  ],
+  "note": ""
+ },
+ {
+  "target": "Qwen3.6-35B-A3B (graft)",
+  "venue": "1 card (9070 XT), 4-bit experts host-streamed, T=8192",
+  "train_tok_s": [
+   987.2,
+   3047.2
+  ],
+  "per_1M": [
+   "5 min",
+   "17 min"
+  ],
+  "per_10M": [
+   "55 min",
+   "2.8 h"
+  ],
+  "per_epoch": [
+   "8 min",
+   "24 min"
+  ],
+  "eval_tok_s": [
+   NaN,
+   NaN
+  ],
+  "eval_point": [
+   "-",
+   "-"
+  ],
+  "note": "io 1.4s/step"
+ },
+ {
+  "target": "Qwen3.6-35B-A3B (graft)",
+  "venue": "CPU-streamed beside serve, 4 cores, T=2048",
+  "train_tok_s": [
+   6.1,
+   23.3
+  ],
+  "per_1M": [
+   "11.9 h",
+   "45.4 h"
+  ],
+  "per_10M": [
+   "5.0 d",
+   "18.9 d"
+  ],
+  "per_epoch": [
+   "17.2 h",
+   "2.7 d"
+  ],
+  "eval_tok_s": [
+   23,
+   92
+  ],
+  "eval_point": [
+   "1.9 h",
+   "7.7 h"
+  ],
+  "note": "overnight only"
+ },
+ {
+  "target": "gemma-4-26B-A4B (graft)",
+  "venue": "2x RDNA4 serve down, ~4-bit resident (14 GB), T=16384",
+  "train_tok_s": [
+   797.5,
+   3975.8
+  ],
+  "per_1M": [
+   "4 min",
+   "21 min"
+  ],
+  "per_10M": [
+   "42 min",
+   "3.5 h"
+  ],
+  "per_epoch": [
+   "7 min",
+   "33 min"
+  ],
+  "eval_tok_s": [
+   2558,
+   13189
+  ],
+  "eval_point": [
+   "1 min",
+   "4 min"
+  ],
+  "note": ""
+ },
+ {
+  "target": "gemma-4-26B-A4B (graft)",
+  "venue": "1 card (9070 XT), 4-bit experts host-streamed, T=8192",
+  "train_tok_s": [
+   830.8,
+   2378.2
+  ],
+  "per_1M": [
+   "7 min",
+   "20 min"
+  ],
+  "per_10M": [
+   "70 min",
+   "3.3 h"
+  ],
+  "per_epoch": [
+   "11 min",
+   "32 min"
+  ],
+  "eval_tok_s": [
+   NaN,
+   NaN
+  ],
+  "eval_point": [
+   "-",
+   "-"
+  ],
+  "note": "io 1.0s/step"
+ },
+ {
+  "target": "gemma-4-26B-A4B (graft)",
+  "venue": "CPU-streamed beside serve, 4 cores, T=2048",
+  "train_tok_s": [
+   5.1,
+   19.9
+  ],
+  "per_1M": [
+   "14.0 h",
+   "2.3 d"
+  ],
+  "per_10M": [
+   "5.8 d",
+   "22.6 d"
+  ],
+  "per_epoch": [
+   "22.2 h",
+   "3.6 d"
+  ],
+  "eval_tok_s": [
+   18,
+   71
+  ],
+  "eval_point": [
+   "2.5 h",
+   "10.1 h"
+  ],
+  "note": "overnight only"
+ },
+ {
+  "target": "Qwen3.8-27B (graft)",
+  "venue": "2x RDNA4 serve down, ~4-bit resident (15 GB), T=16384",
+  "train_tok_s": [
+   186.9,
+   817.8
+  ],
+  "per_1M": [
+   "20 min",
+   "89 min"
+  ],
+  "per_10M": [
+   "3.4 h",
+   "14.9 h"
+  ],
+  "per_epoch": [
+   "29 min",
+   "2.1 h"
+  ],
+  "eval_tok_s": [
+   564,
+   2492
+  ],
+  "eval_point": [
+   "4 min",
+   "19 min"
+  ],
+  "note": ""
+ },
+ {
+  "target": "Qwen3.8-27B (graft)",
+  "venue": "CPU-streamed beside serve, 4 cores, T=2048",
+  "train_tok_s": [
+   0.9,
+   3.7
+  ],
+  "per_1M": [
+   "3.1 d",
+   "12.4 d"
+  ],
+  "per_10M": [
+   "31.2 d",
+   "124.0 d"
+  ],
+  "per_epoch": [
+   "4.5 d",
+   "17.9 d"
+  ],
+  "eval_tok_s": [
+   3,
+   11
+  ],
+  "eval_point": [
+   "15.6 h",
+   "2.6 d"
+  ],
+  "note": "overnight only"
+ },
+ {
+  "target": "gemma-4-31B (graft)",
+  "venue": "2x RDNA4 serve down, ~4-bit resident (17 GB), T=15360",
+  "train_tok_s": [
+   150.5,
+   659.4
+  ],
+  "per_1M": [
+   "25 min",
+   "1.8 h"
+  ],
+  "per_10M": [
+   "4.2 h",
+   "18.5 h"
+  ],
+  "per_epoch": [
+   "40 min",
+   "2.9 h"
+  ],
+  "eval_tok_s": [
+   459,
+   2030
+  ],
+  "eval_point": [
+   "5 min",
+   "23 min"
+  ],
+  "note": ""
+ },
+ {
+  "target": "gemma-4-31B (graft)",
+  "venue": "CPU-streamed beside serve, 4 cores, T=2048",
+  "train_tok_s": [
+   0.8,
+   3.0
+  ],
+  "per_1M": [
+   "3.9 d",
+   "15.4 d"
+  ],
+  "per_10M": [
+   "38.6 d",
+   "153.7 d"
+  ],
+  "per_epoch": [
+   "6.1 d",
+   "24.4 d"
+  ],
+  "eval_tok_s": [
+   2,
+   9
+  ],
+  "eval_point": [
+   "19.2 h",
+   "3.2 d"
+  ],
+  "note": "overnight only"
+ }
+]

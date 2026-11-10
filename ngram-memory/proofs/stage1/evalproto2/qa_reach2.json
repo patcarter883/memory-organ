@@ -1,0 +1,62 @@
+{
+ "import_completion/train_file": {
+  "items": 196,
+  "first_tok": {
+   "k3_in_train": 0.755,
+   "tri_seen": 0.316,
+   "tri_argmax": 0.158,
+   "k3_proj_specific": 0.459
+  },
+  "all_tok": {
+   "tri_seen": 0.593,
+   "tri_argmax": 0.365,
+   "k3_proj_specific": 0.636
+  },
+  "whole_answer_by_3gram_argmax_chain": 0.01
+ },
+ "import_completion/heldout_file": {
+  "items": 29,
+  "first_tok": {
+   "k3_in_train": 0.655,
+   "tri_seen": 0.31,
+   "tri_argmax": 0.207,
+   "k3_proj_specific": 0.793
+  },
+  "all_tok": {
+   "tri_seen": 0.585,
+   "tri_argmax": 0.385,
+   "k3_proj_specific": 0.746
+  },
+  "whole_answer_by_3gram_argmax_chain": 0.0
+ },
+ "constant_value/train_file": {
+  "items": 195,
+  "first_tok": {
+   "k3_in_train": 1.0,
+   "tri_seen": 0.769,
+   "tri_argmax": 0.646,
+   "k3_proj_specific": 0.59
+  },
+  "all_tok": {
+   "tri_seen": 0.793,
+   "tri_argmax": 0.316,
+   "k3_proj_specific": 0.248
+  },
+  "whole_answer_by_3gram_argmax_chain": 0.072
+ },
+ "constant_value/heldout_file": {
+  "items": 12,
+  "first_tok": {
+   "k3_in_train": 0.583,
+   "tri_seen": 0.167,
+   "tri_argmax": 0.167,
+   "k3_proj_specific": 0.583
+  },
+  "all_tok": {
+   "tri_seen": 0.59,
+   "tri_argmax": 0.34,
+   "k3_proj_specific": 0.52
+  },
+  "whole_answer_by_3gram_argmax_chain": 0.0
+ }
+}

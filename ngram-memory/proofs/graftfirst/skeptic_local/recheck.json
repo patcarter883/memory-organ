@@ -1,0 +1,37 @@
+{
+ "35B": {
+  "resident_weights_GB": 22.5,
+  "dequant_s_per_Mtok [report: once per 16k step]": 22.0,
+  "dequant_s_per_Mtok [1F1B 2048-token microbatches]": 179.0,
+  "dequant_s_per_Mtok [layer-wise 8k halves]": 45.0,
+  "tokens_per_expert_at_2048": 64.0,
+  "tokens_per_expert_at_8192": 256.0,
+  "tokens_per_expert_at_16384": 512.0,
+  "expert_gemm_ceiling_TFs_M64": 41.0,
+  "expert_gemm_ceiling_TFs_M256": 164.0,
+  "expert_gemm_ceiling_TFs_M512": 195.0,
+  "card0_GB(est)": 15.0,
+  "card1_GB(est)": 13.8,
+  "card_cap_GB": 16.82
+ },
+ "27B": {
+  "resident_weights_GB": 15.48,
+  "dequant_s_per_Mtok [report: once per 16k step]": 17.0,
+  "dequant_s_per_Mtok [1F1B 2048-token microbatches]": 135.0,
+  "dequant_s_per_Mtok [layer-wise 8k halves]": 34.0,
+  "card0_GB(est)": 12.1,
+  "card1_GB(est)": 13.2,
+  "card_cap_GB": 16.82
+ },
+ "cpu_cartridge_days_3ep": {
+  "35B": [
+   2.0,
+   6.3
+  ],
+  "27B": [
+   11.1,
+   36.8
+  ]
+ },
+ "27B_upper_MFU_as_frac_of_best_GEMM": 0.76
+}

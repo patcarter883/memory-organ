@@ -1,0 +1,232 @@
+{
+ "all": {
+  "n": 16352,
+  "frac": 1.0,
+  "base": 3.249,
+  "delta": -0.0366,
+  "rel_pct": -1.13,
+  "share_of_gain": 1.0,
+  "base_top1_proxy_p": 0.349,
+  "on_p": 0.352
+ },
+ "builtin_first|cont": {
+  "n": 3,
+  "frac": 0.0002,
+  "base": 0.687,
+  "delta": 0.1487,
+  "rel_pct": 21.64,
+  "share_of_gain": -0.001,
+  "base_top1_proxy_p": 0.64,
+  "on_p": 0.606
+ },
+ "builtin_first|sub0": {
+  "n": 27,
+  "frac": 0.0017,
+  "base": 2.233,
+  "delta": 0.0017,
+  "rel_pct": 0.07,
+  "share_of_gain": -0.0,
+  "base_top1_proxy_p": 0.328,
+  "on_p": 0.332
+ },
+ "builtin_rep|cont": {
+  "n": 11,
+  "frac": 0.0007,
+  "base": 0.056,
+  "delta": 0.0007,
+  "rel_pct": 1.29,
+  "share_of_gain": -0.0,
+  "base_top1_proxy_p": 0.951,
+  "on_p": 0.95
+ },
+ "builtin_rep|sub0": {
+  "n": 185,
+  "frac": 0.0113,
+  "base": 1.875,
+  "delta": 0.011,
+  "rel_pct": 0.58,
+  "share_of_gain": -0.003,
+  "base_top1_proxy_p": 0.451,
+  "on_p": 0.447
+ },
+ "comment": {
+  "n": 3465,
+  "frac": 0.2119,
+  "base": 4.662,
+  "delta": -0.0492,
+  "rel_pct": -1.06,
+  "share_of_gain": 0.285,
+  "base_top1_proxy_p": 0.153,
+  "on_p": 0.155
+ },
+ "eos": {
+  "n": 1,
+  "frac": 0.0001,
+  "base": 11.08,
+  "delta": 0.0209,
+  "rel_pct": 0.19,
+  "share_of_gain": -0.0,
+  "base_top1_proxy_p": 0.0,
+  "on_p": 0.0
+ },
+ "gen_first|cont": {
+  "n": 113,
+  "frac": 0.0069,
+  "base": 3.018,
+  "delta": -0.0551,
+  "rel_pct": -1.83,
+  "share_of_gain": 0.01,
+  "base_top1_proxy_p": 0.402,
+  "on_p": 0.407
+ },
+ "gen_first|sub0": {
+  "n": 179,
+  "frac": 0.0109,
+  "base": 4.327,
+  "delta": -0.1089,
+  "rel_pct": -2.52,
+  "share_of_gain": 0.033,
+  "base_top1_proxy_p": 0.235,
+  "on_p": 0.241
+ },
+ "gen_rep|cont": {
+  "n": 253,
+  "frac": 0.0155,
+  "base": 1.644,
+  "delta": -0.0556,
+  "rel_pct": -3.38,
+  "share_of_gain": 0.024,
+  "base_top1_proxy_p": 0.666,
+  "on_p": 0.677
+ },
+ "gen_rep|sub0": {
+  "n": 953,
+  "frac": 0.0583,
+  "base": 1.822,
+  "delta": -0.0036,
+  "rel_pct": -0.2,
+  "share_of_gain": 0.006,
+  "base_top1_proxy_p": 0.515,
+  "on_p": 0.516
+ },
+ "keyword": {
+  "n": 559,
+  "frac": 0.0342,
+  "base": 0.946,
+  "delta": -0.0156,
+  "rel_pct": -1.65,
+  "share_of_gain": 0.015,
+  "base_top1_proxy_p": 0.595,
+  "on_p": 0.603
+ },
+ "other": {
+  "n": 2840,
+  "frac": 0.1737,
+  "base": 0.725,
+  "delta": -0.012,
+  "rel_pct": -1.66,
+  "share_of_gain": 0.057,
+  "base_top1_proxy_p": 0.704,
+  "on_p": 0.708
+ },
+ "proj_first|cont": {
+  "n": 226,
+  "frac": 0.0138,
+  "base": 4.006,
+  "delta": -0.0752,
+  "rel_pct": -1.88,
+  "share_of_gain": 0.028,
+  "base_top1_proxy_p": 0.303,
+  "on_p": 0.307
+ },
+ "proj_first|sub0": {
+  "n": 100,
+  "frac": 0.0061,
+  "base": 3.056,
+  "delta": -0.0178,
+  "rel_pct": -0.58,
+  "share_of_gain": 0.003,
+  "base_top1_proxy_p": 0.299,
+  "on_p": 0.297
+ },
+ "proj_rep|cont": {
+  "n": 576,
+  "frac": 0.0352,
+  "base": 2.159,
+  "delta": -0.0508,
+  "rel_pct": -2.35,
+  "share_of_gain": 0.049,
+  "base_top1_proxy_p": 0.612,
+  "on_p": 0.618
+ },
+ "proj_rep|sub0": {
+  "n": 258,
+  "frac": 0.0158,
+  "base": 2.715,
+  "delta": 0.0146,
+  "rel_pct": 0.54,
+  "share_of_gain": -0.006,
+  "base_top1_proxy_p": 0.424,
+  "on_p": 0.423
+ },
+ "string": {
+  "n": 6603,
+  "frac": 0.4038,
+  "base": 4.172,
+  "delta": -0.0453,
+  "rel_pct": -1.09,
+  "share_of_gain": 0.501,
+  "base_top1_proxy_p": 0.217,
+  "on_p": 0.219
+ },
+ "ID|sub0 (all)": {
+  "n": 1702,
+  "frac": 0.1041,
+  "base": 2.306,
+  "delta": -0.0111,
+  "rel_pct": -0.48,
+  "share_of_gain": 0.032,
+  "base_top1_proxy_p": 0.449,
+  "on_p": 0.45
+ },
+ "ID|cont (all)": {
+  "n": 1182,
+  "frac": 0.0723,
+  "base": 2.461,
+  "delta": -0.0559,
+  "rel_pct": -2.27,
+  "share_of_gain": 0.111,
+  "base_top1_proxy_p": 0.548,
+  "on_p": 0.554
+ },
+ "ID proj (all)": {
+  "n": 1160,
+  "frac": 0.0709,
+  "base": 2.72,
+  "delta": -0.0382,
+  "rel_pct": -1.4,
+  "share_of_gain": 0.074,
+  "base_top1_proxy_p": 0.483,
+  "on_p": 0.487
+ },
+ "ID gen+builtin (all)": {
+  "n": 1724,
+  "frac": 0.1054,
+  "base": 2.133,
+  "delta": -0.0236,
+  "rel_pct": -1.11,
+  "share_of_gain": 0.068,
+  "base_top1_proxy_p": 0.494,
+  "on_p": 0.497
+ },
+ "non-ID": {
+  "n": 13468,
+  "frac": 0.8236,
+  "base": 3.438,
+  "delta": -0.0381,
+  "rel_pct": -1.11,
+  "share_of_gain": 0.858,
+  "base_top1_proxy_p": 0.319,
+  "on_p": 0.322
+ }
+}

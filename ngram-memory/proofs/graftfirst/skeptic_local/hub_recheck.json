@@ -1,0 +1,180 @@
+{
+ "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit": {
+  "safetensors_GB": 24.97,
+  "by_part_GB": {
+   "visual": 0.893,
+   "lm_head": 1.017,
+   "embed": 1.017,
+   "other": 2.862,
+   "experts": 18.623,
+   "mtp": 0.544
+  },
+  "dtypes": {
+   "visual": {
+    "BF16": 0.893
+   },
+   "lm_head": {
+    "F16": 1.017
+   },
+   "embed": {
+    "F16": 1.017
+   },
+   "other": {
+    "F16": 2.862
+   },
+   "experts": {
+    "I32": 16.609,
+    "F16": 2.013
+   },
+   "mtp": {
+    "BF16": 0.079,
+    "I32": 0.415,
+    "F16": 0.05
+   }
+  }
+ },
+ "pahajokiconsulting/Qwen3.6-35B-A3B-MXFP4": {
+  "safetensors_GB": 23.12,
+  "by_part_GB": {
+   "other": 1.378,
+   "experts": 17.113,
+   "mtp": 1.689,
+   "visual": 0.893,
+   "lm_head": 1.017,
+   "embed": 1.017
+  },
+  "dtypes": {
+   "other": {
+    "BF16": 0.841,
+    "U8": 0.537
+   },
+   "experts": {
+    "U8": 17.113
+   },
+   "mtp": {
+    "BF16": 1.689
+   },
+   "visual": {
+    "BF16": 0.893
+   },
+   "lm_head": {
+    "BF16": 1.017
+   },
+   "embed": {
+    "BF16": 1.017
+   }
+  }
+ },
+ "amd/Qwen3.8-27B-Quark-AWQ-MXFP4": {
+  "safetensors_GB": 19.8,
+  "by_part_GB": {
+   "lm_head": 2.543,
+   "embed": 2.543,
+   "other": 12.942,
+   "visual": 0.921,
+   "mtp": 0.849
+  },
+  "dtypes": {
+   "lm_head": {
+    "BF16": 2.543
+   },
+   "embed": {
+    "BF16": 2.543
+   },
+   "other": {
+    "BF16": 0.005,
+    "U8": 12.936
+   },
+   "visual": {
+    "BF16": 0.921
+   },
+   "mtp": {
+    "BF16": 0.849
+   }
+  }
+ },
+ "sakamakismile/Qwen3.8-27B-MTP-NVFP4": {
+  "safetensors_GB": 20.56,
+  "by_part_GB": {
+   "other": 13.702,
+   "lm_head": 2.543,
+   "embed": 2.543,
+   "visual": 0.921
+  },
+  "dtypes": {
+   "other": {
+    "F32": 0.0,
+    "BF16": 0.005,
+    "F8_E4M3": 1.522,
+    "U8": 12.175
+   },
+   "lm_head": {
+    "BF16": 2.543
+   },
+   "embed": {
+    "BF16": 2.543
+   },
+   "visual": {
+    "BF16": 0.921
+   }
+  }
+ },
+ "Qwen/Qwen3.6-35B-A3B": {
+  "safetensors_GB": 71.9,
+  "by_part_GB": {
+   "other": 2.862,
+   "experts": 64.425,
+   "mtp": 1.689,
+   "visual": 0.893,
+   "lm_head": 1.017,
+   "embed": 1.017
+  },
+  "dtypes": {
+   "other": {
+    "BF16": 2.862
+   },
+   "experts": {
+    "BF16": 64.425
+   },
+   "mtp": {
+    "BF16": 1.689
+   },
+   "visual": {
+    "BF16": 0.893
+   },
+   "lm_head": {
+    "BF16": 1.017
+   },
+   "embed": {
+    "BF16": 1.017
+   }
+  }
+ },
+ "Qwen/Qwen3.8-27B": {
+  "safetensors_GB": 55.56,
+  "by_part_GB": {
+   "other": 48.706,
+   "lm_head": 2.543,
+   "mtp": 0.849,
+   "visual": 0.921,
+   "embed": 2.543
+  },
+  "dtypes": {
+   "other": {
+    "BF16": 48.706
+   },
+   "lm_head": {
+    "BF16": 2.543
+   },
+   "mtp": {
+    "BF16": 0.849
+   },
+   "visual": {
+    "BF16": 0.921
+   },
+   "embed": {
+    "BF16": 2.543
+   }
+  }
+ }
+}

@@ -1,0 +1,154 @@
+{
+ "defines_module/nl/train_file": {
+  "items": 981,
+  "answer_tokens": 7380,
+  "all_tok": {
+   "k3_in_train": 0.92,
+   "tri_seen": 0.777,
+   "tri_argmax": 0.401,
+   "bi_argmax": 0.362,
+   "k3_proj_specific": 0.644
+  },
+  "first_tok": {
+   "k3_in_train": 1.0,
+   "tri_seen": 1.0,
+   "tri_argmax": 0.0,
+   "bi_argmax": 0.0,
+   "k3_proj_specific": 0.0
+  },
+  "whole_answer_by_3gram_argmax_chain": 0.0
+ },
+ "defines_module/code_dotted/train_file": {
+  "items": 981,
+  "answer_tokens": 7379,
+  "all_tok": {
+   "k3_in_train": 0.92,
+   "tri_seen": 0.504,
+   "tri_argmax": 0.268,
+   "bi_argmax": 0.358,
+   "k3_proj_specific": 0.777
+  },
+  "first_tok": {
+   "k3_in_train": 1.0,
+   "tri_seen": 0.0,
+   "tri_argmax": 0.0,
+   "bi_argmax": 0.0,
+   "k3_proj_specific": 0.0
+  },
+  "whole_answer_by_3gram_argmax_chain": 0.0
+ },
+ "defines_module/nl/heldout_file": {
+  "items": 84,
+  "answer_tokens": 599,
+  "all_tok": {
+   "k3_in_train": 0.943,
+   "tri_seen": 0.806,
+   "tri_argmax": 0.421,
+   "bi_argmax": 0.392,
+   "k3_proj_specific": 0.634
+  },
+  "first_tok": {
+   "k3_in_train": 1.0,
+   "tri_seen": 1.0,
+   "tri_argmax": 0.0,
+   "bi_argmax": 0.0,
+   "k3_proj_specific": 0.0
+  },
+  "whole_answer_by_3gram_argmax_chain": 0.0
+ },
+ "defines_module/code_dotted/heldout_file": {
+  "items": 84,
+  "answer_tokens": 599,
+  "all_tok": {
+   "k3_in_train": 0.943,
+   "tri_seen": 0.536,
+   "tri_argmax": 0.28,
+   "bi_argmax": 0.392,
+   "k3_proj_specific": 0.775
+  },
+  "first_tok": {
+   "k3_in_train": 1.0,
+   "tri_seen": 0.0,
+   "tri_argmax": 0.0,
+   "bi_argmax": 0.0,
+   "k3_proj_specific": 0.0
+  },
+  "whole_answer_by_3gram_argmax_chain": 0.0
+ },
+ "signature/code_def/train_file": {
+  "items": 293,
+  "answer_tokens": 8724,
+  "all_tok": {
+   "k3_in_train": 0.918,
+   "tri_seen": 0.736,
+   "tri_argmax": 0.451,
+   "bi_argmax": 0.298,
+   "k3_proj_specific": 0.336
+  },
+  "first_tok": {
+   "k3_in_train": 0.99,
+   "tri_seen": 0.645,
+   "tri_argmax": 0.225,
+   "bi_argmax": 0.031,
+   "k3_proj_specific": 0.809
+  },
+  "whole_answer_by_3gram_argmax_chain": 0.0
+ },
+ "signature/code_def/heldout_file": {
+  "items": 24,
+  "answer_tokens": 570,
+  "all_tok": {
+   "k3_in_train": 0.837,
+   "tri_seen": 0.596,
+   "tri_argmax": 0.342,
+   "bi_argmax": 0.279,
+   "k3_proj_specific": 0.289
+  },
+  "first_tok": {
+   "k3_in_train": 0.917,
+   "tri_seen": 0.125,
+   "tri_argmax": 0.042,
+   "bi_argmax": 0.0,
+   "k3_proj_specific": 0.625
+  },
+  "whole_answer_by_3gram_argmax_chain": 0.0
+ },
+ "env_var_reader/nl/train_file": {
+  "items": 239,
+  "answer_tokens": 2101,
+  "all_tok": {
+   "k3_in_train": 1.0,
+   "tri_seen": 0.919,
+   "tri_argmax": 0.493,
+   "bi_argmax": 0.319,
+   "k3_proj_specific": 0.728
+  },
+  "first_tok": {
+   "k3_in_train": 1.0,
+   "tri_seen": 1.0,
+   "tri_argmax": 0.0,
+   "bi_argmax": 0.0,
+   "k3_proj_specific": 0.0
+  },
+  "whole_answer_by_3gram_argmax_chain": 0.0
+ },
+ "env_var_reader/nl/heldout_file": {
+  "items": 11,
+  "answer_tokens": 101,
+  "all_tok": {
+   "k3_in_train": 0.931,
+   "tri_seen": 0.802,
+   "tri_argmax": 0.416,
+   "bi_argmax": 0.297,
+   "k3_proj_specific": 0.693
+  },
+  "first_tok": {
+   "k3_in_train": 1.0,
+   "tri_seen": 1.0,
+   "tri_argmax": 0.0,
+   "bi_argmax": 0.0,
+   "k3_proj_specific": 0.0
+  },
+  "whole_answer_by_3gram_argmax_chain": 0.0
+ }
+}

@@ -1,0 +1,1141 @@
+{
+ "Qwen/Qwen3.6-35B-A3B": {
+  "group": "35B",
+  "sha": "345d467b11",
+  "safetensors_GB": 71.9,
+  "st_dtypes": {
+   "BF16": 35951822704
+  }
+ },
+ "Qwen/Qwen3.6-35B-A3B-FP8": {
+  "group": "35B",
+  "sha": "c653bba46d",
+  "safetensors_GB": 37.46,
+  "st_dtypes": {
+   "BF16": 1498761072,
+   "F8_E4M3": 34453061632
+  },
+  "quant_method": "fp8",
+  "fmt": "e4m3",
+  "n_ignore": 648,
+  "ignore_sample": [
+   "model.visual.blocks.0.attn.proj",
+   "model.visual.blocks.0.attn.qkv",
+   "model.visual.blocks.0.mlp.linear_fc1",
+   "model.visual.blocks.0.mlp.linear_fc2",
+   "visual.blocks.0.attn.proj",
+   "visual.blocks.0.attn.qkv_proj"
+  ]
+ },
+ "nvidia/Qwen3.6-35B-A3B-NVFP4": {
+  "group": "35B",
+  "sha": "1355db6a05",
+  "safetensors_GB": 23.42,
+  "st_dtypes": {
+   "BF16": 1825916784,
+   "F8_E4M3": 1279262720,
+   "U8": 16423321600
+  },
+  "quant_method": "modelopt",
+  "quant_algo": "MIXED_PRECISION",
+  "groups": {
+   "group_0": {
+    "w": {
+     "num_bits": 8,
+     "type": "float",
+     "strategy": null,
+     "group_size": null
+    },
+    "a": {
+     "num_bits": 8,
+     "type": "float",
+     "strategy": null,
+     "dynamic": false
+    },
+    "fmt": null
+   },
+   "group_1": {
+    "w": {
+     "num_bits": 4,
+     "type": "float",
+     "strategy": null,
+     "group_size": 16
+    },
+    "a": {
+     "num_bits": 4,
+     "type": "float",
+     "strategy": null,
+     "dynamic": false
+    },
+    "fmt": null
+   }
+  },
+  "n_ignore": 2,
+  "ignore_sample": [
+   "mtp.layers.0*",
+   "mtp*"
+  ]
+ },
+ "RedHatAI/Qwen3.6-35B-A3B-NVFP4": {
+  "group": "35B",
+  "sha": "e94a930c8e",
+  "safetensors_GB": 25.04,
+  "st_dtypes": {
+   "BF16": 2049897088,
+   "U8": 32610713600
+  },
+  "quant_method": "compressed-tensors",
+  "format": "nvfp4-pack-quantized",
+  "version": "0.15.1.a20260409",
+  "kv_cache_scheme": false,
+  "groups": {
+   "group_0": {
+    "w": {
+     "num_bits": 4,
+     "type": "float",
+     "strategy": "tensor_group",
+     "group_size": 16
+    },
+    "a": {
+     "num_bits": 4,
+     "type": "float",
+     "strategy": "tensor_group",
+     "dynamic": "local"
+    },
+    "fmt": "nvfp4-pack-quantized"
+   }
+  },
+  "n_ignore": 342,
+  "ignore_sample": [
+   "model.visual.blocks.0.attn.qkv",
+   "model.visual.blocks.0.attn.proj",
+   "model.visual.blocks.0.mlp.linear_fc1",
+   "model.visual.blocks.0.mlp.linear_fc2",
+   "model.visual.blocks.1.attn.qkv",
+   "model.visual.blocks.1.attn.proj"
+  ]
+ },
+ "RedHatAI/Qwen3.6-35B-A3B-FP8": {
+  "group": "35B",
+  "sha": "ea247061a1",
+  "safetensors_GB": 37.46,
+  "st_dtypes": {
+   "BF16": 1498761072,
+   "F8_E4M3": 34453061632
+  },
+  "quant_method": "fp8",
+  "fmt": "e4m3",
+  "n_ignore": 648,
+  "ignore_sample": [
+   "model.visual.blocks.0.attn.proj",
+   "model.visual.blocks.0.attn.qkv",
+   "model.visual.blocks.0.mlp.linear_fc1",
+   "model.visual.blocks.0.mlp.linear_fc2",
+   "visual.blocks.0.attn.proj",
+   "visual.blocks.0.attn.qkv_proj"
+  ]
+ },
+ "RedHatAI/Qwen3.6-35B-A3B-FP8-dynamic": {
+  "group": "35B",
+  "sha": "6496d54f91",
+  "safetensors_GB": 39.37,
+  "st_dtypes": {
+   "BF16": 2528161136,
+   "F8_E4M3": 32610713600
+  },
+  "quant_method": "compressed-tensors",
+  "format": "float-quantized",
+  "version": "0.15.1.a20260421",
+  "kv_cache_scheme": false,
+  "groups": {
+   "group_0": {
+    "w": {
+     "num_bits": 8,
+     "type": "float",
+     "strategy": "channel",
+     "group_size": null
+    },
+    "a": {
+     "num_bits": 8,
+     "type": "float",
+     "strategy": "token",
+     "dynamic": true
+    },
+    "fmt": "float-quantized"
+   }
+  },
+  "n_ignore": 342,
+  "ignore_sample": [
+   "model.visual.blocks.0.attn.qkv",
+   "model.visual.blocks.0.attn.proj",
+   "model.visual.blocks.0.mlp.linear_fc1",
+   "model.visual.blocks.0.mlp.linear_fc2",
+   "model.visual.blocks.1.attn.qkv",
+   "model.visual.blocks.1.attn.proj"
+  ]
+ },
+ "unsloth/Qwen3.6-35B-A3B-NVFP4": {
+  "group": "35B",
+  "sha": "739af1e7aa",
+  "safetensors_GB": 26.49,
+  "st_dtypes": {
+   "BF16": 1825916804,
+   "F8_E4M3": 8255438848,
+   "U8": 12935233536
+  },
+  "quant_method": "compressed-tensors",
+  "format": "mixed-precision",
+  "version": "0.17.2.a20260707",
+  "kv_cache_scheme": true,
+  "groups": {
+   "group_0": {
+    "w": {
+     "num_bits": 8,
+     "type": "float",
+     "strategy": "channel",
+     "group_size": null
+    },
+    "a": {
+     "num_bits": 8,
+     "type": "float",
+     "strategy": "token",
+     "dynamic": true
+    },
+    "fmt": "float-quantized"
+   },
+   "group_1": {
+    "w": {
+     "num_bits": 4,
+     "type": "float",
+     "strategy": "tensor_group",
+     "group_size": 16
+    },
+    "a": {
+     "num_bits": 4,
+     "type": "float",
+     "strategy": "tensor_group",
+     "dynamic": "local"
+    },
+    "fmt": "nvfp4-pack-quantized"
+   }
+  },
+  "n_ignore": 311,
+  "ignore_sample": [
+   "model.visual.blocks.0.attn.qkv",
+   "model.visual.blocks.0.attn.proj",
+   "model.visual.blocks.0.mlp.linear_fc1",
+   "model.visual.blocks.0.mlp.linear_fc2",
+   "model.visual.blocks.1.attn.qkv",
+   "model.visual.blocks.1.attn.proj"
+  ]
+ },
+ "QuantTrio/Qwen3.6-35B-A3B-AWQ": {
+  "group": "35B",
+  "sha": "119886a107",
+  "safetensors_GB": 25.46,
+  "st_dtypes": {
+   "F32": 20971520,
+   "I32": 31406948352,
+   "BF16": 4523902832
+  },
+  "quant_method": "awq",
+  "bits": 4,
+  "group_size": 128,
+  "zero_point": true,
+  "version": "gemm",
+  "n_ignore": 7,
+  "ignore_sample": [
+   "visual",
+   "linear_attn",
+   "self_attn",
+   "shared_expert",
+   "mlp.gate",
+   "model.layers.0."
+  ]
+ },
+ "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit": {
+  "group": "35B",
+  "sha": "f1e8415c4f",
+  "safetensors_GB": 24.97,
+  "st_dtypes": {
+   "I32": 33017561088,
+   "BF16": 485905648,
+   "F16": 2448355968
+  },
+  "quant_method": "awq",
+  "bits": 4,
+  "group_size": 32,
+  "zero_point": true,
+  "version": "gemm",
+  "n_ignore": 502,
+  "ignore_sample": [
+   "model.visual.blocks.0.attn.qkv",
+   "model.visual.blocks.0.attn.proj",
+   "model.visual.blocks.0.mlp.linear_fc1",
+   "model.visual.blocks.0.mlp.linear_fc2",
+   "model.visual.blocks.1.attn.qkv",
+   "model.visual.blocks.1.attn.proj"
+  ]
+ },
+ "pahajokiconsulting/Qwen3.6-35B-A3B-MXFP4": {
+  "group": "35B",
+  "sha": "7eceff3a9f",
+  "safetensors_GB": 23.12,
+  "st_dtypes": {
+   "BF16": 2729002864,
+   "U8": 17649623040
+  },
+  "quant_method": "compressed-tensors",
+  "format": "mxfp4-pack-quantized",
+  "groups": {
+   "group_0": {
+    "w": {
+     "num_bits": 4,
+     "type": "float",
+     "strategy": "group",
+     "group_size": 32
+    },
+    "a": null,
+    "fmt": null
+   }
+  },
+  "n_ignore": 1355,
+  "ignore_sample": [
+   "lm_head",
+   "model.language_model.embed_tokens",
+   "model.language_model.layers.0.input_layernorm",
+   "model.language_model.layers.0.linear_attn.conv1d",
+   "model.language_model.layers.0.linear_attn.norm",
+   "model.language_model.layers.0.mlp.gate"
+  ]
+ },
+ "palmfuture/Qwen3.6-35B-A3B-GPTQ-Int4": {
+  "group": "35B",
+  "sha": "00a6698351",
+  "safetensors_GB": 24.42,
+  "st_dtypes": {
+   "BF16": 3739567984,
+   "I32": 32212254720
+  },
+  "quant_method": "gptq",
+  "bits": 4,
+  "group_size": 128,
+  "format": "gptq",
+  "sym": true,
+  "n_ignore": 0,
+  "ignore_sample": []
+ },
+ "btbtyler09/Qwen3.6-35B-A3B-GPTQ-8bit": {
+  "group": "35B",
+  "sha": "915af8272b",
+  "safetensors_GB": 42.92,
+  "st_dtypes": {
+   "I32": 32212254720,
+   "BF16": 3739567984
+  },
+  "quant_method": "gptq",
+  "bits": 8,
+  "group_size": 32,
+  "format": "gptq",
+  "sym": true,
+  "n_ignore": 0,
+  "ignore_sample": []
+ },
+ "Intel/Qwen3.6-35B-A3B-int4-mixed-AutoRound": {
+  "group": "35B",
+  "sha": "2059f3e549",
+  "safetensors_GB": 21.49,
+  "st_dtypes": {
+   "I32": 4290577152,
+   "BF16": 1893287792,
+   "F16": 266082304
+  },
+  "quant_method": "auto-round",
+  "bits": 4,
+  "group_size": 128,
+  "sym": true,
+  "n_ignore": 0,
+  "ignore_sample": []
+ },
+ "amd/Qwen3.6-35B-A3B-w4a16-llmcompressor": {
+  "group": "35B",
+  "sha": "02308c6336",
+  "safetensors_GB": 20.32,
+  "st_dtypes": {
+   "I32": 33621278720,
+   "BF16": 1485903216
+  },
+  "quant_method": "compressed-tensors",
+  "format": "pack-quantized",
+  "version": "0.17.1",
+  "kv_cache_scheme": false,
+  "groups": {
+   "group_0": {
+    "w": {
+     "num_bits": 4,
+     "type": "int",
+     "strategy": "group",
+     "group_size": 128
+    },
+    "a": null,
+    "fmt": "pack-quantized"
+   }
+  },
+  "n_ignore": 10491,
+  "ignore_sample": [
+   "model.visual.blocks.0.attn.qkv",
+   "model.visual.blocks.0.attn.proj",
+   "model.visual.blocks.0.mlp.linear_fc1",
+   "model.visual.blocks.0.mlp.linear_fc2",
+   "model.visual.blocks.1.attn.qkv",
+   "model.visual.blocks.1.attn.proj"
+  ]
+ },
+ "lokeshe09/Qwen3.6-35B-A3B-INT8": {
+  "group": "35B",
+  "sha": "46e8487bd5",
+  "safetensors_GB": 35.77,
+  "st_dtypes": {
+   "BF16": 1071456768,
+   "I8": 33621278720
+  },
+  "quant_method": "compressed-tensors",
+  "format": "int-quantized",
+  "version": "0.17.1",
+  "kv_cache_scheme": false,
+  "groups": {
+   "group_0": {
+    "w": {
+     "num_bits": 8,
+     "type": "int",
+     "strategy": "channel",
+     "group_size": null
+    },
+    "a": {
+     "num_bits": 8,
+     "type": "int",
+     "strategy": "token",
+     "dynamic": true
+    },
+    "fmt": "int-quantized"
+   }
+  },
+  "n_ignore": 10381,
+  "ignore_sample": [
+   "model.layers.0.linear_attn",
+   "model.layers.0.linear_attn.norm",
+   "model.layers.0.mlp.gate",
+   "model.layers.0.mlp.experts.0",
+   "model.layers.0.mlp.experts.1",
+   "model.layers.0.mlp.experts.2"
+  ]
+ },
+ "unsloth/Qwen3.6-35B-A3B-GGUF": {
+  "group": "35B",
+  "sha": "a483e9e6cb",
+  "safetensors_GB": 0.0,
+  "gguf_GB": {
+   "mmproj-F16": 0.9,
+   "mmproj-BF16": 0.9,
+   "mmproj-F32": 1.79,
+   "UD-IQ1_M": 10.05,
+   "UD-IQ2_XXS": 10.76,
+   "UD-IQ2_M": 11.52,
+   "UD-Q2_K_XL": 12.29,
+   "UD-IQ3_XXS": 13.21,
+   "UD-IQ3_S": 13.68,
+   "UD-Q3_K_S": 15.36,
+   "UD-Q3_K_M": 16.6,
+   "UD-Q3_K_XL": 16.85,
+   "UD-IQ4_XS": 17.73,
+   "UD-IQ4_NL": 18.04,
+   "UD-IQ4_NL_XL": 19.5,
+   "UD-Q4_K_S": 20.89,
+   "MXFP4_MOE": 21.71,
+   "UD-Q4_K_M": 22.13,
+   "UD-Q4_K_XL": 22.36,
+   "UD-Q5_K_S": 24.94,
+   "UD-Q5_K_M": 26.46,
+   "UD-Q5_K_XL": 26.59,
+   "UD-Q6_K": 29.31,
+   "UD-Q6_K_XL": 31.84,
+   "Q8_0": 36.9,
+   "UD-Q8_K_XL": 38.45,
+   "BF16": 69.38
+  }
+ },
+ "bartowski/Qwen_Qwen3.6-35B-A3B-GGUF": {
+  "group": "35B",
+  "sha": "5c2410d715",
+  "safetensors_GB": 0.0,
+  "gguf_GB": {
+   "Qwen_Qwen3.6-35B-A3B-imatrix.gguf": 0.19,
+   "mmproj-f16": 0.9,
+   "mmproj-bf16": 0.9,
+   "IQ1_M": 9.42,
+   "IQ2_XXS": 10.68,
+   "IQ2_XS": 11.69,
+   "IQ2_S": 11.91,
+   "IQ2_M": 12.96,
+   "Q2_K": 13.51,
+   "Q2_K_L": 14.0,
+   "IQ3_XXS": 15.76,
+   "Q3_K_S": 16.4,
+   "IQ3_XS": 17.11,
+   "Q3_K_M": 17.12,
+   "Q3_K_L": 17.78,
+   "IQ3_M": 17.79,
+   "Q3_K_XL": 18.22,
+   "IQ4_XS": 19.7,
+   "IQ4_NL": 20.75,
+   "Q4_K_S": 21.49,
+   "Q4_0": 22.03,
+   "Q4_K_M": 22.29,
+   "Q4_K_L": 22.66,
+   "Q4_1": 22.87,
+   "Q5_K_S": 25.05,
+   "Q5_K_M": 25.91,
+   "Q5_K_L": 26.23,
+   "Q6_K": 30.95,
+   "Q6_K_L": 31.19,
+   "Q8_0": 39.8,
+   "bf16": 71.07
+  }
+ },
+ "ggml-org/Qwen3.6-35B-A3B-GGUF": {
+  "group": "35B",
+  "sha": "eb0b3cc97f",
+  "safetensors_GB": 0.0,
+  "gguf_GB": {
+   "mmproj-Q8_0": 0.61,
+   "mmproj-BF16": 0.9,
+   "Q4_0": 1.06,
+   "Q4_K_M": 20.54,
+   "Q8_0": 39.31,
+   "BF16": 73.9
+  }
+ },
+ "noctrex/Qwen3.6-35B-A3B-MXFP4_MOE-GGUF": {
+  "group": "35B",
+  "sha": "6209333071",
+  "safetensors_GB": 0.0,
+  "gguf_GB": {
+   "mmproj-F16": 0.9,
+   "mmproj-BF16": 0.9,
+   "mmproj-F32": 1.79,
+   "MXFP4_MOE": 64.4
+  }
+ },
+ "Qwen/Qwen3.8-27B": {
+  "group": "27B",
+  "sha": "37561816e6",
+  "safetensors_GB": 55.56,
+  "st_dtypes": {
+   "BF16": 27781427952
+  }
+ },
+ "Qwen/Qwen3.8-27B-FP8": {
+  "group": "27B",
+  "sha": "c3a462cc3d",
+  "safetensors_GB": 30.87,
+  "st_dtypes": {
+   "BF16": 3082220272,
+   "F8_E4M3": 24699207680
+  },
+  "quant_method": "fp8",
+  "fmt": "e4m3",
+  "n_ignore": 882,
+  "ignore_sample": [
+   "model.visual.blocks.0.attn.proj",
+   "model.visual.blocks.0.attn.qkv",
+   "model.visual.blocks.0.mlp.linear_fc1",
+   "model.visual.blocks.0.mlp.linear_fc2",
+   "visual.blocks.0.attn.proj",
+   "visual.blocks.0.attn.qkv_proj"
+  ]
+ },
+ "nvidia/Qwen3.8-27B-NVFP4": {
+  "group": "27B",
+  "sha": "482ca0f383",
+  "safetensors_GB": 21.92,
+  "st_dtypes": {
+   "BF16": 2183066352,
+   "F8_E4M3": 7214202880,
+   "U8": 9192079360
+  },
+  "quant_method": "modelopt",
+  "quant_algo": "MIXED_PRECISION",
+  "groups": {
+   "group_0": {
+    "w": {
+     "num_bits": 8,
+     "type": "float",
+     "strategy": null,
+     "group_size": null
+    },
+    "a": {
+     "num_bits": 8,
+     "type": "float",
+     "strategy": null,
+     "dynamic": false
+    },
+    "fmt": null
+   },
+   "group_1": {
+    "w": {
+     "num_bits": 4,
+     "type": "float",
+     "strategy": null,
+     "group_size": 16
+    },
+    "a": {
+     "num_bits": 4,
+     "type": "float",
+     "strategy": null,
+     "dynamic": false
+    },
+    "fmt": null
+   }
+  },
+  "n_ignore": 2,
+  "ignore_sample": [
+   "mtp*",
+   "mtp.layers.0*"
+  ]
+ },
+ "RadixArk/Qwen3.8-27B-NVFP4": {
+  "group": "27B",
+  "sha": "319f741cce",
+  "safetensors_GB": 21.92,
+  "st_dtypes": {
+   "BF16": 2183066352,
+   "F8_E4M3": 7214202880,
+   "U8": 9192079360
+  },
+  "quant_method": "modelopt",
+  "quant_algo": "MIXED_PRECISION",
+  "kv_cache_scheme": true,
+  "groups": {
+   "group_0": {
+    "w": {
+     "num_bits": 8,
+     "type": "float",
+     "strategy": null,
+     "group_size": null
+    },
+    "a": {
+     "num_bits": 8,
+     "type": "float",
+     "strategy": null,
+     "dynamic": false
+    },
+    "fmt": null
+   },
+   "group_1": {
+    "w": {
+     "num_bits": 4,
+     "type": "float",
+     "strategy": null,
+     "group_size": 16
+    },
+    "a": {
+     "num_bits": 4,
+     "type": "float",
+     "strategy": null,
+     "dynamic": false
+    },
+    "fmt": null
+   }
+  },
+  "n_ignore": 2,
+  "ignore_sample": [
+   "mtp*",
+   "mtp.layers.0*"
+  ]
+ },
+ "unsloth/Qwen3.8-27B-NVFP4": {
+  "group": "27B",
+  "sha": "f0b7c9e722",
+  "safetensors_GB": 23.42,
+  "st_dtypes": {
+   "BF16": 1758366992,
+   "F8_E4M3": 10624696320,
+   "U8": 7486832640
+  },
+  "quant_method": "compressed-tensors",
+  "format": "mixed-precision",
+  "version": "0.17.2.a20260716",
+  "kv_cache_scheme": true,
+  "groups": {
+   "group_0": {
+    "w": {
+     "num_bits": 8,
+     "type": "float",
+     "strategy": "channel",
+     "group_size": null
+    },
+    "a": {
+     "num_bits": 8,
+     "type": "float",
+     "strategy": "token",
+     "dynamic": true
+    },
+    "fmt": "float-quantized"
+   },
+   "group_1": {
+    "w": {
+     "num_bits": 4,
+     "type": "float",
+     "strategy": "tensor_group",
+     "group_size": 16
+    },
+    "a": {
+     "num_bits": 4,
+     "type": "float",
+     "strategy": "tensor_group",
+     "dynamic": "local"
+    },
+    "fmt": "nvfp4-pack-quantized"
+   }
+  },
+  "n_ignore": 303,
+  "ignore_sample": [
+   "model.visual.blocks.0.attn.qkv",
+   "model.visual.blocks.0.attn.proj",
+   "model.visual.blocks.0.mlp.linear_fc1",
+   "model.visual.blocks.0.mlp.linear_fc2",
+   "model.visual.blocks.1.attn.qkv",
+   "model.visual.blocks.1.attn.proj"
+  ]
+ },
+ "sakamakismile/Qwen3.8-27B-MTP-NVFP4": {
+  "group": "27B",
+  "sha": "a0b936f0bb",
+  "safetensors_GB": 20.56,
+  "st_dtypes": {
+   "BF16": 3006172400,
+   "U8": 24350556160
+  },
+  "quant_method": "compressed-tensors",
+  "format": "nvfp4-pack-quantized",
+  "version": "0.17.1",
+  "kv_cache_scheme": false,
+  "groups": {
+   "group_0": {
+    "w": {
+     "num_bits": 4,
+     "type": "float",
+     "strategy": "tensor_group",
+     "group_size": 16
+    },
+    "a": {
+     "num_bits": 4,
+     "type": "float",
+     "strategy": "tensor_group",
+     "dynamic": "local"
+    },
+    "fmt": "nvfp4-pack-quantized"
+   }
+  },
+  "n_ignore": 222,
+  "ignore_sample": [
+   "model.visual.blocks.0.attn.qkv",
+   "model.visual.blocks.0.attn.proj",
+   "model.visual.blocks.0.mlp.linear_fc1",
+   "model.visual.blocks.0.mlp.linear_fc2",
+   "model.visual.blocks.1.attn.qkv",
+   "model.visual.blocks.1.attn.proj"
+  ]
+ },
+ "cyankiwi/Qwen3.8-27B-AWQ-INT4": {
+  "group": "27B",
+  "sha": "e3a700906e",
+  "safetensors_GB": 21.02,
+  "st_dtypes": {
+   "BF16": 3485922032,
+   "I32": 24295505920
+  },
+  "quant_method": "compressed-tensors",
+  "format": "pack-quantized",
+  "version": "0.1.dev535+gdc9611a",
+  "kv_cache_scheme": false,
+  "groups": {
+   "group_0": {
+    "w": {
+     "num_bits": 4,
+     "type": "int",
+     "strategy": "group",
+     "group_size": 32
+    },
+    "a": null,
+    "fmt": "pack-quantized"
+   }
+  },
+  "n_ignore": 315,
+  "ignore_sample": [
+   "model.language_model.layers.0.linear_attn",
+   "model.language_model.layers.0.linear_attn.norm",
+   "model.language_model.layers.0.linear_attn.out_proj",
+   "model.language_model.layers.0.linear_attn.in_proj_b",
+   "model.language_model.layers.0.linear_attn.in_proj_a",
+   "model.language_model.layers.1.linear_attn"
+  ]
+ },
+ "amd/Qwen3.8-27B-Quark-AWQ-MXFP4": {
+  "group": "27B",
+  "sha": "93245f7c00",
+  "safetensors_GB": 19.8,
+  "st_dtypes": {
+   "BF16": 3430871792,
+   "U8": 12175278080
+  },
+  "quant_method": "quark",
+  "version": "0.13+unknown",
+  "n_ignore": 127,
+  "ignore_sample": [
+   "model.visual.pos_embed",
+   "model.visual.blocks.0.attn.qkv",
+   "model.visual.blocks.0.attn.proj",
+   "model.visual.blocks.0.mlp.linear_fc1",
+   "model.visual.blocks.0.mlp.linear_fc2",
+   "model.visual.blocks.1.attn.qkv"
+  ],
+  "quark_w": {
+   "block_size": null,
+   "ch_axis": -1,
+   "dtype": "fp4",
+   "enable_buffer_reuse": false,
+   "group_size": 32,
+   "is_dynamic": false,
+   "is_scale_quant": false,
+   "max_input_numel": 4194304,
+   "mx_element_dtype": null,
+   "observer_cls": "PerBlockMXObserver",
+   "qscheme": "per_group",
+   "round_method": "half_even",
+   "scale_calculation_mode": "even",
+   "scale_format": "e8m0",
+   "scale_type": "float",
+   "symmetric": null
+  },
+  "quark_a": {
+   "block_size": null,
+   "ch_axis": -1,
+   "dtype": "fp4",
+   "enable_buffer_reuse": false,
+   "group_size": 32,
+   "is_dynamic": true,
+   "is_scale_quant": false,
+   "max_input_numel": 4194304,
+   "mx_element_dtype": null,
+   "observer_cls": "PerBlockMXObserver",
+   "qscheme": "per_group",
+   "round_method": "half_even",
+   "scale_calculation_mode": "even",
+   "scale_format": "e8m0",
+   "scale_type": "float",
+   "symmetric": null
+  }
+ },
+ "amd/Qwen3.8-27B-Quark-AWQ-INT4-W4A16": {
+  "group": "27B",
+  "sha": "0f7ee2559e",
+  "safetensors_GB": 19.51,
+  "st_dtypes": {
+   "I32": 3043819520,
+   "BF16": 3430871792
+  },
+  "quant_method": "quark",
+  "version": "0.13+945249db9d3",
+  "n_ignore": 127,
+  "ignore_sample": [
+   "model.visual.pos_embed",
+   "model.visual.blocks.0.attn.qkv",
+   "model.visual.blocks.0.attn.proj",
+   "model.visual.blocks.0.mlp.linear_fc1",
+   "model.visual.blocks.0.mlp.linear_fc2",
+   "model.visual.blocks.1.attn.qkv"
+  ],
+  "quark_w": {
+   "block_size": null,
+   "ch_axis": -1,
+   "dtype": "int4",
+   "enable_buffer_reuse": false,
+   "group_size": 128,
+   "is_dynamic": false,
+   "is_scale_quant": false,
+   "max_input_numel": 4194304,
+   "mx_element_dtype": null,
+   "observer_cls": "PerGroupMinMaxObserver",
+   "qscheme": "per_group",
+   "round_method": "half_even",
+   "scale_calculation_mode": null,
+   "scale_format": null,
+   "scale_type": "float",
+   "symmetric": true
+  },
+  "quark_a": null
+ },
+ "RedHatAI/Qwen3.8-27B-INT4": {
+  "group": "27B",
+  "sha": "e45c27e8f4",
+  "safetensors_GB": 19.45,
+  "st_dtypes": {
+   "I32": 24326963200,
+   "BF16": 3029765392
+  },
+  "quant_method": "compressed-tensors",
+  "format": "pack-quantized",
+  "version": "0.18.1.a20260824",
+  "kv_cache_scheme": true,
+  "groups": {
+   "group_0": {
+    "w": {
+     "num_bits": 4,
+     "type": "int",
+     "strategy": "group",
+     "group_size": 128
+    },
+    "a": null,
+    "fmt": "pack-quantized"
+   }
+  },
+  "n_ignore": 304,
+  "ignore_sample": [
+   "model.visual.blocks.0.attn.qkv",
+   "model.visual.blocks.0.attn.proj",
+   "model.visual.blocks.0.mlp.linear_fc1",
+   "model.visual.blocks.0.mlp.linear_fc2",
+   "model.visual.blocks.1.attn.qkv",
+   "model.visual.blocks.1.attn.proj"
+  ]
+ },
+ "RedHatAI/Qwen3.8-27B-NVFP4": {
+  "group": "27B",
+  "sha": "7b0859658a",
+  "safetensors_GB": 24.69,
+  "st_dtypes": {
+   "BF16": 3454464784,
+   "F8_E4M3": 9353297920,
+   "U8": 7486832640
+  },
+  "quant_method": "compressed-tensors",
+  "format": "mixed-precision",
+  "version": "0.18.1.a20260914",
+  "kv_cache_scheme": true,
+  "groups": {
+   "group_0": {
+    "w": {
+     "num_bits": 8,
+     "type": "float",
+     "strategy": "channel",
+     "group_size": null
+    },
+    "a": {
+     "num_bits": 8,
+     "type": "float",
+     "strategy": "token",
+     "dynamic": true
+    },
+    "fmt": "float-quantized"
+   },
+   "group_1": {
+    "w": {
+     "num_bits": 4,
+     "type": "float",
+     "strategy": "tensor_group",
+     "group_size": 16
+    },
+    "a": {
+     "num_bits": 4,
+     "type": "float",
+     "strategy": "tensor_group",
+     "dynamic": "local"
+    },
+    "fmt": "nvfp4-pack-quantized"
+   }
+  },
+  "n_ignore": 208,
+  "ignore_sample": [
+   "model.visual.blocks.0.attn.qkv",
+   "model.visual.blocks.0.attn.proj",
+   "model.visual.blocks.0.mlp.linear_fc1",
+   "model.visual.blocks.0.mlp.linear_fc2",
+   "model.visual.blocks.1.attn.qkv",
+   "model.visual.blocks.1.attn.proj"
+  ]
+ },
+ "RedHatAI/Qwen3.8-27B-MXFP4": {
+  "group": "27B",
+  "sha": "71ce3b71ec",
+  "safetensors_GB": 19.83,
+  "st_dtypes": {
+   "BF16": 3029765392,
+   "U8": 24326963200
+  },
+  "quant_method": "compressed-tensors",
+  "format": "mxfp4-pack-quantized",
+  "version": "0.18.1.a20260914",
+  "kv_cache_scheme": true,
+  "groups": {
+   "group_0": {
+    "w": {
+     "num_bits": 4,
+     "type": "float",
+     "strategy": "group",
+     "group_size": 32
+    },
+    "a": {
+     "num_bits": 4,
+     "type": "float",
+     "strategy": "group",
+     "dynamic": true
+    },
+    "fmt": "mxfp4-pack-quantized"
+   }
+  },
+  "n_ignore": 208,
+  "ignore_sample": [
+   "model.visual.blocks.0.attn.qkv",
+   "model.visual.blocks.0.attn.proj",
+   "model.visual.blocks.0.mlp.linear_fc1",
+   "model.visual.blocks.0.mlp.linear_fc2",
+   "model.visual.blocks.1.attn.qkv",
+   "model.visual.blocks.1.attn.proj"
+  ]
+ },
+ "unsloth/Qwen3.8-27B-FP8": {
+  "group": "27B",
+  "sha": "d51e38f6f2",
+  "safetensors_GB": 30.87,
+  "st_dtypes": {
+   "BF16": 3082220272,
+   "F8_E4M3": 24699207680
+  },
+  "quant_method": "fp8",
+  "fmt": "e4m3",
+  "n_ignore": 882,
+  "ignore_sample": [
+   "model.visual.blocks.0.attn.proj",
+   "model.visual.blocks.0.attn.qkv",
+   "model.visual.blocks.0.mlp.linear_fc1",
+   "model.visual.blocks.0.mlp.linear_fc2",
+   "visual.blocks.0.attn.proj",
+   "visual.blocks.0.attn.qkv_proj"
+  ]
+ },
+ "btbtyler09/Qwen3.8-27B-GPTQ-4bit": {
+  "group": "27B",
+  "sha": "b64f44dfed",
+  "safetensors_GB": 20.98,
+  "st_dtypes": {
+   "BF16": 3454464752,
+   "I32": 24326963200
+  },
+  "quant_method": "gptq",
+  "bits": 4,
+  "group_size": 32,
+  "format": "gptq",
+  "sym": true,
+  "n_ignore": 0,
+  "ignore_sample": []
+ },
+ "unsloth/Qwen3.8-27B-unsloth-bnb-4bit": {
+  "group": "27B",
+  "sha": "8aa5f05d26",
+  "safetensors_GB": 22.34,
+  "st_dtypes": {
+   "F16": 5546347760,
+   "U8": 21810380800
+  },
+  "quant_method": "bitsandbytes",
+  "n_ignore": 0,
+  "ignore_sample": []
+ },
+ "unsloth/Qwen3.8-27B-GGUF": {
+  "group": "27B",
+  "sha": "4ca720788d",
+  "safetensors_GB": 0.0,
+  "gguf_GB": {
+   "imatrix_unsloth.gguf": 0.01,
+   "mmproj-F16": 0.93,
+   "mmproj-BF16": 0.93,
+   "UD-IQ1_S": 6.19,
+   "UD-IQ1_M": 6.73,
+   "UD-IQ2_XXS": 7.27,
+   "UD-IQ2_S": 8.37,
+   "UD-Q2_K_XL": 9.83,
+   "UD-IQ3_XXS": 10.93,
+   "UD-IQ3_S": 12.04,
+   "UD-Q3_K_XL": 13.15,
+   "UD-IQ4_XS": 14.25,
+   "UD-Q4_K_S": 15.36,
+   "UD-Q4_K_M": 16.46,
+   "Q4_0": 17.43,
+   "Q4_1": 17.54,
+   "UD-Q4_K_XL": 17.56,
+   "UD-Q5_K_S": 18.67,
+   "UD-Q5_K_M": 19.77,
+   "UD-Q5_K_XL": 20.88,
+   "UD-Q6_K": 21.98,
+   "UD-Q6_K_M": 23.09,
+   "UD-Q6_K_L": 24.19,
+   "UD-Q6_K_XL": 25.3,
+   "UD-Q8_K_L": 28.05,
+   "Q8_0": 29.05,
+   "UD-Q8_K_XL": 31.46,
+   "BF16": 54.66
+  }
+ },
+ "bartowski/Qwen3.8-27B-GGUF": {
+  "group": "27B",
+  "sha": "87410e7b9a",
+  "safetensors_GB": 0.0,
+  "gguf_GB": {
+   "Qwen3.8-27B-imatrix.gguf": 0.01,
+   "mmproj-f16": 0.93,
+   "mmproj-bf16": 0.93,
+   "IQ2_XXS": 8.88,
+   "IQ2_XS": 9.09,
+   "IQ2_S": 9.68,
+   "IQ2_M": 10.52,
+   "Q2_K": 10.82,
+   "IQ3_XXS": 12.32,
+   "Q3_K_S": 12.74,
+   "IQ3_XS": 12.8,
+   "Q2_K_L": 13.08,
+   "Q3_K_M": 13.4,
+   "Q3_K_L": 14.12,
+   "IQ3_M": 14.86,
+   "IQ4_XS": 15.48,
+   "Q4_0": 16.35,
+   "Q4_K_S": 16.36,
+   "Q3_K_XL": 16.39,
+   "IQ4_NL": 17.44,
+   "Q4_K_M": 17.44,
+   "Q4_1": 17.83,
+   "Q4_K_L": 18.82,
+   "Q5_K_S": 19.57,
+   "Q5_K_M": 20.92,
+   "Q5_K_L": 21.54,
+   "Q6_K_S": 22.86,
+   "Q6_K": 23.86,
+   "Q6_K_L": 24.96,
+   "Q8_0": 29.12,
+   "bf16": 54.66
+  }
+ },
+ "ggml-org/Qwen3.8-27B-GGUF": {
+  "group": "27B",
+  "sha": "8ccda14919",
+  "safetensors_GB": 0.0,
+  "gguf_GB": {
+   "mmproj-Q8_0": 0.63,
+   "mmproj-BF16": 0.93,
+   "Q4_0": 2.77,
+   "Q4_K_M": 19.4,
+   "Q8_0": 33.82,
+   "BF16": 63.61
+  }
+ }
+}

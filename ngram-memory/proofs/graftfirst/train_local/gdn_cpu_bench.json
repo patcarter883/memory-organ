@@ -1,0 +1,16 @@
+{
+ "35B-A3B": {
+  "T": 512,
+  "gdn_core_fwd_bwd_s": 0.361,
+  "proj_fwd_inputgrad_s": 0.127,
+  "proj_GFLOP": 68.99,
+  "proj_GFLOPs_rate": 545.3
+ },
+ "27B": {
+  "T": 512,
+  "gdn_core_fwd_bwd_s": 0.705,
+  "proj_fwd_inputgrad_s": 0.334,
+  "proj_GFLOP": 237.23,
+  "proj_GFLOPs_rate": 711.1
+ }
+}

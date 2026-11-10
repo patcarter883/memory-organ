@@ -1,0 +1,5950 @@
+{
+ "Qwen3.6-35B-A3B": [
+  {
+   "id": "huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated-MTP-GGUF",
+   "downloads": 4936870,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Qwen/Qwen3.6-35B-A3B",
+   "downloads": 4209694,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "nvidia/Qwen3.6-35B-A3B-NVFP4",
+   "downloads": 3971809,
+   "tags": [
+    "safetensors",
+    "8-bit",
+    "modelopt"
+   ]
+  },
+  {
+   "id": "Qwen/Qwen3.6-35B-A3B-FP8",
+   "downloads": 3962067,
+   "tags": [
+    "safetensors",
+    "fp8"
+   ]
+  },
+  {
+   "id": "unsloth/Qwen3.6-35B-A3B-MTP-GGUF",
+   "downloads": 2108355,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "unsloth/Qwen3.6-35B-A3B-GGUF",
+   "downloads": 1630511,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "HauhauCS/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive",
+   "downloads": 1311353,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "RedHatAI/Qwen3.6-35B-A3B-NVFP4",
+   "downloads": 906039,
+   "tags": [
+    "safetensors",
+    "compressed-tensors",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "unsloth/Qwen3.6-35B-A3B-NVFP4-Fast",
+   "downloads": 794604,
+   "tags": [
+    "safetensors",
+    "8-bit",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "unsloth/Qwen3.6-35B-A3B-NVFP4",
+   "downloads": 699173,
+   "tags": [
+    "safetensors",
+    "8-bit",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "Bahushruth/Qwen3.6-35B-A3B-abliterated-v4",
+   "downloads": 493769,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "LuffyTheFox/Qwen3.6-35B-A3B-Uncensored-Genesis-Hermes-MTP-GGUF",
+   "downloads": 381256,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "QuantTrio/Qwen3.6-35B-A3B-AWQ",
+   "downloads": 324104,
+   "tags": [
+    "safetensors",
+    "4-bit",
+    "awq"
+   ]
+  },
+  {
+   "id": "lmstudio-community/Qwen3.6-35B-A3B-MLX-4bit",
+   "downloads": 293778,
+   "tags": [
+    "safetensors",
+    "mlx",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "lmstudio-community/Qwen3.6-35B-A3B-MLX-8bit",
+   "downloads": 277878,
+   "tags": [
+    "safetensors",
+    "mlx",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "lmstudio-community/Qwen3.6-35B-A3B-MLX-6bit",
+   "downloads": 273727,
+   "tags": [
+    "safetensors",
+    "mlx"
+   ]
+  },
+  {
+   "id": "bartowski/Qwen_Qwen3.6-35B-A3B-GGUF",
+   "downloads": 234828,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "ggml-org/Qwen3.6-35B-A3B-GGUF",
+   "downloads": 197332,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "lmstudio-community/Qwen3.6-35B-A3B-GGUF",
+   "downloads": 180004,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "lokeshe09/Qwen3.6-35B-A3B-INT8",
+   "downloads": 162584,
+   "tags": [
+    "safetensors",
+    "compressed-tensors",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "llmfan46/Qwen3.6-35B-A3B-uncensored-heretic-Native-MTP-Preserved-GGUF",
+   "downloads": 153969,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "taronaeo/Qwen3.6-35B-A3B-BE-GGUF",
+   "downloads": 104786,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Huihui-Qwen3.6-35B-A3B-abliterated-GGUF",
+   "downloads": 98671,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "rdtand/Qwen3.6-35B-A3B-PrismaQuant-4.75bit-vllm",
+   "downloads": 94377,
+   "tags": [
+    "safetensors",
+    "compressed-tensors",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "palmfuture/Qwen3.6-35B-A3B-GPTQ-Int4",
+   "downloads": 90960,
+   "tags": [
+    "safetensors",
+    "gptq",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "AEON-7/Qwen3.6-35B-A3B-heretic-NVFP4",
+   "downloads": 90696,
+   "tags": [
+    "safetensors",
+    "4-bit",
+    "compressed-tensors",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "mudler/Qwen3.6-35B-A3B-APEX-GGUF",
+   "downloads": 71543,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "coolthor/Huihui-Qwen3.6-35B-A3B-abliterated-FP8-DYNAMIC",
+   "downloads": 71219,
+   "tags": [
+    "safetensors",
+    "fp8",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "mradermacher/Huihui-Qwen3.6-35B-A3B-abliterated-i1-GGUF",
+   "downloads": 65435,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "huihui-ai/Huihui-Qwen3.6-35B-A3B-Claude-4.7-Opus-abliterated-MTP-GGUF",
+   "downloads": 62263,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "SC117/Qwen3.6-35B-A3B-uncensored-heretic-Native-MTP-Preserved-APEX-GGUF",
+   "downloads": 53939,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "neroued/Qwen3.6-35B-A3B-NInfer",
+   "downloads": 50562,
+   "tags": []
+  },
+  {
+   "id": "llmfan46/Qwen3.6-35B-A3B-uncensored-heretic-GGUF",
+   "downloads": 48030,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+   "downloads": 40902,
+   "tags": [
+    "safetensors",
+    "4-bit",
+    "awq"
+   ]
+  },
+  {
+   "id": "wangzhang/Qwen3.6-35B-A3B-abliterated-GGUF",
+   "downloads": 39950,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mlx-community/Qwen3.6-35B-A3B-4bit",
+   "downloads": 38547,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "jcuypers/Qwen3.6-35B-A3B-DFlash-GGUF",
+   "downloads": 36104,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-uncensored-heretic-i1-GGUF",
+   "downloads": 32692,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Ex0bit/Qwen3.6-35B-A3B-PRISM-NVFP4",
+   "downloads": 32211,
+   "tags": [
+    "safetensors",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "joyfox/JoyFox-Qwen3.6-35B-A3B-RP-Aggressive",
+   "downloads": 32088,
+   "tags": [
+    "safetensors",
+    "gguf"
+   ]
+  },
+  {
+   "id": "michaelw9999/Qwen3.6-35B-A3B-NVFP4-MTP-GGUF",
+   "downloads": 28317,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Jundot/Qwen3.6-35B-A3B-oQ4e-mtp",
+   "downloads": 24799,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "mradermacher/Huihui-Qwen3.6-35B-A3B-Claude-4.7-Opus-abliterated-i1-GGUF",
+   "downloads": 24383,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "llmfan46/Qwen3.6-35B-A3B-uncensored-heretic-Native-MTP-Preserved-GPTQ-Int4",
+   "downloads": 21563,
+   "tags": [
+    "safetensors",
+    "4-bit",
+    "gptq"
+   ]
+  },
+  {
+   "id": "TokenTinkerer/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-TTQ-GGUF",
+   "downloads": 20993,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "llmfan46/Qwen3.6-35B-A3B-uncensored-heretic-GPTQ-Int4",
+   "downloads": 20731,
+   "tags": [
+    "safetensors",
+    "4-bit",
+    "gptq"
+   ]
+  },
+  {
+   "id": "incoai/Qwen3.6-35B-A3B-DFlash2",
+   "downloads": 20028,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "xCloudinfo/Qwen3.6-35B-A3B-Uncensored-GGUF",
+   "downloads": 18901,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mudler/Qwen3.6-35B-A3B-Claude-4.7-Opus-Reasoning-Distilled-APEX-GGUF",
+   "downloads": 18209,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "hesamation/Qwen3.6-35B-A3B-Claude-4.6-Opus-Reasoning-Distilled-GGUF",
+   "downloads": 18103,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "deadbydawn101/RavenX-CyberAgent-Qwen3.6-35B-A3B-Opus-4.7-OpenMythos-Pentester-BugHunter-RATH-GGUF",
+   "downloads": 17768,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "weareapexcreators/Qwen3.6-35B-A3B-Uncensored-LocalAI",
+   "downloads": 17693,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "gatilin/Qwen3.6-35B-A3b-pruned-v2",
+   "downloads": 17319,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "morikomorizz/Qwen3.6-35B-A3B-Uncensored-HauhauCS-MTP",
+   "downloads": 17101,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Bahushruth/Qwen3.6-35B-A3B-abliterated-v4-GGUF",
+   "downloads": 16410,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mudler/Qwen3.6-35B-A3B-uncensored-heretic-APEX-GGUF",
+   "downloads": 15740,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "RedHatAI/Qwen3.6-35B-A3B-FP8",
+   "downloads": 12790,
+   "tags": [
+    "safetensors",
+    "fp8",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "bartowski/allura-org_Qwen3.6-35B-A3B-Anko-GGUF",
+   "downloads": 12386,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mudler/Qwen3.6-35B-A3B-APEX-MTP-GGUF",
+   "downloads": 11627,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "z-lab/Qwen3.6-35B-A3B-DFlash",
+   "downloads": 11401,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "Youssofal/Qwen3.6-35B-A3B-Abliterated-Heretic-GGUF",
+   "downloads": 11250,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-abliterated-GGUF",
+   "downloads": 11171,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "froggeric/Qwen3.6-35B-A3B-Uncensored-Heretic-MLX-4bit",
+   "downloads": 10441,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "IsValorum/Qwen3.6-35B-A3B-MTP-APEX-I-MiniPlus-V2.1-Abliterated-GGUF",
+   "downloads": 10129,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Abiray/Huihui-Qwen3.6-35B-A3B-abliterated-GGUF",
+   "downloads": 9839,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Abiray/Qwen3.6-35B-A3B-Q4_K_M-GGUF",
+   "downloads": 9657,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "chtisgit/Qwen3.6-35B-A3B-2Bit-GSQ-hybrid-GGUF",
+   "downloads": 9283,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Alittlehammmer/Qwen3.6-35B-A3B-DFlash-GGUF-llama.cpp",
+   "downloads": 8689,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "bartowski/Logics-MLLM_Logics-SWE-Qwen3.6-35B-A3B-GGUF",
+   "downloads": 8495,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-uncensored-heretic-GGUF",
+   "downloads": 8327,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "misthemAI/Qwen3.6-35B-A3B-APEX-MTP-Strata-Q5EXPS-GGUF",
+   "downloads": 8190,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "AtomicChat/Qwen3.6-35B-A3B-GGUF",
+   "downloads": 7574,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "unsloth/Qwen3.6-35B-A3B-UD-MLX-4bit",
+   "downloads": 7550,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-Fallen-Fabulist-35B-A3B-heretic-GGUF",
+   "downloads": 7543,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "DarkKitsune/Qwen3.6-Candid-Coder-35B-A3B",
+   "downloads": 7492,
+   "tags": [
+    "safetensors",
+    "gguf"
+   ]
+  },
+  {
+   "id": "DmitryDB/Qwen3.6-35B-A3B-heretic-moe-balanced-v2",
+   "downloads": 7297,
+   "tags": [
+    "safetensors",
+    "gguf"
+   ]
+  },
+  {
+   "id": "mudler/Carnice-Qwen3.6-MoE-35B-A3B-APEX-GGUF",
+   "downloads": 7218,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "IsValorum/Qwen3.6-35B-A3B-MTP-APEX-I-NanoPlus-GGUF",
+   "downloads": 6907,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "White-Wolf13/Qwen3.6-35B-A3B-SILVER-UNCENSORED-APEX-GGUF",
+   "downloads": 6885,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "peculiar-ragdoll/Nail-Qwen3.6-35B-A3B-GGUF-MTP",
+   "downloads": 6853,
+   "tags": [
+    "gguf",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "Unrestricted/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive",
+   "downloads": 6674,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "btbtyler09/Qwen3.6-35B-A3B-GPTQ-4bit",
+   "downloads": 6311,
+   "tags": [
+    "safetensors",
+    "gptq",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "LMLiutenant/Qwen3.6-35B-A3B-abliterated-v2-gguf",
+   "downloads": 6174,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "DarkKitsune/Qwen3.6-Qworus-35B-A3B-V1-APEX-GGUF",
+   "downloads": 6139,
+   "tags": [
+    "gguf",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "RedHatAI/Qwen3.6-35B-A3B-speculator.dspark",
+   "downloads": 6121,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "mudler/Qwen3.6-35B-A3B-Claude-4.6-Opus-Reasoning-Distilled-APEX-MTP-GGUF",
+   "downloads": 6111,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "unsloth/Qwen3.6-35B-A3B",
+   "downloads": 6106,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-Fable-5-Distill-heretic-i1-GGUF",
+   "downloads": 6101,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mecha-factory/Qwen3.6-35B-A3B-Uncensored-MTP-GGUF",
+   "downloads": 5979,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Hyphonical/Qwen3.6-35B-A3B-abliterated-MAX-APEX-i-nano-GGUF",
+   "downloads": 5735,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mudler/Qwen3.6-35B-A3B-Claude-4.7-Opus-Reasoning-Distilled-APEX-MTP-GGUF",
+   "downloads": 5660,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mlx-community/Qwen3.6-35B-A3B-8bit",
+   "downloads": 5471,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "mradermacher/JoyFox-Qwen3.6-35B-A3B-RP-Aggressive-GGUF",
+   "downloads": 5429,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "byteshape/Qwen3.6-35B-A3B-GGUF",
+   "downloads": 5219,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-uncensored-heretic-Native-MTP-Preserved-i1-GGUF",
+   "downloads": 5104,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "IsValorum/Qwen3.6-35B-A3B-MTP-APEX-I-MiniPlus-V2.1-GGUF",
+   "downloads": 5009,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "byteshape/Qwen3.6-35B-A3B-MTP-GGUF",
+   "downloads": 4930,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Huihui-Qwen3.6-35B-A3B-Claude-4.7-Opus-abliterated-GGUF",
+   "downloads": 4865,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-abliterated-i1-GGUF",
+   "downloads": 4790,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mlx-community/Huihui-Qwen3.6-35B-A3B-Claude-4.7-Opus-abliterated-mlx-8bit",
+   "downloads": 4680,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "YuYu1015/Huihui-Qwen3.6-35B-A3B-abliterated-NVFP4",
+   "downloads": 4583,
+   "tags": [
+    "safetensors",
+    "4-bit",
+    "8-bit",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "jorge-erdb/Qwen3.6-35B-A3B-uncensored-heretic-GGUF",
+   "downloads": 4371,
+   "tags": [
+    "gguf",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "mudler/Carnice-Qwen3.6-MoE-35B-A3B-APEX-MTP-GGUF",
+   "downloads": 4347,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "magnitudedev/Qwen3.6-35B-A3B-DFlash-GGUF",
+   "downloads": 4346,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "CCSSNE/HauhauCS-Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive",
+   "downloads": 4343,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "unsloth/Qwen3.6-35B-A3B-UD-MLX-3bit",
+   "downloads": 4334,
+   "tags": [
+    "mlx",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "mradermacher/OpenYourMind-Qwen3.6-35B-A3B-kuato-DPO-abliterated-uncensored-GGUF",
+   "downloads": 4321,
+   "tags": [
+    "gguf",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "btbtyler09/Qwen3.6-35B-A3B-GPTQ-8bit",
+   "downloads": 4314,
+   "tags": [
+    "safetensors",
+    "gptq",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "mudler/Qwen3.6-35B-A3B-Claude-4.6-Opus-Reasoning-Distilled-APEX-GGUF",
+   "downloads": 4299,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit",
+   "downloads": 3952,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "Youssofal/Qwen3.6-35B-A3B-MTPLX-Optimized-Speed",
+   "downloads": 3915,
+   "tags": [
+    "safetensors",
+    "mlx",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-Uncensored-Aggressive-i1-GGUF",
+   "downloads": 3833,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "anik-jha/Qwen3.6-35B-A3B-coding-reap50-GGUF",
+   "downloads": 3799,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mudler/Huihui-Qwen3.6-35B-A3B-Claude-4.7-Opus-abliterated-APEX-GGUF",
+   "downloads": 3665,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Logics-SWE-Qwen3.6-35B-A3B-i1-GGUF",
+   "downloads": 3622,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-StyleTune-GGUF",
+   "downloads": 3610,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "wang-yang/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-MTP-GGUF",
+   "downloads": 3563,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "endystrike/Endy-Qwen3.6-CyberSec-35B-A3B-GGUF",
+   "downloads": 3518,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-Claude-4.7-Opus-Reasoning-Distilled-i1-GGUF",
+   "downloads": 3393,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mlx-community/Qwen3.6-35B-A3B-5bit",
+   "downloads": 3291,
+   "tags": [
+    "mlx",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "havenoammo/Qwen3.6-35B-A3B-MTP-GGUF",
+   "downloads": 3199,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "prithivMLmods/Qwen3.6-35B-A3B-MTP-GGUF",
+   "downloads": 3141,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "SassyDiffusion/Qwen3.6-35B-A3B-heretic-MTP-GGUF",
+   "downloads": 3102,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "aminya/Qwen3.6-35B-A3B-DFlash2-GGUF",
+   "downloads": 3034,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "genevera/Qwen3.6-35B-A3B-Abliterated-Heretic-AWQ-4bit",
+   "downloads": 3031,
+   "tags": [
+    "safetensors",
+    "awq",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "mradermacher/Logics-SWE-Qwen3.6-35B-A3B-GGUF",
+   "downloads": 3015,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "nightmedia/Qwen3.6-35B-A3B-Fable-Holo3.1-Qwopus-KAT-Coder-C-qx86-hi-mlx",
+   "downloads": 2924,
+   "tags": [
+    "safetensors",
+    "mlx",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "crucible-labs/Qwen3.6-35B-A3B-REAP-48-v2-GGUF",
+   "downloads": 2911,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-StyleTune-i1-GGUF",
+   "downloads": 2909,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "XpressAI/Qwen3.6-35B-A3B-ExpertClone-Logic-UD-Q4_K_XL-GGUF",
+   "downloads": 2866,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "llmfan46/Qwen3.6-35B-A3B-uncensored-heretic-NVFP4-Experts-Only-GGUF",
+   "downloads": 2821,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "AEON-7/AEON-DFlash-Qwen3.6-35B-A3B",
+   "downloads": 2794,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-uncensored-heretic-Native-MTP-Preserved-GGUF",
+   "downloads": 2701,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated",
+   "downloads": 2671,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "Intel/Qwen3.6-35B-A3B-int4-mixed-AutoRound",
+   "downloads": 2646,
+   "tags": [
+    "safetensors",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "SassyDiffusion/Qwen3.6-35B-A3B-heretic-GGUF",
+   "downloads": 2635,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit-REAP-19B",
+   "downloads": 2617,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "mmangkad/Qwen3.6-35B-A3B-NVFP4",
+   "downloads": 2615,
+   "tags": [
+    "safetensors",
+    "modelopt"
+   ]
+  },
+  {
+   "id": "WhiskyAKM/Qwen3.6-35B-A3B-GGUF",
+   "downloads": 2576,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mlx-community/Qwen3.6-35B-A3B-bf16",
+   "downloads": 2560,
+   "tags": [
+    "mlx",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-Fallen-Fabulist-35B-A3B-heretic-i1-GGUF",
+   "downloads": 2560,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mlx-community/Qwen3.6-35B-A3B-6bit",
+   "downloads": 2502,
+   "tags": [
+    "mlx",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "mradermacher/JoyFox-Qwen3.6-35B-A3B-RP-Aggressive-i1-GGUF",
+   "downloads": 2472,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Ninnix96/Qwen3.6-35B-A3B-gguf",
+   "downloads": 2468,
+   "tags": [
+    "gguf",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "peculiar-ragdoll/Nail-Qwen3.6-35B-A3B-GGUF",
+   "downloads": 2424,
+   "tags": [
+    "gguf",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-i1-GGUF",
+   "downloads": 2355,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-Candid-Coder-V1.1-35B-A3B-i1-GGUF",
+   "downloads": 2345,
+   "tags": [
+    "gguf",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "jan1k/Qwen3.6-35B-A3B-Uncensored-Genesis-Hermes-Final-NVFP4-GGUF",
+   "downloads": 2336,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Youssofal/Qwen3.6-35B-A3B-Abliterated-Heretic-MLX-4bit",
+   "downloads": 2316,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-GGUF",
+   "downloads": 2277,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "ryanswilson/Huihui-Qwen3.6-35B-A3B-abliterated-FP8-dynamic",
+   "downloads": 2134,
+   "tags": [
+    "safetensors",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "WaveCut/Qwen3.6-35B-A3B-REAM-160-ru-agent-GGUF",
+   "downloads": 2115,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "deadbydawn101/RavenX-CyberAgent-Qwen3.6-35B-A3B-Opus-4.7-OpenMythos-Pentester-BugHunter-RATH-mlx",
+   "downloads": 2102,
+   "tags": [
+    "mlx",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "tvall43/Qwen3.6-35B-A3B-heretic-QSA-GGUF",
+   "downloads": 2073,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "RomanOneAndFun/Qwen3.6-35B-A3B-Claude-4.7-Opus-Reasoning-Distilled-MTP-APEX_I-Quality_Q6",
+   "downloads": 2011,
+   "tags": [
+    "safetensors",
+    "gguf"
+   ]
+  },
+  {
+   "id": "shennguyen/Huihui-Qwen3.6-35B-A3B-Claude-4.7-Opus-abliterated-GGUF",
+   "downloads": 1948,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "hermeticvm/Qwen3.6-35B-A3B-heretic-MTP-IQ4_XS-GGUF",
+   "downloads": 1948,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Carnice-Qwen3.6-MoE-35B-A3B-GGUF",
+   "downloads": 1928,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "prithivMLmods/Logics-SWE-Qwen3.6-35B-A3B-MXFP4-MoE-GGUF",
+   "downloads": 1924,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "WaveCut/Qwen3.6-35B-A3B-REAM-160-ru-agent-GGUF-MTPLess",
+   "downloads": 1921,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "llmfan46/Qwen3.6-35B-A3B-uncensored-heretic",
+   "downloads": 1914,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "cmp-nct/Qwen3.6-35B-A3B-GGUF",
+   "downloads": 1905,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "lyf/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-NVFP4",
+   "downloads": 1903,
+   "tags": [
+    "safetensors",
+    "compressed-tensors",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "jimbothigpen/Qwen3.6-35B-A3B-GGUF",
+   "downloads": 1887,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "lhca521/Qwen3.6-35B-A3B-Abliterated-Heretic-GGUF",
+   "downloads": 1880,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "AtomicChat/Qwen3.6-35B-A3B-UDT-MTP-GGUF",
+   "downloads": 1835,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "dnnagy/Huihui-Qwen3.6-35B-A3B-abliterated-GGUF",
+   "downloads": 1771,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Anbeeld/Qwen3.6-35B-A3B-DFlash-GGUF",
+   "downloads": 1759,
+   "tags": [
+    "gguf",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "hesamation/Qwen3.6-35B-A3B-Claude-4.6-Opus-Reasoning-Distilled",
+   "downloads": 1755,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "mlx-community/Qwen3.6-35B-A3B-nvfp4",
+   "downloads": 1751,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "mlx-community/Qwen3.6-35B-A3B-DFlash2-4bit",
+   "downloads": 1751,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "RedHatAI/Qwen3.6-35B-A3B-FP8-dynamic",
+   "downloads": 1716,
+   "tags": [
+    "safetensors",
+    "fp8",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-heretic-v2-i1-GGUF",
+   "downloads": 1712,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "noctrex/Qwen3.6-35B-A3B-uncensored-heretic-MXFP4_MOE-GGUF",
+   "downloads": 1711,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-Fable-5-Distill-GGUF",
+   "downloads": 1697,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "keithnull/Qwen3.6-35B-A3B-REAM-192-heretic-APEX-GGUF",
+   "downloads": 1679,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "THe-Plague/Qwen3.6-35B-A3B-abliterated-NVFP4-MTP",
+   "downloads": 1665,
+   "tags": [
+    "safetensors",
+    "8-bit",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "liodon-ai/Qwen3.6-35B-A3B-imatrix-GGUF",
+   "downloads": 1604,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-Brainwaves-Nex-Uncensored-GGUF",
+   "downloads": 1576,
+   "tags": [
+    "gguf",
+    "mlx"
+   ]
+  },
+  {
+   "id": "mradermacher/Carnice-Qwen3.6-MoE-35B-A3B-i1-GGUF",
+   "downloads": 1575,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Abiray/Qwen3.6-35B-A3B-heretic-GGUF",
+   "downloads": 1566,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "FastFlowLM/Qwen3.6-35B-A3B-NPU2",
+   "downloads": 1553,
+   "tags": []
+  },
+  {
+   "id": "mradermacher/Qwen3.6-Candid-Coder-35B-A3B-i1-GGUF",
+   "downloads": 1543,
+   "tags": [
+    "gguf",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "unsloth/Qwen3.6-35B-A3B-MLX-8bit",
+   "downloads": 1542,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "yuhanb/Qwen3.6-35B-A3B-Uncensored-Genesis-Hermes-GGUF",
+   "downloads": 1535,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-abliterated-MAX-i1-GGUF",
+   "downloads": 1532,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mfielding92/UD-2.0-Qwen3.6-35B-A3B-Claude-4.6-Opus-Reasoning-Distilled-GGUF",
+   "downloads": 1525,
+   "tags": [
+    "gguf",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "mradermacher/Huihui-Qwen3.6-35B-A3B-Claude-4.6-Opus-abliterated-i1-GGUF",
+   "downloads": 1512,
+   "tags": [
+    "gguf",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "mlx-community/Qwen3.6-35B-A3B-mxfp8",
+   "downloads": 1491,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "georgeis55/Qwen3.6-35B-A3B-refusal-ablated-MLX-oQ6-fp16-mtp",
+   "downloads": 1487,
+   "tags": [
+    "mlx",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "DrMoriarty0/Qwen_Qwen3.6-35B-A3B-GGUF",
+   "downloads": 1486,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "DarkKitsune/Qwen3.6-Candid-Coder-V1.1-35B-A3B",
+   "downloads": 1484,
+   "tags": [
+    "safetensors",
+    "gguf"
+   ]
+  },
+  {
+   "id": "georgeis55/Qwen3.6-35B-A3B-refusal-ablated-MLX-oQ8-fp16-mtp",
+   "downloads": 1483,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-abliterated-v2-GGUF",
+   "downloads": 1477,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "froggeric/Qwen3.6-35B-A3B-Uncensored-Heretic-MLX-8bit",
+   "downloads": 1477,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "nerkyor/Qwen3.6-35B-A3B-DSV4Pro-SFT-GPT56Sol-RL-Agent-GGUF",
+   "downloads": 1473,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "LibertAIDAI/Qwen3.6-35B-A3B-NVFP4-GGUF",
+   "downloads": 1453,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/LFM2-8B-A1B-Instruct-Quantum-IQ1C-Qwen3.6-35B-A3B-DISTILL2-i1-GGUF",
+   "downloads": 1422,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "darioooooo0o/Qwen3.6-35B-A3B-TinyKV-GGUF",
+   "downloads": 1410,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "modal-labs/Qwen3.6-35B-A3B-DFlash",
+   "downloads": 1409,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "eaddario/Qwen3.6-35B-A3B-GGUF",
+   "downloads": 1399,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-Claude-4.7-Opus-Reasoning-Distilled-GGUF",
+   "downloads": 1394,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-Candid-Coder-35B-A3B-GGUF",
+   "downloads": 1363,
+   "tags": [
+    "gguf",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "Jundot/Qwen3.6-35B-A3B-oQ8e-mtp",
+   "downloads": 1361,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-Abliterated-Heretic-BF16-i1-GGUF",
+   "downloads": 1360,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "cafkafk/Qwen3.6-35B-A3B-GGUF",
+   "downloads": 1354,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "WaveCut/Qwen3.6-35B-A3B-NVFP4-NInfer-v3",
+   "downloads": 1345,
+   "tags": []
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-Uncensored-Aggressive-GGUF",
+   "downloads": 1338,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "deucebucket/Qwen3.6-35B-A3B-Cerebellum-GGUF",
+   "downloads": 1335,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mlx-community/Qwen3.6-35B-A3B-MTP-4bit",
+   "downloads": 1327,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "groxaxo/Qwen3.6-35B-A3B-Abliterated-Heretic-GGUF",
+   "downloads": 1304,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "amd/Qwen3.6-35B-A3B-w4a16-llmcompressor",
+   "downloads": 1302,
+   "tags": [
+    "safetensors",
+    "4-bit",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "sakamakismile/Huihui-Qwen3.6-35B-A3B-abliterated-NVFP4",
+   "downloads": 1287,
+   "tags": [
+    "safetensors",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "rafw007/Qwen3.6-35B-A3B-mlx-claude-coder-abliterated",
+   "downloads": 1278,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "sphaela/Qwen3.6-35B-A3B-AutoRound-GGUF",
+   "downloads": 1273,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-Candid-Coder-V1.1-35B-A3B-GGUF",
+   "downloads": 1273,
+   "tags": [
+    "gguf",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "stamsam/Qwen3.6-35B-A3B-Claude-4.7-Opus-Reasoning-Distilled-MLX-oQ4-MTP",
+   "downloads": 1267,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "malaiwah/Qwen-3.6-35B-A3B-SIQ-K6-K4K3",
+   "downloads": 1255,
+   "tags": [
+    "safetensors",
+    "modelopt"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-Brainwaves-Nex-Uncensored-i1-GGUF",
+   "downloads": 1248,
+   "tags": [
+    "gguf",
+    "mlx"
+   ]
+  },
+  {
+   "id": "White-Wolf13/Qwen3.6-35B-A3B-GOLD-APEX-GGUF",
+   "downloads": 1233,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "llmfan46/Qwen3.6-35B-A3B-uncensored-heretic-Native-MTP-Preserved-NVFP4-Experts-Only-GGUF",
+   "downloads": 1232,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "longsesh/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive",
+   "downloads": 1231,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "jaromer/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive",
+   "downloads": 1230,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Huihui-Qwen3.6-35B-A3B-Claude-4.6-Opus-abliterated-GGUF",
+   "downloads": 1229,
+   "tags": [
+    "gguf",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "juan1995-dev/Qwen3.6-35B-A3B-UD-Q4_K_M_GGUF",
+   "downloads": 1208,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "kyaky/Qwen3.6-35B-A3B-Uncensored-NVFP4",
+   "downloads": 1207,
+   "tags": [
+    "safetensors",
+    "8-bit",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "CCSSNE/LuffyTheFox-Qwen3.6-35B-A3B-Uncensored-Wasserstein-GGUF",
+   "downloads": 1206,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-abliterated-v2-i1-GGUF",
+   "downloads": 1204,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-abliterated-MAX-GGUF",
+   "downloads": 1191,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "batiai/Qwen3.6-35B-A3B-GGUF",
+   "downloads": 1187,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "leonsarmiento/Huihui-Qwen3.6-35B-A3B-abliterated-6bit-XL-MTP-mlx",
+   "downloads": 1184,
+   "tags": [
+    "mlx",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "mlx-community/Qwen3.6-35B-A3B-4bit-DWQ",
+   "downloads": 1180,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "Avesed/Qwen3.6-35B-A3B-INT4-W4A16",
+   "downloads": 1157,
+   "tags": [
+    "safetensors",
+    "awq",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "EschaLabs/Qwen3.6-35B-A3B-Escha-W2",
+   "downloads": 1132,
+   "tags": [
+    "mlx",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-Claude-4.6-Opus-Reasoning-Distilled-GGUF",
+   "downloads": 1128,
+   "tags": [
+    "gguf",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "lordx64/Qwen3.6-35B-A3B-Kimi-K2.6-Reasoning-Distilled-GGUF",
+   "downloads": 1107,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/OpenYourMind-Qwen3.6-35B-A3B-kuato-DPO-abliterated-uncensored-i1-GGUF",
+   "downloads": 1104,
+   "tags": [
+    "gguf",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-Fable-5-Distill-i1-GGUF",
+   "downloads": 1088,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "burningfeet/backup2026-09-20-mudler-Qwen3.6-35B-A3B-Claude-4.7-Opus-Reasoning-Distilled-APEX-GGUF",
+   "downloads": 1088,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-Uncensored-HauhauCS-FP16-GGUF",
+   "downloads": 1082,
+   "tags": [
+    "gguf",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "White-Wolf13/Qwen3.6-35B-A3B-SILVER-APEX-GGUF",
+   "downloads": 1060,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "marafx2025/Qwen3.6-35B-A3B-uncensored-heretic-APEX-GGUF",
+   "downloads": 1038,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "GestaltLabs/Qwen3.6-35B-A3B-NSC-ACE-SABER-GGUF-MTP",
+   "downloads": 1036,
+   "tags": [
+    "gguf",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-Claude-4.6-Opus-Reasoning-Distilled-i1-GGUF",
+   "downloads": 1034,
+   "tags": [
+    "gguf",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "huihui-ai/Huihui-Qwen3.6-35B-A3B-Claude-4.7-Opus-abliterated",
+   "downloads": 1030,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "AesSedai/Qwen3.6-35B-A3B-GGUF",
+   "downloads": 1026,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "sakamakismile/Huihui-Qwen3.6-35B-A3B-Claude-4.7-Opus-abliterated-NVFP4",
+   "downloads": 1026,
+   "tags": [
+    "safetensors",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "llmfan46/Qwen3.6-35B-A3B-uncensored-heretic-Native-MTP-Preserved",
+   "downloads": 1026,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-Opus-Reasoning-i1-GGUF",
+   "downloads": 1020,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-Uncensored-Genesis-Final-Safetensors-i1-GGUF",
+   "downloads": 1013,
+   "tags": [
+    "gguf",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-Fable-5-Distill-heretic-GGUF",
+   "downloads": 1009,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Mspanz88/Qwen3.6-35B-A3B-GGUF",
+   "downloads": 1008,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "lmcoleman/Qwen3.6-35B-A3B-BUDGET-GGUF",
+   "downloads": 1008,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "dawncr0w/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-OptiQ-6bpw-MLX",
+   "downloads": 1007,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "anik-jha/Qwen3.6-35B-A3B-coding-reap25-healed-GGUF",
+   "downloads": 1004,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "vladimir94/Huihui-Qwen3.6-35B-A3B-abliterated-NVFP4-GGUF",
+   "downloads": 994,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "deucebucket/Qwen3.6-35B-A3B-Heretic-Cerebellum-GGUF",
+   "downloads": 989,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "vultr/Qwen3.6-35B-A3B-GGUF",
+   "downloads": 985,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Gustav0-Freind/Huihui-Qwen3.6-35B-A3B-Claude-4.7-Opus-abliterated-MTP-GGUF",
+   "downloads": 983,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Jundot/Qwen3.6-35B-A3B-oQ6e-mtp",
+   "downloads": 980,
+   "tags": [
+    "mlx",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "infosave/Qwen3.6-35B-A3B-Escha-W2cmf",
+   "downloads": 972,
+   "tags": []
+  },
+  {
+   "id": "DmitryDB/Qwen3.6-35B-A3B-Heretic-MOE-v3",
+   "downloads": 969,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "lym00/Qwen3.6-35B-A3B-MTP-ONLY-GGUF",
+   "downloads": 967,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "infosave/Qwen3.6-35B-A3Bcmf",
+   "downloads": 965,
+   "tags": []
+  },
+  {
+   "id": "darioooooo0o/Qwen3.6-35B-A3B-TinyKV",
+   "downloads": 964,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "OpenVINO/Qwen3.6-35B-A3B-int4-ov",
+   "downloads": 962,
+   "tags": []
+  },
+  {
+   "id": "ISTA-DASLab/Qwen3.6-35B-A3B-2Bit-GSQ",
+   "downloads": 959,
+   "tags": [
+    "safetensors",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "axteam/Qwen3.6-35B-A3B-GGUF",
+   "downloads": 948,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-Abliterated-Heretic-BF16-GGUF",
+   "downloads": 947,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-Brainwaves-Nex-i1-GGUF",
+   "downloads": 943,
+   "tags": [
+    "gguf",
+    "mlx"
+   ]
+  },
+  {
+   "id": "froggeric/Qwen3.6-35B-A3B-Uncensored-Heretic-MLX-6bit",
+   "downloads": 934,
+   "tags": [
+    "mlx",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "Myric/Qwen3.6-35B-A3B-APEX-GGUF",
+   "downloads": 930,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-Brainwaves-Nex-GGUF",
+   "downloads": 909,
+   "tags": [
+    "gguf",
+    "mlx"
+   ]
+  },
+  {
+   "id": "andreaborio/Qwen3.6-35B-A3B-Hebrus-GGUF",
+   "downloads": 904,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Kiliver/RavenX-CyberAgent-Qwen3.6-35B-A3B-Opus-4.7-OpenMythos-Pentester-BugHunter-RATH-GGUF",
+   "downloads": 895,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-heretic-v2-GGUF",
+   "downloads": 881,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Bostonouble/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive",
+   "downloads": 881,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/VideoEdit-Qwen3.6-35B-A3B-GGUF",
+   "downloads": 874,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "KilomAkel/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive",
+   "downloads": 871,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Logics-MLLM/Logics-SWE-Qwen3.6-35B-A3B",
+   "downloads": 868,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "FreedomAISVR/Qwen3.6-35B-A3B-MXFP4-MOE-GGUF",
+   "downloads": 862,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-Esper3.1-i1-GGUF",
+   "downloads": 830,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "ggml-org/Qwen3.6-35B-A3B-MTP-GGUF",
+   "downloads": 830,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-Aether-GGUF",
+   "downloads": 825,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/LFM2-8B-A1B-Instruct-Quantum-IQ1C-Qwen3.6-35B-A3B-DISTILL-i1-GGUF",
+   "downloads": 823,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-Uncensored-HauhauCS-FP16-i1-GGUF",
+   "downloads": 798,
+   "tags": [
+    "gguf",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "BlueBackup/Qwen3.6-35B-A3B-uncensored-heretic-IQ2_M",
+   "downloads": 793,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "AMAImedia/Qwen3.6-35B-A3B-occamy-1.0-BF16-GGUF-MTP",
+   "downloads": 793,
+   "tags": [
+    "safetensors",
+    "gguf"
+   ]
+  },
+  {
+   "id": "k0ndra/Qwen3.6-35B-A3B-uncensored-heretic-ja-imatrix-GGUF",
+   "downloads": 792,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "a4lg/Qwen3.6-35B-A3B-MTP-ONLY-GGUF",
+   "downloads": 790,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "nerkyor/Qwen3.6-35B-A3B-DSV4Pro-Thinking-Distill-GGUF",
+   "downloads": 789,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-Uncensored-Genesis-Hermes-V6-dequantized-GGUF",
+   "downloads": 788,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "augustine223/Huihui-Qwen3.6-35B-A3B-abliterated-KO-i1-GGUF",
+   "downloads": 769,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "gatesushi/Qwen3.6-35B-A3B-Brainwaves-Nex-Uncensored-oQ4e-mtp",
+   "downloads": 767,
+   "tags": [
+    "safetensors",
+    "mlx",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "bowser1991/Qwen3.6-35B-A3B-Uncensored-Claude-Genesis-GGUF",
+   "downloads": 760,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Youssofal/Qwen3.6-35B-A3B-MTPLX-Optimized-Speed-FP16",
+   "downloads": 758,
+   "tags": [
+    "safetensors",
+    "mlx",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "prithivMLmods/Qwen3.6-35B-A3B-Uncensored-Aggressive-GGUF",
+   "downloads": 743,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "llmfan46/Qwen3.6-35B-A3B-uncensored-heretic-Native-MTP-Preserved-NVFP4-Experts-Only",
+   "downloads": 740,
+   "tags": [
+    "safetensors",
+    "modelopt"
+   ]
+  },
+  {
+   "id": "Avesed/Qwen3.6-35B-A3B-INT8-W8A8",
+   "downloads": 727,
+   "tags": [
+    "safetensors",
+    "compressed-tensors",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "furiosa-ai/Qwen3.6-35B-A3B-FP8",
+   "downloads": 725,
+   "tags": [
+    "safetensors",
+    "fp8"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-AntiLoop-i1-GGUF",
+   "downloads": 721,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-CyberFusion-GGUF",
+   "downloads": 721,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "laoK888/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-Q4_K_M",
+   "downloads": 714,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Evidence114/Qwen3.6-35B-A3B-Sydney",
+   "downloads": 713,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "TensorFold/Qwen3.6-35B-A3B-MLX-4bit-MTP",
+   "downloads": 708,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "codacus/Qwen3.6-35B-A3B-MicroTurn-Duplex-LoRA",
+   "downloads": 704,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-AntiLoop-GGUF",
+   "downloads": 702,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-SOM-MPOA-GGUF",
+   "downloads": 700,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "brodatech/Qwen3.6-35B-A3B-MTP-GGUF",
+   "downloads": 698,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Rboy18/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive",
+   "downloads": 693,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "MLXCreator/Qwen3.6-35B-A3B-Claude-4.7-Opus-abliterated-hermes-oQ4-fp16-mtp",
+   "downloads": 693,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "deejayprime/Qwen3.6-35B-A3B-Kimi-K2.6-Reasoning-Distilled.IQ3_XXS.gguf",
+   "downloads": 690,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Yanuk-K/Qwen3.6-35B-A3B-uncensored-heretic-Native-MTP-Preserved-Q6dense-GGUF",
+   "downloads": 688,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Youssofal/Qwen3.6-35B-A3B-MTPLX-Optimized-Balance",
+   "downloads": 683,
+   "tags": [
+    "safetensors",
+    "mlx"
+   ]
+  },
+  {
+   "id": "mlx-community/RavenX-CyberAgent-Qwen3.6-35B-A3B-Opus-4.7-OpenMythos-Pentester-BugHunter-RATH-mlx-4bit-mtp-msq",
+   "downloads": 677,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "burningfeet/backup-2026-09-12-ERRONEOUS-Qwen3.6-35B-A3B-Uncensored-Genesis-Hermes-Final-GGUF",
+   "downloads": 672,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Brooooooklyn/Qwen3.6-35B-A3B-UD-Q4_K_XL-mlx",
+   "downloads": 671,
+   "tags": [
+    "safetensors",
+    "mlx",
+    "awq",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "lododoai/Qwen3.6-35B-A3B-Distill-Qwen3.8-27B-GGUF",
+   "downloads": 669,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "lordx64/Qwen3.6-35B-A3B-Claude-4.7-Opus-Reasoning-Distilled",
+   "downloads": 668,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "Neurona/RavenX-CyberAgent-Qwen3.6-35B-A3B-Opus-4.7-OpenMythos-Pentester-BugHunter-RATH-GGUF",
+   "downloads": 668,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Tetra04/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive",
+   "downloads": 662,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "tomngdev/MTP-Qwen3.6-35B-A3B-GGUF",
+   "downloads": 661,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Shananhux/Qwen3.6-35B-A3B-GGUF",
+   "downloads": 658,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "AstroJes/Qwen3.6-35B-A3B-MTP-GGUF",
+   "downloads": 658,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "td-builder/Qwen3.6-35B-A3B-MTP-GGUF",
+   "downloads": 657,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "ddalcu/Qwen3.6-35B-A3B-MLX-Serve-4bit",
+   "downloads": 653,
+   "tags": [
+    "safetensors",
+    "mlx",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "kueizen/Qwen3.6-35B-A3B-REAP-GGUF",
+   "downloads": 653,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-SOM-MPOA-i1-GGUF",
+   "downloads": 650,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "opensota/Qwen3.6-35B-A3B-GGUF",
+   "downloads": 647,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "burningfeet/Qwen3.6-35B-A3B-Uncensored-Genesis-Hermes-V5-GGUF",
+   "downloads": 637,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "lordx64/Qwen3.6-35B-A3B-Claude-4.7-Opus-Reasoning-Distilled-IQ4_XS-GGUF",
+   "downloads": 635,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "neko-legends/Qwen3.6-35B-A3B-NVFP4-MTP-GGUF",
+   "downloads": 635,
+   "tags": [
+    "gguf",
+    "fp8"
+   ]
+  },
+  {
+   "id": "tvall43/Qwen3.6-35B-A3B-heretic-gguf",
+   "downloads": 629,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Abiray/Qwen3.6-35B-A3B-Q5_K_M-GGUF",
+   "downloads": 627,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "ahmed22xa/Qwen3.6-35B-A3B-huihui-abliterated-NInfer",
+   "downloads": 627,
+   "tags": []
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-Uncensored-Genesis-Final-dequantized-i1-GGUF",
+   "downloads": 626,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-CyberFusion-i1-GGUF",
+   "downloads": 626,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Fastiraz/Qwen3.6-35B-A3B-MTP-GGUF",
+   "downloads": 610,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "andyjack/Huihui-Qwen3.6-35B-A3B-abliterated-GGUF",
+   "downloads": 607,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "cyberneurova/CyberNeurova-Qwen3.6-35B-A3B-abliterated",
+   "downloads": 603,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "hyperhuzaifa/Qwen3.6-35B-A3B-W4A16-AWQ",
+   "downloads": 600,
+   "tags": [
+    "safetensors",
+    "compressed-tensors",
+    "awq"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-Abliterix-EGA-abliterated-i1-GGUF",
+   "downloads": 598,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Momix-44/Huihui-Qwen3.6-35B-A3B-Claude-4.6-Opus-abliterated",
+   "downloads": 595,
+   "tags": [
+    "safetensors",
+    "gguf"
+   ]
+  },
+  {
+   "id": "noctrex/Qwen3.6-35B-A3B-MXFP4_MOE-GGUF",
+   "downloads": 592,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "cvgro/Qwen3.6-35B-A3B-uncensored-heretic-Native-MTP-Preserved-APEX-GGUF",
+   "downloads": 589,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "YTan2000/Qwen3.6-35B-A3B-TQ3_4S",
+   "downloads": 587,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "ENOSYS/Qwen3.6-35B-A3B-heretic-750-v1-GGUF",
+   "downloads": 587,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-Uncensored-Genesis-Hermes-V11-dequantized-i1-GGUF",
+   "downloads": 585,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "augustine223/Qwen3.6-35B-A3B-KO-i1-GGUF",
+   "downloads": 584,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "nerkyor/Qwen3.6-35B-A3B-DSV4Pro-Thinking-Distill",
+   "downloads": 582,
+   "tags": [
+    "safetensors",
+    "gguf"
+   ]
+  },
+  {
+   "id": "jan1k/Qwen3.6-35B-A3B-Uncensored-Genesis-NVFP4-GGUF",
+   "downloads": 582,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Ternii/Qwen3.6-35B-A3B-TR2.25-G-GGUF",
+   "downloads": 582,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "realgen4/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive",
+   "downloads": 581,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-Uncensored-Genesis-Final-Safetensors-GGUF",
+   "downloads": 579,
+   "tags": [
+    "gguf",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "Twu31/Qwen3.6-35B-A3B-GPTQ-INT4-W4A16-LowLatency",
+   "downloads": 576,
+   "tags": [
+    "safetensors",
+    "gptq",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "vanch007/Huihui-Qwen3.6-35B-A3B-abliterated-mlx-4bit",
+   "downloads": 570,
+   "tags": [
+    "safetensors",
+    "mlx",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "BahamutRU/Qwen3.6-35B-A3B-REAM-160-ru-agent-GGUF",
+   "downloads": 567,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "xero0000/Qwen3.6-35B-A3B-128E-Pruned-GGUF",
+   "downloads": 562,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "ligamentexceed/Qwen3.6-35B-A3B-Q6dense-GGUF",
+   "downloads": 562,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mudler/Qwen3.6-35B-A3B-NVFP4-GGUF",
+   "downloads": 556,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Youssofal/Qwen3.6-35B-A3B-Abliterated-Heretic-MLX-8bit",
+   "downloads": 554,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "OpenYourMind/OpenYourMind-Qwen3.6-35B-A3B-kuato-DPO-abliterated-uncensored",
+   "downloads": 553,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "developerjeremylive/Qwen3.6-35B-A3B-MTP-GGUF-etheroi",
+   "downloads": 553,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "wazimondo/Qwen3.6-35B-A3B-Uncensored-Wasserstein-GGUF",
+   "downloads": 552,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "taobao-mnn/Qwen3.6-35B-A3B-MNN",
+   "downloads": 547,
+   "tags": []
+  },
+  {
+   "id": "sahilchachra/Qwen3.6-35B-A3B-uncensored-heretic-AWQ",
+   "downloads": 546,
+   "tags": [
+    "safetensors",
+    "awq",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "GestaltLabs/Qwen3.6-35B-A3B-NSC-ACE-SABER-GGUF",
+   "downloads": 543,
+   "tags": [
+    "gguf",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "xCloudinfo/Qwen3.6-35B-A3B-Uncensored-xCloud",
+   "downloads": 543,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "mradermacher/Esmeralda-Qwen3.6-35B-A3B-GGUF",
+   "downloads": 542,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "magiccodingman/Qwen3.6-35B-A3B-Uncensored-MagicQuant-GGUF",
+   "downloads": 541,
+   "tags": [
+    "safetensors",
+    "gguf"
+   ]
+  },
+  {
+   "id": "Anbeeld/Qwen3.6-35B-A3B-DSpark-GGUF",
+   "downloads": 538,
+   "tags": [
+    "gguf",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "nightmedia/Qwen3.6-35B-A3B-Mirage-mxfp4-mlx",
+   "downloads": 530,
+   "tags": [
+    "safetensors",
+    "mlx",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "rcs1000/Qwen3.6-35B-A3B-MTP-Preserved-GPTQ-Int4",
+   "downloads": 529,
+   "tags": [
+    "safetensors",
+    "gptq",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "TheCluster/Qwen3.6-35B-A3B-Heretic-MLX-mixed-9bit",
+   "downloads": 524,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "nightmedia/Qwen3.6-35B-A3B-Brainwaves-Nex-Uncensored",
+   "downloads": 521,
+   "tags": [
+    "safetensors",
+    "mlx"
+   ]
+  },
+  {
+   "id": "yangzikang/Qwen3.6-35B-A3B-GGUF",
+   "downloads": 519,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Smoffyy/Qwen3.6-35B-A3B-Instruct-Revised-GGUF",
+   "downloads": 519,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "thy025/Qwen3.6-35B-A3B-GGUF",
+   "downloads": 518,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.6-35B-A3B-Uncensored-Genesis-Hermes-V10-dequantized-GGUF",
+   "downloads": 518,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "prithivMLmods/Qwen3.6-35B-A3B-F32-GGUF",
+   "downloads": 517,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Infatoshi/Qwen3.6-35B-A3B-GGUF",
+   "downloads": 514,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "LucianoM39/Qwen3.6-35B-A3B-UD-Q4_K_XL-Mesh-LLM",
+   "downloads": 513,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "peculiar-ragdoll/Nail-Qwen3.6-35B-A3B-MLX",
+   "downloads": 512,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "np-deploys/Qwen3.6-35B-A3B-AWQ-4bit",
+   "downloads": 509,
+   "tags": [
+    "safetensors",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "Jundot/Qwen3.6-35B-A3B-oQ2.5e-mtp",
+   "downloads": 508,
+   "tags": [
+    "mlx",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "Abiray/Qwen3.6-35B-A3B-Q3_K_M-GGUF",
+   "downloads": 502,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "FreedomAISVR/Qwen3.6-35B-A3B-NVFP4-GGUF",
+   "downloads": 501,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "peasantsmith/Qwen3.6-35B-A3B-Escha-W2-GGUF-MTP",
+   "downloads": 500,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Hagwell/Qwen3.6-35B-A3B-GGUF",
+   "downloads": 498,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Mrt45/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive",
+   "downloads": 498,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "RedHatAI/Qwen3.6-35B-A3B",
+   "downloads": 495,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "splats/Qwen3.6-35B-A3B-Claude-4.7-Opus-Reasoning-Distilled-oQ4e",
+   "downloads": 494,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "AxionML/Qwen3.6-35B-A3B-NVFP4",
+   "downloads": 490,
+   "tags": [
+    "safetensors",
+    "8-bit",
+    "modelopt"
+   ]
+  },
+  {
+   "id": "dopaemon/Qwen3.6-35B-A3B-uncensored-heretic-Native-MTP-Preserved-oQ4e-mtp",
+   "downloads": 489,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "cyberCyber99/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-OptiQ-4bit-MLX",
+   "downloads": 485,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "nightmedia/Qwen3.6-35B-A3B-MTP-Holo3-Qwopus-Coder-qx64y-hi-mlx",
+   "downloads": 484,
+   "tags": [
+    "safetensors",
+    "mlx"
+   ]
+  },
+  {
+   "id": "heideng90/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive",
+   "downloads": 481,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "elvatis-com/Qwen3.6-35B-A3B-keep75-GGUF",
+   "downloads": 477,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Jundot/Qwen3.6-35B-A3B-oQ3e-mtp",
+   "downloads": 476,
+   "tags": [
+    "mlx",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "williamliao/Qwen3.6-35B-A3B-DFlash-GGUF",
+   "downloads": 473,
+   "tags": [
+    "gguf"
+   ]
+  }
+ ],
+ "Qwen3.8-27B": [
+  {
+   "id": "Qwen/Qwen3.8-27B",
+   "downloads": 7508158,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "unsloth/Qwen3.8-27B-GGUF",
+   "downloads": 6069455,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Qwen/Qwen3.8-27B-FP8",
+   "downloads": 5285294,
+   "tags": [
+    "safetensors",
+    "fp8"
+   ]
+  },
+  {
+   "id": "huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF",
+   "downloads": 3899850,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "cdiamond/Qwen3.8-27B-iMatrix-NVFP4-MTP-GGUF",
+   "downloads": 3260065,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "lmstudio-community/Qwen3.8-27B-MLX-4bit",
+   "downloads": 3048666,
+   "tags": [
+    "safetensors",
+    "mlx",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "lmstudio-community/Qwen3.8-27B-MLX-8bit",
+   "downloads": 2893827,
+   "tags": [
+    "safetensors",
+    "mlx",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "lmstudio-community/Qwen3.8-27B-MLX-6bit",
+   "downloads": 2871844,
+   "tags": [
+    "safetensors",
+    "mlx"
+   ]
+  },
+  {
+   "id": "lmstudio-community/Qwen3.8-27B-MLX-5bit",
+   "downloads": 2868452,
+   "tags": [
+    "safetensors",
+    "mlx"
+   ]
+  },
+  {
+   "id": "JonathanColetti/Qwen3.8-27B-Uncensored-GGUF",
+   "downloads": 2480638,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "HauhauCS/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTP-GGUF",
+   "downloads": 2248288,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "byteshape/Qwen3.8-27B-GGUF",
+   "downloads": 2092549,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "unsloth/Qwen3.8-27B-NVFP4",
+   "downloads": 1902055,
+   "tags": [
+    "safetensors",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "ukisai/Swift-1.5-Qwen3.8-27B-GSQ-RCO-GGUF",
+   "downloads": 1606500,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "DavidAU/Qwen3.8-27B-TURBO-Fable-Cold-Fusion-735-882-Heretic-Uncensored-NEO-CODER-MAX-MTP-GGUF",
+   "downloads": 1530688,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "peculiar-ragdoll/Dirk-Qwen3.8-27B-GGUF",
+   "downloads": 1401807,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "ISTA-DASLab/Qwen3.8-27B-GSQ-RCO-GGUF",
+   "downloads": 1356774,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "cyankiwi/Qwen3.8-27B-AWQ-INT4",
+   "downloads": 1128304,
+   "tags": [
+    "safetensors",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "0bserverx/Qwen3.8-27B-Heretic-Abliterated-Uncensored-GGUF",
+   "downloads": 1124501,
+   "tags": [
+    "safetensors",
+    "gguf"
+   ]
+  },
+  {
+   "id": "jegreene/Swift-1.5-Qwen3.8-27B-heretic-GSQ-RCO-GGUF",
+   "downloads": 1107140,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "lmstudio-community/Qwen3.8-27B-GGUF",
+   "downloads": 1101664,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "DavidAU/Qwen3.8-27B-Turbo-Brilliance-50X-Reasoning-Instruct-NEO-MAX-MTP-GGUF",
+   "downloads": 1008853,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "ggml-org/Qwen3.8-27B-GGUF",
+   "downloads": 1002295,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "RadixArk/Qwen3.8-27B-NVFP4",
+   "downloads": 969226,
+   "tags": [
+    "safetensors",
+    "8-bit",
+    "modelopt"
+   ]
+  },
+  {
+   "id": "agentionai/Qwen3.8-27B-AP-GGUF",
+   "downloads": 923030,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "bottlecapai/ThinkingCap-Qwen3.8-27B-GGUF",
+   "downloads": 922733,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "nerkyor/Qwen3.8-27B-Coder390-EfficientThink-Opus5.5-GPT6Astra-Grok4.7-DSV4Pro-K3-SFT-RLOO-MTP-DFlash2",
+   "downloads": 900538,
+   "tags": [
+    "safetensors",
+    "gguf",
+    "fp8",
+    "modelopt",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.8-27B-Fable-5-Coding-Distilled-GGUF",
+   "downloads": 845229,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "ttindall/Qwen3.8-27B-Defiance-Uncensored-MTP-GGUF",
+   "downloads": 589895,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "philbert440/Qwen3.8-27B-Uncensored-Cyber-GGUF",
+   "downloads": 559904,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "OBLITERATUS/Qwen3.8-27B-OBLITERATED",
+   "downloads": 533283,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "gguf"
+   ]
+  },
+  {
+   "id": "z-lab/Qwen3.8-27B-DFlash2-GGUF",
+   "downloads": 481480,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "ukisai/Swift-Qwen3.8-27B-GGUF",
+   "downloads": 479122,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "incoai/Qwen3.8-27B-DFlash2",
+   "downloads": 437556,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "DavidAU/Qwen3.8-27B-Jumbo-Fusion-IQ-747-900-Turbo-Brilliance-50X-Reasoning-Instruct-NEO-MAX-MTP-GGUF",
+   "downloads": 407072,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "DavidAU/Qwen3.8-27B-Cold-Fusion-GAIN-V1.1-NM-DAU-NEO-MAX-MTP-GGUF",
+   "downloads": 357786,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mlx-community/Qwen3.8-27B-4bit",
+   "downloads": 332317,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "sakamakismile/Qwen3.8-27B-MTP-NVFP4",
+   "downloads": 313117,
+   "tags": [
+    "safetensors",
+    "compressed-tensors",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "cyjin-yl/Qwen3.8-27B-Uncensored-Cyber-agentic-imatrix-GGUF",
+   "downloads": 304148,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "empero-ai/Qwen3.8-27B-Ridge-GGUF",
+   "downloads": 294816,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "bartowski/Qwen3.8-27B-GGUF",
+   "downloads": 277731,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "esatapedico/Qwen3.8-27B-NVFP4-MTP-GGUF",
+   "downloads": 274990,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "nvidia/Qwen3.8-27B-NVFP4",
+   "downloads": 260150,
+   "tags": [
+    "safetensors",
+    "fp8",
+    "8-bit",
+    "modelopt"
+   ]
+  },
+  {
+   "id": "philbert440/Qwen3.8-27B-W4A16-AWQ",
+   "downloads": 222293,
+   "tags": [
+    "safetensors",
+    "awq",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "bartowski/orcarouter_Qwen3.8-27B-Uncensored-GGUF",
+   "downloads": 210017,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "gittensor-model-hub/Qwen3.8-27B-NVFP4-RTX5090",
+   "downloads": 200328,
+   "tags": [
+    "safetensors",
+    "modelopt",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "RadixArk/Qwen3.8-27B-DSpark",
+   "downloads": 190418,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "nerkyor/Qwen3.8-27B-Coder390-EfficientThink-Opus5.5-GPT6Astra-Grok4.7-DSV4Pro-K3-SFT-RLOO-GGUF-NInfer",
+   "downloads": 179285,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "DavidAU/Qwen3.8-27B-TWIN-TURBO-Fable-Cold-Fusion-709-ULTRA-HERETIC-Uncensored-NM-DAU-NEO-MTP-GGUF",
+   "downloads": 175303,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "RedHatAI/Qwen3.8-27B-INT4",
+   "downloads": 170915,
+   "tags": [
+    "safetensors",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "azukivc/Qwen3.8-27B-Uncensored-GGUF",
+   "downloads": 148765,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "ukisai/Swift-1.5-Qwen3.8-27B-GGUF",
+   "downloads": 125888,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "neroued/Qwen3.8-27B-NInfer",
+   "downloads": 113214,
+   "tags": []
+  },
+  {
+   "id": "orcarouter/Qwen3.8-27B-Uncensored-GGUF",
+   "downloads": 98527,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "WaveCut/Qwen3.8-27B-GSQ-RCO-IQ3_S-NInfer-v3",
+   "downloads": 97969,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Ar4ikov/Qwen3.8-27B-AWQ-W4A16-ASYM",
+   "downloads": 90752,
+   "tags": [
+    "safetensors",
+    "awq",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "pearsonkyle/Qwen3.8-27B-GPTQ-W4A16",
+   "downloads": 87752,
+   "tags": [
+    "safetensors",
+    "compressed-tensors",
+    "gptq",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "AtomicChat/Qwen3.8-27B-GGUF",
+   "downloads": 87080,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "pramoths/Qwen3.8-27B-Uncensored-FP8-MTP",
+   "downloads": 86411,
+   "tags": [
+    "safetensors",
+    "fp8"
+   ]
+  },
+  {
+   "id": "QUASAR-QAT/Qwen3.8-27B-QUASAR-NVFP4",
+   "downloads": 85838,
+   "tags": [
+    "safetensors",
+    "compressed-tensors",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "huihui-ai/Huihui-Qwen3.8-27B-abliterated",
+   "downloads": 81226,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "Inferact/Qwen3.8-27B-NVFP4",
+   "downloads": 80659,
+   "tags": [
+    "safetensors",
+    "8-bit",
+    "modelopt"
+   ]
+  },
+  {
+   "id": "SergiioB/Qwen3.8-27B-GPTQ-Int4-sym-G128-MTP-BF16",
+   "downloads": 73733,
+   "tags": [
+    "safetensors",
+    "gptq",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "fyb1214/Huihui-Qwen3.8-27B-Abliterated-Swift-1.5-GSQ-RCO-NInfer",
+   "downloads": 70164,
+   "tags": []
+  },
+  {
+   "id": "LessThanThreeAI/Qwen3.8-27B-Humanlike-Chat-GGUF",
+   "downloads": 68551,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "orcarouter/Qwen3.8-27B-Uncensored-FP8",
+   "downloads": 66638,
+   "tags": [
+    "safetensors",
+    "fp8"
+   ]
+  },
+  {
+   "id": "huihui-ai/Huihui-Qwen3.8-27B-Coder390-EfficientThink-abliterated-GGUF",
+   "downloads": 66540,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "dongfangshuo/Dongfangshuo-Qwen3.8-27B-NSFW-v4",
+   "downloads": 66411,
+   "tags": [
+    "safetensors",
+    "gguf"
+   ]
+  },
+  {
+   "id": "ajgazin/Swift-1.5-Qwen3.8-27B-Uncensored-Dynamic-MTP-GGUF",
+   "downloads": 66222,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "WarlaxZ/Qwen3.8-27B-NInfer-3090",
+   "downloads": 62823,
+   "tags": []
+  },
+  {
+   "id": "Blackfrost-AI/Qwen3.8-27B-ABLITERATED-GGUF",
+   "downloads": 62008,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "neroued/Qwen3.8-27B-nvfp4-NInfer",
+   "downloads": 61358,
+   "tags": [
+    "fp8"
+   ]
+  },
+  {
+   "id": "0bserverx/Qwen3.8-27B-Heretic-GSQ-RCO-GGUF",
+   "downloads": 60119,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "nicosuter/Qwen3.8-27B-AWQ",
+   "downloads": 59990,
+   "tags": [
+    "safetensors",
+    "awq",
+    "4-bit",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "sokada4/Qwen3.8-27B-GPTQ-Int4",
+   "downloads": 59941,
+   "tags": [
+    "safetensors",
+    "gptq",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "RadixArk/Qwen3.8-27B-NVFP4-BF16-LMHead",
+   "downloads": 59486,
+   "tags": [
+    "safetensors",
+    "modelopt"
+   ]
+  },
+  {
+   "id": "unsloth/Qwen3.8-27B-unsloth-bnb-4bit",
+   "downloads": 57614,
+   "tags": [
+    "safetensors",
+    "4-bit",
+    "bitsandbytes"
+   ]
+  },
+  {
+   "id": "IstroSec/ThinkingCap-Qwen3.8-27B-abliterated-NVFP4A16",
+   "downloads": 55406,
+   "tags": [
+    "safetensors",
+    "gptq",
+    "compressed-tensors",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "lightx2v/MiniMax-H3-Prompt-Rewriter-Qwen3.8-27B-Ref2VA",
+   "downloads": 55359,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "nerkyor/Qwen3.8-27B-EfficientThink-Uncensored-K3-Opus5-Grok4.6-GPT5.6Sol-SFT-SimPO-DFlash2-GGUF",
+   "downloads": 55105,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "orcarouter/Qwen3.8-27B-Uncensored-MLX",
+   "downloads": 53641,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "4-bit",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen-3.8-27B-Uncensored-GGUF",
+   "downloads": 53035,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "TensorFold/Qwen3.8-27B-MLX-4bit",
+   "downloads": 52793,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "dongfangshuo/Dongfangshuo-Qwen3.8-27B-NSFW-v2-GGUF",
+   "downloads": 51352,
+   "tags": [
+    "safetensors",
+    "gguf"
+   ]
+  },
+  {
+   "id": "z-lab/Qwen3.8-27B-DFlash2",
+   "downloads": 50917,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "MirkoCovizzi/Qwen3.8-27B-QUASAR-NVFP4-NInfer",
+   "downloads": 50343,
+   "tags": []
+  },
+  {
+   "id": "cbert33/Qwen3.8-27B-TURBO-Fable-Cold-Fusion-735-882-Heretic-Uncensored-FP8-KV-Calibrated",
+   "downloads": 47904,
+   "tags": [
+    "safetensors",
+    "fp8",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "bytkim/Qwen3.8-27B-pi-GGUF",
+   "downloads": 46560,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.8-27B-heretic-ara-GGUF",
+   "downloads": 46543,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Huihui-Qwen3.8-27B-abliterated-GGUF",
+   "downloads": 46523,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "autotrust/Qwen3.8-27B-NVFP4-DGX-SPARK-V2",
+   "downloads": 45397,
+   "tags": [
+    "safetensors",
+    "modelopt",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "RentedNoodle/Qwen3.8-27B-OrcaRouter-GSQ-RCO-IQ3_XXS-Uncensored",
+   "downloads": 45106,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.8-27B-Heretic-JP-Roleplay-NSFW-DanbooruTags-i1-GGUF",
+   "downloads": 42790,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "abliterant/Qwen3.8-27B-RANA-abliterated-GGUF",
+   "downloads": 42489,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "DavidAU/Qwen3.8-27B-TWIN-TURBO-Fable-Cold-Fusion-709-L-Uncensored-NM-DAU-NEO-MTP-GGUF",
+   "downloads": 40839,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "amd/Qwen3.8-27B-Quark-AWQ-MXFP4",
+   "downloads": 40444,
+   "tags": [
+    "safetensors",
+    "quark",
+    "awq",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "Barding-Defense/Qwen3.8-27B-huihui-abliterated-NVFP4-NInfer",
+   "downloads": 38644,
+   "tags": []
+  },
+  {
+   "id": "outsourc-e/Qwen3.8-27B-Unleashed-GGUF",
+   "downloads": 37288,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "avyukth/Qwen3.8-27B-AWQ-INT4",
+   "downloads": 35120,
+   "tags": [
+    "safetensors",
+    "awq",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "JonathanColetti/Qwen3.8-27B-Uncensored",
+   "downloads": 35005,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "Jundot/Qwen3.8-27B-oQ4e-mtp",
+   "downloads": 34378,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "autotrust/Qwen3.8-27B-NVFP4-DGX-SPARK",
+   "downloads": 34209,
+   "tags": [
+    "safetensors",
+    "modelopt",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "unsloth/Qwen3.8-27B",
+   "downloads": 33752,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "orcarouter/Qwen3.8-27B-Uncensored-NVFP4",
+   "downloads": 33062,
+   "tags": [
+    "safetensors",
+    "fp8",
+    "compressed-tensors",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "chimingw/Qwen3.8-27B-Uncensored-OrcaRouter-GGUF",
+   "downloads": 31187,
+   "tags": [
+    "safetensors",
+    "gguf",
+    "fp8"
+   ]
+  },
+  {
+   "id": "mradermacher/Huihui-Qwen3.8-27B-Coder390-EfficientThink-abliterated-GGUF",
+   "downloads": 31125,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "IsValorum/Swift-1.5-Qwen3.8-27B-Uncensored-MTP-VAL-APEX-I-MiniPlus-V3-GGUF",
+   "downloads": 29333,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "twolven/Qwen3.8-27B-abliterated-AWQ-MTP",
+   "downloads": 29304,
+   "tags": [
+    "safetensors",
+    "awq",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "Freaksterz/Qwen3.8-27B-SmoothQuant-W8A8-INT8",
+   "downloads": 29047,
+   "tags": [
+    "safetensors",
+    "gptq",
+    "compressed-tensors",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "mlx-community/Qwen3.8-27B-8bit",
+   "downloads": 27721,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "barrydeen/Qwen3.8-27B-AWQ-4bit",
+   "downloads": 27096,
+   "tags": [
+    "safetensors",
+    "awq",
+    "compressed-tensors",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "mikeinnyc/Qwen3.8-27B-GPTQ-Int4-sym-G128-MTP-BF16",
+   "downloads": 27026,
+   "tags": [
+    "safetensors",
+    "gptq",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "desva0/Qwen3.8-27B-Uncensored-W4A16",
+   "downloads": 26959,
+   "tags": [
+    "safetensors",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "fyb1214/Swift-1.5-Qwen3.8-27B-GSQ-RCO-NInfer",
+   "downloads": 26530,
+   "tags": []
+  },
+  {
+   "id": "Bucoid/Qwen3.8-27B-Heretic-Ara-16GB-VRAM-IQ4-XS-MTP-GGUF",
+   "downloads": 26329,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "grevinden/qwen3.8-27b-w4a16-autoround-rtx3090",
+   "downloads": 25860,
+   "tags": [
+    "compressed-tensors",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "OS-Software/Qwen3.8-27B-Uncensored-Heretic-v3-GGUF",
+   "downloads": 25855,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Arki05/Qwen3.8-27B-GGUF-shards",
+   "downloads": 25604,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "DavidAU/Qwen3.8-27B-Ultimate-Heretic-Uncensored-Turbo-Brilliance-50x-AGI-NEO-GGUF",
+   "downloads": 24884,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Youssofal/Qwen3.8-27B-MTPLX-Optimized-Speed",
+   "downloads": 24576,
+   "tags": [
+    "safetensors",
+    "mlx",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "hotdogs/Qwen3.8-27B-abliterated-cyber-preview-MTP-GGUF",
+   "downloads": 23269,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "llmfan46/Qwen3.8-27B-Uncensored-Heretic-Native-MTP-Preserved-GGUF",
+   "downloads": 22976,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "incoai/Qwen3.8-27B-DFlash2-GGUF",
+   "downloads": 21561,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "dealignai/Qwen3.8-27B-UNCENSORED-GGUF",
+   "downloads": 21268,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "AtomicChat/Qwen3.8-27B-Uncensored-GGUF",
+   "downloads": 20967,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Comfy-Org/Qwen3.8-27B",
+   "downloads": 20285,
+   "tags": []
+  },
+  {
+   "id": "nerkyor/Qwen3.8-27B-EfficientThink-Uncensored-K3-Opus5-Grok4.6-GPT5.6Sol-SFT-SimPO-DFlash2",
+   "downloads": 18508,
+   "tags": [
+    "safetensors",
+    "gguf",
+    "fp8",
+    "modelopt",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "ManniX-ITA/Qwen3.8-27B-Omnimerge-v6-MTP-GGUF",
+   "downloads": 17974,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.8-27B-Uncensored-GGUF",
+   "downloads": 17818,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "ajgazin/Swift-1.5-Qwen3.8-27B-Uncensored-NVFP4",
+   "downloads": 17733,
+   "tags": [
+    "safetensors",
+    "fp8",
+    "modelopt",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "dongfangshuo/Dongfangshuo-Qwen3.8-27B-NSFW-Novel",
+   "downloads": 17726,
+   "tags": [
+    "safetensors",
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.8-27B-Heretic-JP-Roleplay-NSFW-GGUF",
+   "downloads": 17707,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "weareapexcreators/Qwen3.8-27B-LocalAI",
+   "downloads": 17586,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "zerodigest/Qwen3.8-27B-Uncensored-YMQ-MTP-GGUF",
+   "downloads": 17183,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "cHunter789/Qwen3.8-27B-i1-IQ4_KS_KT-GGUF",
+   "downloads": 16747,
+   "tags": [
+    "gguf",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "Muyuxiao/Qwen3.8-27B-Heretic-Abliterated-Uncensored-GGUF",
+   "downloads": 16713,
+   "tags": [
+    "safetensors",
+    "gguf"
+   ]
+  },
+  {
+   "id": "JetBrains/Qwen3.8-3.6-27B-blend-GGUF",
+   "downloads": 16202,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.8-27B-Uncensored-Chinese-GGUF",
+   "downloads": 16111,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "RentedNoodle/Qwen3.8-27B-GSQ-RCO-IQ3_XXS-Uncensored",
+   "downloads": 15946,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "6block/Qwen3.8-27B-GGUF",
+   "downloads": 15930,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "bartowski/ukisai_Swift-1.5-Qwen3.8-27b-GGUF",
+   "downloads": 15872,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Huihui-Qwen3.8-27B-Coder390-EfficientThink-abliterated-i1-GGUF",
+   "downloads": 14968,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Arki05/Qwen3.8-27B-GGUF",
+   "downloads": 14906,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "WaveCut/Huihui-Qwen3.8-27B-abliterated-NInfer-v3",
+   "downloads": 14752,
+   "tags": []
+  },
+  {
+   "id": "mlx-community/Qwen3.8-27B-Uncensored-OptiQ-4bit",
+   "downloads": 13743,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "mattbucci/Qwen3.8-27B-AWQ",
+   "downloads": 13601,
+   "tags": [
+    "safetensors",
+    "awq",
+    "gptq",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "darrellbest/Qwen3.8-27B-Heretic-GGUF",
+   "downloads": 13460,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "joshebbs/qwen3.8-27b-uncensored-nvfp4-modelopt",
+   "downloads": 13399,
+   "tags": [
+    "safetensors",
+    "modelopt",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "kaitchup/Qwen3.8-27B-SLQ-GGUF",
+   "downloads": 13321,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "lued/Qwen3.8-27B-INT8-W8A16-MTP",
+   "downloads": 13277,
+   "tags": [
+    "safetensors",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "QQZ2026/Qwen3.8-27B-ZeroRefusal-UD-IQ4_XS-MTP-GGUF",
+   "downloads": 13082,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "ukisai/Swift-1.5-Qwen3.8-27b-W4A16-AWQ",
+   "downloads": 12975,
+   "tags": [
+    "safetensors",
+    "awq",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "WaveCut/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-DFlash2-NInfer-v3",
+   "downloads": 12909,
+   "tags": []
+  },
+  {
+   "id": "Vishva007/Qwen3.8-27B-W4A16-AutoRound-GPTQ",
+   "downloads": 12715,
+   "tags": [
+    "safetensors",
+    "gptq",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "SC117/Qwen3.8-27B-Uncensored-FIT-GGUF",
+   "downloads": 12560,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "dbirks/Qwen3.8-27B-W4A16-AutoRound",
+   "downloads": 12292,
+   "tags": [
+    "safetensors",
+    "gptq",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "Abiray/Qwen3.8-27B-Q4_K_M-GGUF",
+   "downloads": 12262,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "therickcain/Qwen3.8-27B-Heretic-Abliterated-Uncensored-GGUF",
+   "downloads": 11774,
+   "tags": [
+    "safetensors",
+    "gguf"
+   ]
+  },
+  {
+   "id": "unsloth/Qwen3.8-27B-FP8",
+   "downloads": 11749,
+   "tags": [
+    "safetensors",
+    "fp8"
+   ]
+  },
+  {
+   "id": "BnhHo/Qwen3.8-27B-Uncensored-GGUF",
+   "downloads": 11746,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "wallawalla47/Qwen3.8-27B-Uncensored-NVFP4-NInferV3",
+   "downloads": 11416,
+   "tags": [
+    "fp8",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "xCloudinfo/Qwen3.8-27B-Uncensored-GGUF",
+   "downloads": 11384,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "alesha-pro/Qwen3.8-27B-S-mirai-GGUF",
+   "downloads": 11341,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "jan1k/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-NVFP4-GGUF",
+   "downloads": 11247,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Barding-Defense/Qwen3.8-27B-huihui-abliterated-groupwise-int-NInfer",
+   "downloads": 11223,
+   "tags": []
+  },
+  {
+   "id": "prithivMLmods/Qwen3.8-27B-GGUF",
+   "downloads": 11221,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Bucoid/Qwen3.8-27B-Uncensored-IQ4-XS-MTP-16GB-VRAM-GGUF",
+   "downloads": 11211,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "davetha/Qwen3.8-27B-abliterated-W8A16",
+   "downloads": 11210,
+   "tags": [
+    "safetensors",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.8-27B-OBLITERATED-GGUF",
+   "downloads": 11201,
+   "tags": [
+    "gguf",
+    "safetensors",
+    "mlx"
+   ]
+  },
+  {
+   "id": "IsValorum/Swift-1.5-Qwen3.8-27B-Uncensored-MTP-VAL-APEX-I-NanoPlus-V3-GGUF",
+   "downloads": 11117,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/JonathanColetti-Qwen3.8-27B-Uncensored-GGUF",
+   "downloads": 11080,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "IsValorum/Huihui-Qwen3.8-27B-Abliterated-VAL-APEX-I-NanoPlus-V3-GGUF",
+   "downloads": 10988,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "hotdogs/Qwen3.8-27B-abliterated-MTP-GGUF",
+   "downloads": 10984,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "pyros-vault/Qwen3.8-27B-Uncensored-NInfer",
+   "downloads": 10954,
+   "tags": []
+  },
+  {
+   "id": "DhruvalLabs/Qwen3.8-27B-GGUF",
+   "downloads": 10911,
+   "tags": [
+    "gguf",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "logic65/Qwen3.8-Whittle-MoE-27B-A17.8B-GGUF",
+   "downloads": 10884,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "cruizba/ISTA-DASLab-Qwen3.8-27B-GSQ-RCO-GGUF-Unsloth-MTP",
+   "downloads": 10862,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "abhishekchohan/Qwen3.8-27B-AWQ-INT4-FP8KV",
+   "downloads": 10744,
+   "tags": [
+    "safetensors",
+    "awq",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "IsValorum/Huihui-Qwen3.8-27B-Coder390-EfficientThink-abliterated-VAL-APEX-I-MiniPlus-V3-GGUF",
+   "downloads": 10690,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "maurienne-ai/Qwen3.8-27B-DFlash2-NVFP4-RTNcal",
+   "downloads": 10554,
+   "tags": [
+    "safetensors",
+    "modelopt",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "philbert440/Qwen3.8-27B-Uncensored-Aggressive-W4A16-AWQ",
+   "downloads": 10432,
+   "tags": [
+    "safetensors",
+    "awq",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "0xKitkat/Qwen3.8-27B-Uncensored-Aggressive",
+   "downloads": 10277,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "jrell/Qwen3.8-27B-i1-IQ4_XS-GGUF-Smaller",
+   "downloads": 10230,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "DavidAU/Qwen3.8-27B-TURBO-Fable-Cold-Fusion-735-882-Heretic-Uncensored-NM-DAU",
+   "downloads": 10214,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.8-27B-GGUF",
+   "downloads": 10149,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "AEON-7/Qwen3.8-27B-AEON-ULTIMATE-UNCENSORED-NVFP4-MIXED",
+   "downloads": 10091,
+   "tags": [
+    "safetensors",
+    "fp8",
+    "modelopt"
+   ]
+  },
+  {
+   "id": "prithivMLmods/Qwen3.8-27B-abliterated-GGUF",
+   "downloads": 9858,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4",
+   "downloads": 9825,
+   "tags": [
+    "safetensors",
+    "compressed-tensors",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "orcarouter/Qwen3.8-27B-Uncensored",
+   "downloads": 9495,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "mradermacher/Dongfangshuo-Qwen3.8-27B-NSFW-v4-i1-GGUF",
+   "downloads": 9464,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "bartowski/ukisai_Swift-Qwen3.8-27b-GGUF",
+   "downloads": 9306,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mlx-community/Qwen3.8-27B-OptiQ-4bit",
+   "downloads": 9287,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "lightx2v/MiniMax-H3-Prompt-Rewriter-Qwen3.8-27B-FL2VA",
+   "downloads": 9208,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "kingjones777/Qwen3.8-27B-ROCmFP4-STRIX-MTP-GGUF",
+   "downloads": 9138,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.8-27B-antislop-i1-GGUF",
+   "downloads": 9052,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "higa2515/Qwen3.8-27B-QSA-GGUF",
+   "downloads": 8979,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Dongfangshuo-Qwen3.8-27B-NSFW-Novel-i1-GGUF",
+   "downloads": 8977,
+   "tags": [
+    "gguf",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.8-27B-Fable-Distill-Heretic-ara-i1-GGUF",
+   "downloads": 8952,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "gittensor-model-hub/Qwen3.8-27B-DSpark-NVFP4",
+   "downloads": 8825,
+   "tags": [
+    "safetensors",
+    "modelopt",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "mudler/Qwen3.8-27B-APEX-GGUF",
+   "downloads": 8598,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "ArtomYuan/Qwen3.8-27B-Coder390-EfficientThink-abliterated-ROCmFPX",
+   "downloads": 8598,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "cygnal/Qwen3.8-27B-heretic-ara-Q4_K_M-MTP-GGUF",
+   "downloads": 8584,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.8-27B-Heretic-JP-Roleplay-NSFW-i1-GGUF",
+   "downloads": 8464,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "roofkid/Qwen3.8-27B-GSQ3-NInfer",
+   "downloads": 8423,
+   "tags": []
+  },
+  {
+   "id": "bartowski/bytkim_Qwen3.8-27B-pi-GGUF",
+   "downloads": 8328,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "theresa00l/Qwen3.8-27B-Uncensored-FP8-Q4_K_M-GGUF",
+   "downloads": 8291,
+   "tags": [
+    "gguf",
+    "fp8"
+   ]
+  },
+  {
+   "id": "RedHatAI/Qwen3.8-27B-NVFP4",
+   "downloads": 8289,
+   "tags": [
+    "safetensors",
+    "fp8",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.8-27B-OBLITERATED-Mythos-Class-Agentic-GGUF",
+   "downloads": 8211,
+   "tags": [
+    "gguf",
+    "fp8",
+    "awq"
+   ]
+  },
+  {
+   "id": "bottlecapai/ThinkingCap-Qwen3.8-27B-GGUF-RCO-4.2bpw",
+   "downloads": 7972,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Solstice-AI/Qwen3.8-27B-TURBO-Fable-Cold-Fusion-735-882-Heretic-Uncensored-NM-DAU-mlx-oQ8e-1M",
+   "downloads": 7951,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "InterpreticAI/Qwen3.8-27B-Uncensored-v2-GGUF",
+   "downloads": 7904,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "soyaakinohara/qwen3.8-27b-abliterated-3.69bpw-12GB-MTP.gguf",
+   "downloads": 7854,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "IsValorum/Qwen3.8-27B-EfficientThink-VAL-APEX-I-MiniPlus-V3-GGUF",
+   "downloads": 7841,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "SPK1337/Huihui-Qwen3.8-27B-Swift1.5-Abliterated-IQ3S-DFlash2-NInfer",
+   "downloads": 7779,
+   "tags": []
+  },
+  {
+   "id": "wallawalla47/Qwen3.8-27B-NVIDIA-NVFP4-NInferV3",
+   "downloads": 7758,
+   "tags": [
+    "fp8",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "windowsxp811203/Qwen3.8-27B-Abliterated-GGUF",
+   "downloads": 7743,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mlx-community/Qwen3.8-27B-MTP-4bit",
+   "downloads": 7700,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "Greatjedi/Qwen3.8-27B-Intel-Arc-Tuned-GGUF",
+   "downloads": 7696,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "amd/Qwen3.8-27B-Quark-AWQ-INT4-W4A16",
+   "downloads": 7665,
+   "tags": [
+    "safetensors",
+    "quark",
+    "awq"
+   ]
+  },
+  {
+   "id": "bjonor/Swift-1.5-Qwen3.8-27B-GPTQ-Int4-sym-G128-MTP-BF16",
+   "downloads": 7631,
+   "tags": [
+    "safetensors",
+    "gptq",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "Bucoid/Qwen3.8-27B-IQ4-XS-MTP-16GB-VRAM-GGUF",
+   "downloads": 7584,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "ninfer-5080/Qwen3.8-27B-RTX5080",
+   "downloads": 7526,
+   "tags": []
+  },
+  {
+   "id": "mradermacher/Qwen3.8-27B-Max-Ablit-Heretic-i1-GGUF",
+   "downloads": 7490,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "julianmb/Qwen-3.8-27B-ROCmFP4-FAST-GGUF",
+   "downloads": 7361,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "ayozhee/Qwen3.8-27B-Abliterated-GSQ-Orca-GGUF",
+   "downloads": 7352,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "jj33512/Huihui-Qwen3.8-27B-abliterated-GGUF",
+   "downloads": 7349,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "hamixdd/Swift-1.5-Qwen3.8-27B-W4A16-RTX3090-NInfer-v3",
+   "downloads": 7343,
+   "tags": []
+  },
+  {
+   "id": "GCSA-AiLab/Qwen3.8-27B-Abliterated-MTP-GGUF",
+   "downloads": 7333,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "SuperLogic/Qwen3.8-27B-Flash-MTP-GGUF",
+   "downloads": 7277,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "cometkim/Qwen3.8-27B-nvfp4full-NInfer",
+   "downloads": 7194,
+   "tags": []
+  },
+  {
+   "id": "dongfangshuo/Dongfangshuo-Qwen3.8-27B-NSFW",
+   "downloads": 7185,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "slothingaway/Qwen3.8-27B-Q8_0-GGUF",
+   "downloads": 7181,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "magiccodingman/Qwen3.8-27B-MXFP4-MagicQuant-GGUF",
+   "downloads": 7105,
+   "tags": [
+    "gguf",
+    "awq",
+    "quark"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.8-Whittle-MoE-27B-A17.8B-GGUF",
+   "downloads": 7094,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "KikoCis/Qwen3.8-27B-GGUF",
+   "downloads": 7071,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "shawnw3i/Qwen3.8-27B-AWQ-MTP",
+   "downloads": 6968,
+   "tags": [
+    "safetensors",
+    "awq",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.8-27B-Humanlike-Chat-2.0-i1-GGUF",
+   "downloads": 6965,
+   "tags": [
+    "gguf",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "basecompute/Qwen3.8-27B-BaseQuant-V1",
+   "downloads": 6963,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Avesed/Qwen3.8-27B-INT8-W8A8",
+   "downloads": 6957,
+   "tags": [
+    "safetensors",
+    "compressed-tensors",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.8-27B-Optimal-Ablit-Heretic-i1-GGUF",
+   "downloads": 6956,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "wacomctl672/Swift-Qwen3.8-27B-Uncensored-ninfer3090",
+   "downloads": 6927,
+   "tags": []
+  },
+  {
+   "id": "codavidgarcia/Qwen3.8-27B-Uncensored-Heretic-MTP-UD-GGUF",
+   "downloads": 6821,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "IsValorum/Qwen3.8-27B-EfficientThink-VAL-APEX-I-NanoPlus-V3-GGUF",
+   "downloads": 6754,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "cole17e/Qwen3.8-27B-Heretic-Abliterated-Uncensored-GGUF",
+   "downloads": 6710,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.8-27B-abliterated-i1-GGUF",
+   "downloads": 6662,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "gittensor-model-hub/Qwen3.8-27B-NVFP4-RTX5090-LMHead4",
+   "downloads": 6657,
+   "tags": [
+    "safetensors",
+    "modelopt",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "DavidAU/Qwen3.8-27B-Halloween-Terror-Heretic-Uncensored-NEO-GGUF",
+   "downloads": 6649,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "oceanonline/Qwen3.8-27B-Uncensored-noMTP-Q4_K_M-OpenCode-GGUF",
+   "downloads": 6622,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "AEON-7/Qwen3.8-27B-AEON-ULTIMATE-UNCENSORED-BF16",
+   "downloads": 6615,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "meshllm/Qwen3.8-27B-UD-Q4_K_XL-layers",
+   "downloads": 6595,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "fyb1214/Huihui-Qwen3.8-27B-Abliterated-Ternary-Bonsai-2-NInfer",
+   "downloads": 6564,
+   "tags": []
+  },
+  {
+   "id": "mradermacher/Huihui-Qwen3.8-27B-abliterated-i1-GGUF",
+   "downloads": 6546,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "k1lliiviie/Huihui-Qwen3.8-27B-abliterated-GGUF",
+   "downloads": 6433,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "TeichAI/Qwen3.8-27B-Fable-Distill-GGUF",
+   "downloads": 6431,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "ukisai/Swift-1.5-Qwen3.8-27b",
+   "downloads": 6298,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "MiawTeam/Qwen3.8-27B-Uncensored-GGUF",
+   "downloads": 6236,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "ttindall/Qwen3.8-27B-Uncensored-HauhauCS-NInfer",
+   "downloads": 6207,
+   "tags": []
+  },
+  {
+   "id": "ahmed-amedo/Huihui-Qwen3.8-27B-abliterated-GGUF",
+   "downloads": 6205,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "naklitechie/Qwen3.8-27B-DFlash2-ternary-bonsai2",
+   "downloads": 6102,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Dongfangshuo-Qwen3.8-27B-NSFW-i1-GGUF",
+   "downloads": 6018,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "ukisai/Swift-1.5-Qwen3.8-27b-NVFP4",
+   "downloads": 5993,
+   "tags": [
+    "safetensors",
+    "fp8",
+    "modelopt",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "QuaduxIT/Qwen3.8-27B-Whitehat-GGUF",
+   "downloads": 5970,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Dragoy/Swift-Qwen3.8-27B-abliterated-NVFP4-NInfer",
+   "downloads": 5833,
+   "tags": []
+  },
+  {
+   "id": "kody321/Huihui-Qwen3.8-27B-abliterated-GGUF",
+   "downloads": 5811,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "shsunshining/Qwen3.8-27B-Uncensored-GGUF",
+   "downloads": 5785,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Arkha7/Qwen3.8-27B-Coder390-EfficientThink-Opus5.5-GPT6Astra-Grok4.7-DSV4Pro-K3-SFT-RLOO-MTP-DFlash2",
+   "downloads": 5766,
+   "tags": [
+    "safetensors",
+    "gguf",
+    "fp8",
+    "modelopt",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "unistra/Qwen3.8-27B-NVFP4",
+   "downloads": 5747,
+   "tags": [
+    "safetensors",
+    "compressed-tensors",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "vmarcelo/Qwen3.8-27B-MIX_GGUF",
+   "downloads": 5737,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "bartowski/JetBrains-Qwen3.8-3.6-27B-blend-GGUF",
+   "downloads": 5698,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mlx-community/Qwen3.8-27B-bf16",
+   "downloads": 5684,
+   "tags": [
+    "mlx",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "aiartorious/Huihui-Qwen3.8-27B-abliterated-GGUF",
+   "downloads": 5673,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Aleks199999/Huihui-Qwen3.8-27B-abliterated-GGUF",
+   "downloads": 5663,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "rawmodels/Qwen3.8-27B-antislop",
+   "downloads": 5639,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "Weirdo333/Huihui-Qwen3.8-27B-abliterated-GGUF",
+   "downloads": 5638,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Jackrong/Qwen3.8-27B-MTP-GGUF",
+   "downloads": 5621,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "LxBarn/Huihui-Qwen3.8-27B-abliterated-GGUF",
+   "downloads": 5611,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "YukinoKaorisuna/Qwen3.8-27B-Uncensored-ninfer5080-5070ti",
+   "downloads": 5593,
+   "tags": []
+  },
+  {
+   "id": "lyf/Qwen3.8-27B-Huihui-Abliterated-NInfer-NVFP4",
+   "downloads": 5590,
+   "tags": [
+    "fp8"
+   ]
+  },
+  {
+   "id": "syvai/Qwen3.8-27B-DFlash2-W4A16",
+   "downloads": 5585,
+   "tags": [
+    "safetensors",
+    "compressed-tensors",
+    "gptq"
+   ]
+  },
+  {
+   "id": "akumaburn/Qwen3.8-27B-heretic-SmoothQuant-W8A8-INT8",
+   "downloads": 5578,
+   "tags": [
+    "safetensors",
+    "compressed-tensors",
+    "gptq",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "YTan2000/Qwen3.8-27B-TQ",
+   "downloads": 5577,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "LibertAIDAI/Qwen3.8-27B-NVFP4-GGUF",
+   "downloads": 5562,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "esatapedico/Qwen3.8-27B-TWIN-TURBO-Fable-Cold-Fusion-709-L-Uncensored-NVFP4-GGUF",
+   "downloads": 5535,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/sperma-aj-qwen3.8-27b-i1-GGUF",
+   "downloads": 5513,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Fhjdjdbxhshsh/Huihui-Qwen3.8-27B-abliterated-GGUF",
+   "downloads": 5459,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "rax4901/Huihui-Qwen3.8-27B-abliterated-GGUF",
+   "downloads": 5426,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "kcarly/Huihui-Qwen3.8-27B-abliterated-GGUF",
+   "downloads": 5388,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "haybar4k/Huihui-Qwen3.8-27B-abliterated-GGUF",
+   "downloads": 5372,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "quimmedes/Qwen3.8-27B-XYZ",
+   "downloads": 5370,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "vcruz305/Qwen3.8-27B-AEON-ULTIMATE-UNCENSORED-GGUF",
+   "downloads": 5331,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "loscrossos/Huihui-Qwen3.8-27B-abliterated-GGUF",
+   "downloads": 5303,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Shishkipiski/Huihui-Qwen3.8-27B-abliterated-GGUF",
+   "downloads": 5284,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.8-27B-i1-GGUF",
+   "downloads": 5239,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "turboderp/Qwen3.8-27B-exl3",
+   "downloads": 5223,
+   "tags": [
+    "exl3"
+   ]
+  },
+  {
+   "id": "IsValorum/Huihui-Qwen3.8-27B-Coder390-EfficientThink-abliterated-VAL-APEX-I-NanoPlus-V3-GGUF",
+   "downloads": 5181,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "btbtyler09/Qwen3.8-27B-GPTQ-4bit",
+   "downloads": 5153,
+   "tags": [
+    "safetensors",
+    "gptq",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "mincon/Qwen3.8-27B-Heretic-Abliterated-Uncensored-GGUF",
+   "downloads": 5140,
+   "tags": [
+    "safetensors",
+    "gguf"
+   ]
+  },
+  {
+   "id": "AI-conn/Huihui-Qwen3.8-27B-abliterated-GGUF",
+   "downloads": 5055,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "yachiyo8080/Huihui-Qwen3.8-27B-abliterated-GGUF",
+   "downloads": 5054,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "rawmodels/Qwen3.8-27B-antislop-GGUF",
+   "downloads": 5037,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Kaktus4048/Huihui-Qwen3.8-27B-abliterated-GGUF",
+   "downloads": 5006,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "ressl/Qwen3.8-27B-uncensored-GGUF",
+   "downloads": 4945,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.8-27B-heretic-ara-i1-GGUF",
+   "downloads": 4935,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Solstice-AI/Qwen3.8-27B-TURBO-Fable-Cold-Fusion-735-882-Heretic-Uncensored-GGUF-UltraOptimised-DSpark-MTP",
+   "downloads": 4911,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.8-27B-Cold-Fusion-GAIN-Heretic-i1-GGUF",
+   "downloads": 4810,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "xidisdg/qwen3.8_27b-uncensored-ninfer",
+   "downloads": 4809,
+   "tags": []
+  },
+  {
+   "id": "quuyy/Qwen3.8-27B-Uncensored-GGUF",
+   "downloads": 4808,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.8-27B-Uncensored-Heretic-Abliterated-i1-GGUF",
+   "downloads": 4800,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "scima/Qwen3.8-Whittle-MoE-27B-A17.8B-GGUF-all-quants",
+   "downloads": 4789,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "PaoAI/Qwen3.8-27B-PaoAI-ROCmFP4-STRIX-BALANCED-GGUF",
+   "downloads": 4723,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "magnitudedev/Qwen3.8-27B-DFlash2-GGUF",
+   "downloads": 4665,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/DarkIdol-Qwen3.8-27B-v1.1-i1-GGUF",
+   "downloads": 4639,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.8-27B-Uncensored-FP8-GGUF",
+   "downloads": 4624,
+   "tags": [
+    "gguf",
+    "fp8"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.8-27B-Heretic-Abliterated-Uncensored-i1-GGUF",
+   "downloads": 4571,
+   "tags": [
+    "gguf",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "megashuckle/Qwen3.8-27B-Heretic-ARA-NVFP4-NInfer",
+   "downloads": 4556,
+   "tags": []
+  },
+  {
+   "id": "bottlecapai/ThinkingCap-Qwen3.8-27B",
+   "downloads": 4544,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.8-27B-abliterated-GGUF",
+   "downloads": 4442,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mlasli/Qwen3.8-27B-Heretic-Uncensored-Q6_K-GGUF",
+   "downloads": 4430,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "redashes/Qwen3.8-27B-SSMFIX-apostate-GSQ-RCO-IQ3_S-NInfer",
+   "downloads": 4404,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "ISTA-DASLab/Qwen3.8-27B-3Bit-GSQ",
+   "downloads": 4353,
+   "tags": [
+    "safetensors",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "Youssofal/Qwen3.8-27B-MTPLX-Optimized-Quality",
+   "downloads": 4315,
+   "tags": [
+    "safetensors",
+    "mlx",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "yyrgzn/Qwen3.8-27B-FP8-NInfer-v3",
+   "downloads": 4313,
+   "tags": [
+    "fp8"
+   ]
+  },
+  {
+   "id": "kaushikvira/Qwen3.8-27B-swift-abliterated-nvfp4full-dflash2-NInfer-v3",
+   "downloads": 4292,
+   "tags": []
+  },
+  {
+   "id": "mradermacher/Qwen3.8-27B-Samantha-GGUF",
+   "downloads": 4284,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "sweetand/qwen3.8-27b-1C",
+   "downloads": 4270,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "CaptainArni/Swift-1.5-Qwen3.8-27B-NInfer",
+   "downloads": 4258,
+   "tags": [
+    "fp8"
+   ]
+  },
+  {
+   "id": "WaveCut/Qwen3.8-27B-MXFP8-CRACK-NInfer-v3",
+   "downloads": 4212,
+   "tags": []
+  },
+  {
+   "id": "mradermacher/Qwen3.8-27B-Brainwaves-WFH-BF16-i1-GGUF",
+   "downloads": 4170,
+   "tags": [
+    "gguf",
+    "mlx"
+   ]
+  },
+  {
+   "id": "esatapedico/Qwen3.8-27B-TURBO-Fable-Cold-Fusion-735-882-Heretic-Uncensored-NM-DAU-NVFP4-GGUF",
+   "downloads": 4134,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "LuffyTheFox/Qwen3.8-27B-Uncensored-Genesis-MTP-GGUF",
+   "downloads": 4103,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.8-27B-Uncensored-Impulsive-i1-GGUF",
+   "downloads": 4068,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "bottlecapai/ThinkingCap-Qwen3.8-27B-NVFP4",
+   "downloads": 4062,
+   "tags": [
+    "safetensors",
+    "8-bit",
+    "compressed-tensors"
+   ]
+  },
+  {
+   "id": "TheWegemann/Qwen3.8-27B-LowGPU-uncensored-NoMTP-IQ3XXXS-GGUF",
+   "downloads": 4040,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Guile/Qwen3.8-27B-Humanlike-Chat-GGUF",
+   "downloads": 4017,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "tooltd/Qwen3.8-27B-IQ4-XS-16GB-VRAM-GGUF",
+   "downloads": 4002,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "munekazu/Huihui-Qwen3.8-27B-abliterated-FP8",
+   "downloads": 3972,
+   "tags": [
+    "safetensors",
+    "fp8"
+   ]
+  },
+  {
+   "id": "mlasli/Qwen3.8-27B-Heretic-Uncensored-Q4_K_M-GGUF",
+   "downloads": 3959,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Ryn1998/Qwen3.8-27B-Heretic-Abliterated-Uncensored-GGUF",
+   "downloads": 3928,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "2beng2/Qwen3.8-27B-OrcaRouter-GSQ-RCO-IQ3_XXS-NInfer",
+   "downloads": 3898,
+   "tags": []
+  },
+  {
+   "id": "DarkRomeo88/Qwen3.8-27B-uncensored-heretic-w4a8-ComfyUI",
+   "downloads": 3894,
+   "tags": []
+  },
+  {
+   "id": "Chungulus/Qwen3.8-27B-Q3_K_M-GGUF",
+   "downloads": 3893,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "hellnahbru/Qwen3.8-27B-Uncensored-GGUF-preserved-20261029",
+   "downloads": 3892,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/ThinkingCap-Qwen3.8-27B-i1-GGUF",
+   "downloads": 3888,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "SPK1337/Huihui-Qwen3.8-27B-Uncensored-GSQ-RCO-IQ3S-Vision-DFlash2-MTP-NInfer",
+   "downloads": 3873,
+   "tags": []
+  },
+  {
+   "id": "mradermacher/Qwen3.8-27B-CodeForge-3xMerge-UNCENSORED-heretic-i1-GGUF",
+   "downloads": 3853,
+   "tags": [
+    "gguf",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "Solstice-AI/Qwen3.8-27B-TURBO-Fable-Cold-Fusion-735-882-Heretic-Uncensored-NM-DAU-mlx-oQ4e-1M",
+   "downloads": 3848,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "fleetml/Qwen3.8-27B-Uncensored-NVFP4-RTX5090",
+   "downloads": 3840,
+   "tags": [
+    "safetensors",
+    "modelopt",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "AutisticAF/Huihui-Qwen3.8-27B-abliterated-mlx-4Bit",
+   "downloads": 3838,
+   "tags": [
+    "safetensors",
+    "mlx",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "jakeatx/Qwen3.8-27B-ATX-IQ4_XS-M-GGUF",
+   "downloads": 3831,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "SoAIHQ/Qwen3.8-27B-GGUF",
+   "downloads": 3803,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Frozenlock/Qwen3.8-27B-int4-AutoRound",
+   "downloads": 3766,
+   "tags": [
+    "safetensors",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "mitkox/Huihui-Qwen3.8-27B-abliterated-Q4_K_M-GGUF",
+   "downloads": 3761,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mikeyoubeach/qwen3.8-27b-uncensored-ninfer-v3",
+   "downloads": 3757,
+   "tags": [
+    "fp8"
+   ]
+  },
+  {
+   "id": "blackfan23/Qwen3.8-27B-TURBO-Heretic-NM-DAU-MLX-8bit",
+   "downloads": 3729,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "Feyd89/Qwen3.8-27B-QUASAR-QAT-nvfp4-NInfer",
+   "downloads": 3701,
+   "tags": []
+  },
+  {
+   "id": "EmilyOfOz/Qwen3.8-27B-Heretic-JP-Roleplay-NSFW-DanbooruTags-i1-GGUF",
+   "downloads": 3686,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "batiai/Qwen3.8-27B-GGUF",
+   "downloads": 3681,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "RedHatAI/Qwen3.8-27B-MXFP4",
+   "downloads": 3670,
+   "tags": [
+    "safetensors",
+    "compressed-tensors",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "lflare/Qwen3.8-27B-FP8",
+   "downloads": 3580,
+   "tags": [
+    "safetensors",
+    "compressed-tensors",
+    "fp8"
+   ]
+  },
+  {
+   "id": "prakharprasad/Qwen3.8-27B-Uncensored-GGUF",
+   "downloads": 3553,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "llmfan46/Qwen3.8-27B-Uncensored-Heretic-Native-MTP-Preserved-NVFP4-GGUF",
+   "downloads": 3531,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.8-27B-Obliterated-NOESIS-BF16-GGUF",
+   "downloads": 3531,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Jundot/Qwen3.8-27B-oQ4e-fp16-mtp",
+   "downloads": 3525,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "NexusGremlin/Qwen3.8-27B-TURBO-Fable-Fusion-735-882-Heretic-CODER-MAX-MTP-GGUF",
+   "downloads": 3520,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "IsValorum/Huihui-Qwen3.8-27B-Abliterated-VAL-APEX-I-MiniPlus-V3-GGUF",
+   "downloads": 3500,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Code-Gen/Qwen3.8-27B-TURBO-Fable-Cold-Fusion-735-882-Heretic-Uncensored-NEO-CODER-MAX-MTP-GGUF",
+   "downloads": 3495,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Swift-1.5-Qwen3.8-27B-Abliterated-GGUF",
+   "downloads": 3429,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "jaakkomoller/Qwen3.8-27B-q3mix-NInfer",
+   "downloads": 3425,
+   "tags": []
+  },
+  {
+   "id": "Farggin/Lobo-Qwen3.8-27B-GSQ-RCO-IQ3_S-MTP-GGUF",
+   "downloads": 3405,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "gpillon/Qwen3.8-27B-nvfp4full-dflash2-NInfer",
+   "downloads": 3386,
+   "tags": []
+  },
+  {
+   "id": "mradermacher/Swift-Qwen3.8-27B-Uncensored-MTP-Terse-Coder-i1-GGUF",
+   "downloads": 3359,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Max73333/Qwen3.8-27B-GPTQ-Int4-V100",
+   "downloads": 3354,
+   "tags": [
+    "safetensors",
+    "gptq",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "gearwave00001/Huihui-Qwen3.8-27B-abliterated-nvfp4-NInfer",
+   "downloads": 3329,
+   "tags": [
+    "fp8"
+   ]
+  },
+  {
+   "id": "DevQuasar/Qwen.Qwen3.8-27B-GGUF",
+   "downloads": 3311,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "OpenVINO/Qwen3.8-27B-int4-ov",
+   "downloads": 3300,
+   "tags": []
+  },
+  {
+   "id": "uqer1244/Qwen3.8-27B-GSQ-RCO-MLX",
+   "downloads": 3297,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "gguf",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "HermiHg/Qwen3.8-27B-mmproj-Q5_K-MIX-GGUF",
+   "downloads": 3286,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "ajgazin/Swift-Qwen3.8-27B-Uncensored-Dynamic-MTP-GGUF",
+   "downloads": 3257,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "RedHatAI/Qwen3.8-27B-speculator.dspark",
+   "downloads": 3242,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.8-27B-OBLITERATED-Mythos-Class-Agentic-i1-GGUF",
+   "downloads": 3228,
+   "tags": [
+    "gguf",
+    "fp8",
+    "awq"
+   ]
+  },
+  {
+   "id": "IsValorum/Qwen3.8-27B-VAL-APEX-I-MiniPlus-V3-GGUF",
+   "downloads": 3211,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "Yuuyuuyuuyuu/ThinkingCap-Qwen3.8-27B-OrcaRouter-NVFP4-DFlash2-ninfer",
+   "downloads": 3163,
+   "tags": []
+  },
+  {
+   "id": "mradermacher/Qwen3.8-27B-CodeForge-3xMerge-UNCENSORED-heretic-GGUF",
+   "downloads": 3157,
+   "tags": [
+    "gguf",
+    "safetensors"
+   ]
+  },
+  {
+   "id": "Ostfralla/Qwen3.8-27B-NVFP4-NInfer",
+   "downloads": 3150,
+   "tags": []
+  },
+  {
+   "id": "mradermacher/Qwen3.8-27B-Metaphor-i1-GGUF",
+   "downloads": 3141,
+   "tags": [
+    "gguf",
+    "mlx"
+   ]
+  },
+  {
+   "id": "kingjones777/Qwen3.8-27B-Uncensored-ROCmFP4-STRIX-MTP-GGUF",
+   "downloads": 3128,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "shawnw3i/Huihui-Qwen3.8-27B-abliterated-AWQ-MTP",
+   "downloads": 3108,
+   "tags": [
+    "safetensors",
+    "awq",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "NateVoid/Huihui-Qwen3.8-27B-abliterated-Underdog-Saluki-Swift-1.5-IQ2-Ninfer",
+   "downloads": 3097,
+   "tags": []
+  },
+  {
+   "id": "Jundot/Qwen3.8-27B-oQ8e-mtp",
+   "downloads": 3084,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "8-bit"
+   ]
+  },
+  {
+   "id": "igorls/Qwen3.8-27B-Uncensored-NVFP4-NInfer",
+   "downloads": 3078,
+   "tags": [
+    "fp8"
+   ]
+  },
+  {
+   "id": "mradermacher/DarkIdol-Qwen3.8-27B-v1.1-GGUF",
+   "downloads": 3073,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "kaushikvira/Qwen3.8-27B-nvfp4full-dflash2-NInfer-v3",
+   "downloads": 3070,
+   "tags": []
+  },
+  {
+   "id": "fudan-generative-ai/Qwen3.8-27B-REMORY-1.9B",
+   "downloads": 3058,
+   "tags": [
+    "safetensors"
+   ]
+  },
+  {
+   "id": "blackfan23/Qwen3.8-27B-TURBO-Heretic-NM-DAU-MLX-4bit",
+   "downloads": 3056,
+   "tags": [
+    "mlx",
+    "safetensors",
+    "4-bit"
+   ]
+  },
+  {
+   "id": "gguf/Qwen3.8-27B-GGUF",
+   "downloads": 3049,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/qwen-3.8-27b-abliterated-i1-GGUF",
+   "downloads": 3043,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.8-27B-Heretic-JP-Roleplay-NSFW-DanbooruTags-GGUF",
+   "downloads": 3031,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "mradermacher/Qwen3.8-27B-finance-GGUF",
+   "downloads": 3026,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "OS-Software/Qwen3.8-27B-Uncensored-Heretic-v2-GGUF",
+   "downloads": 3016,
+   "tags": [
+    "gguf"
+   ]
+  },
+  {
+   "id": "nathansutton/Qwen3.8-27B-Ternary-Bonsai-2-DFlash2-MLX",
+   "downloads": 3007,
+   "tags": [
+    "mlx",
+    "safetensors"
+   ]
+  }
+ ]
+}

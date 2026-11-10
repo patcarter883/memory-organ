@@ -1,0 +1,22 @@
+{
+ "corpus_tokens": 1418418,
+ "touched_rows_per_mb_2048": 25322.95,
+ "reads_per_mb_2048": 32768,
+ "touched_rows_per_mb_8192": 96168.95,
+ "reads_per_mb_8192": 131072,
+ "touched_rows_per_mb_32768": 341229.75,
+ "reads_per_mb_32768": 524288,
+ "coalesce_s_reads131072_rows126800": 0.3517242030000034,
+ "rowwise_adagrad_s_reads131072_rows126800": 0.6054965959999663,
+ "lazy_adam_s_reads131072_rows126800": 0.7386101890001555,
+ "coalesce_s_reads524288_rows461025": 0.4576607070000591,
+ "rowwise_adagrad_s_reads524288_rows461025": 0.7680976930000725,
+ "lazy_adam_s_reads524288_rows461025": 1.4473159199999373,
+ "bytes_per_row": {
+  "rowwise_adagrad": 652,
+  "lazy_adam(SparseAdam)": 1928,
+  "adam_bf16_moments": 1288,
+  "served_bf16": 328,
+  "served_int6g32": 138
+ }
+}

@@ -1,0 +1,234 @@
+{
+ "all": {
+  "selected_2grams": 267033,
+  "selected_3grams": 583289,
+  "rows": 6721239,
+  "overlay_MiB_bf16+ids": 2102.438346862793,
+  "overlay_MiB_fp32+ids": 4153.597709655762,
+  "collision_rate_per_head_2g_3g": [
+   0.013263848010422798,
+   0.028742733591928953
+  ],
+  "heldout_project: exact2|exact3|either|any_row(incl. collisions)": [
+   0.815,
+   0.5377,
+   0.815,
+   0.8682
+  ],
+  "near_transformers: exact2|exact3|either|any_row(incl. collisions)": [
+   0.6119,
+   0.3688,
+   0.6119,
+   0.723
+  ],
+  "general_wikitest: exact2|exact3|either|any_row(incl. collisions)": [
+   0.2294,
+   0.0656,
+   0.2294,
+   0.4517
+  ]
+ },
+ "count>=2": {
+  "selected_2grams": 112335,
+  "selected_3grams": 143520,
+  "rows": 2040221,
+  "overlay_MiB_bf16+ids": 638.1916885375977,
+  "overlay_MiB_fp32+ids": 1260.817726135254,
+  "collision_rate_per_head_2g_3g": [
+   0.0056025491596176265,
+   0.007150421040794785
+  ],
+  "heldout_project: exact2|exact3|either|any_row(incl. collisions)": [
+   0.7512,
+   0.4453,
+   0.7512,
+   0.7755
+  ],
+  "near_transformers: exact2|exact3|either|any_row(incl. collisions)": [
+   0.5661,
+   0.3266,
+   0.5661,
+   0.6143
+  ],
+  "general_wikitest: exact2|exact3|either|any_row(incl. collisions)": [
+   0.1976,
+   0.0542,
+   0.1976,
+   0.2768
+  ]
+ },
+ "count>=5": {
+  "selected_2grams": 37521,
+  "selected_3grams": 31399,
+  "rows": 550891,
+  "overlay_MiB_bf16+ids": 172.3215560913086,
+  "overlay_MiB_fp32+ids": 340.44014739990234,
+  "collision_rate_per_head_2g_3g": [
+   0.0018744497188325421,
+   0.0015683436482082248
+  ],
+  "heldout_project: exact2|exact3|either|any_row(incl. collisions)": [
+   0.6487,
+   0.3379,
+   0.6487,
+   0.6583
+  ],
+  "near_transformers: exact2|exact3|either|any_row(incl. collisions)": [
+   0.5046,
+   0.2731,
+   0.5046,
+   0.5185
+  ],
+  "general_wikitest: exact2|exact3|either|any_row(incl. collisions)": [
+   0.1668,
+   0.0407,
+   0.1668,
+   0.1882
+  ]
+ },
+ "specific(ref=0)": {
+  "selected_2grams": 212300,
+  "selected_3grams": 543017,
+  "rows": 5975165,
+  "overlay_MiB_bf16+ids": 1869.0625381469727,
+  "overlay_MiB_fp32+ids": 3692.538185119629,
+  "collision_rate_per_head_2g_3g": [
+   0.010559048416142738,
+   0.026785691517949354
+  ],
+  "heldout_project: exact2|exact3|either|any_row(incl. collisions)": [
+   0.3177,
+   0.2992,
+   0.4245,
+   0.5809
+  ],
+  "near_transformers: exact2|exact3|either|any_row(incl. collisions)": [
+   0.1711,
+   0.1335,
+   0.2245,
+   0.4331
+  ],
+  "general_wikitest: exact2|exact3|either|any_row(incl. collisions)": [
+   0.0023,
+   0.0011,
+   0.0034,
+   0.2634
+  ]
+ },
+ "specific & count>=2": {
+  "selected_2grams": 79914,
+  "selected_3grams": 122418,
+  "rows": 1614353,
+  "overlay_MiB_bf16+ids": 504.9779739379883,
+  "overlay_MiB_fp32+ids": 997.6394119262695,
+  "collision_rate_per_head_2g_3g": [
+   0.00398879940168009,
+   0.006102825283557602
+  ],
+  "heldout_project: exact2|exact3|either|any_row(incl. collisions)": [
+   0.2692,
+   0.2184,
+   0.3431,
+   0.399
+  ],
+  "near_transformers: exact2|exact3|either|any_row(incl. collisions)": [
+   0.1446,
+   0.1037,
+   0.1841,
+   0.2608
+  ],
+  "general_wikitest: exact2|exact3|either|any_row(incl. collisions)": [
+   0.0009,
+   0.0003,
+   0.0012,
+   0.0829
+  ]
+ },
+ "enrich>=4": {
+  "selected_2grams": 91348,
+  "selected_3grams": 129359,
+  "rows": 1760641,
+  "overlay_MiB_bf16+ids": 550.7376174926758,
+  "overlay_MiB_fp32+ids": 1088.042610168457,
+  "collision_rate_per_head_2g_3g": [
+   0.004558299316255103,
+   0.006448373884085769
+  ],
+  "heldout_project: exact2|exact3|either|any_row(incl. collisions)": [
+   0.4719,
+   0.3255,
+   0.546,
+   0.5867
+  ],
+  "near_transformers: exact2|exact3|either|any_row(incl. collisions)": [
+   0.2718,
+   0.192,
+   0.3351,
+   0.403
+  ],
+  "general_wikitest: exact2|exact3|either|any_row(incl. collisions)": [
+   0.005,
+   0.0009,
+   0.0056,
+   0.0927
+  ]
+ },
+ "enrich>=4 & count>=2": {
+  "selected_2grams": 91348,
+  "selected_3grams": 129359,
+  "rows": 1760641,
+  "overlay_MiB_bf16+ids": 550.7376174926758,
+  "overlay_MiB_fp32+ids": 1088.042610168457,
+  "collision_rate_per_head_2g_3g": [
+   0.004558299316255103,
+   0.006448373884085769
+  ],
+  "heldout_project: exact2|exact3|either|any_row(incl. collisions)": [
+   0.4719,
+   0.3255,
+   0.546,
+   0.5867
+  ],
+  "near_transformers: exact2|exact3|either|any_row(incl. collisions)": [
+   0.2718,
+   0.192,
+   0.3351,
+   0.403
+  ],
+  "general_wikitest: exact2|exact3|either|any_row(incl. collisions)": [
+   0.005,
+   0.0009,
+   0.0056,
+   0.0927
+  ]
+ },
+ "enrich>=16 & count>=2": {
+  "selected_2grams": 24892,
+  "selected_3grams": 24001,
+  "rows": 390910,
+  "overlay_MiB_bf16+ids": 122.27867126464844,
+  "overlay_MiB_fp32+ids": 241.57493591308594,
+  "collision_rate_per_head_2g_3g": [
+   0.001243899813415028,
+   0.0011990451438671672
+  ],
+  "heldout_project: exact2|exact3|either|any_row(incl. collisions)": [
+   0.2856,
+   0.1756,
+   0.3322,
+   0.3442
+  ],
+  "near_transformers: exact2|exact3|either|any_row(incl. collisions)": [
+   0.1637,
+   0.1028,
+   0.1978,
+   0.2123
+  ],
+  "general_wikitest: exact2|exact3|either|any_row(incl. collisions)": [
+   0.0008,
+   0.0001,
+   0.0009,
+   0.0189
+  ]
+ }
+}

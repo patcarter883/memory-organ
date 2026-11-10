@@ -1,12 +1,14 @@
 # ngram-memory — design
 
-Status: founding design, 2026-11-09, revised the same day after three red-team reviews (correctness, science, feasibility; see the **Review log** at the end). Nothing here is implemented yet. Every number below cites the script that produced it or a code location. Anything not measured is marked **(unverified)** or **(est.)**.
+Status: founding design, 2026-11-09, revised that day after three red-team reviews (correctness, science, feasibility). **Restructured 2026-11-10** around the owner's new direction (Stage 1 = offline ingestion of a codebase; everything local; grafts first; Flash-Next as the native reference for dissection). **Stage-1 revision 2026-11-10** after a science and a feasibility red-team of that restructure. See the **Review log** at the end for all three revisions. Nothing here is implemented yet. Every number cites the script that produced it or a code location. Anything not measured is marked **(unverified)** or **(est.)**.
 
 Conventions used throughout:
 
 - **`P/`** = `/home/user/memory-organ/ngram-memory/proofs/`. All proof scripts and their outputs are copied there from the session scratchpad, in the same sub-folders (`.py` plus their `.out`/`.txt`/`.log`/`.json` outputs, and `serve/INTEGRATION.md`).
-  - The copies are kept for provenance. Most scripts still hard-code the scratchpad paths they ran from, and none of the binary fixtures (`t1/real/*.pt`, `t2-gemma4-ple/hf/real_small.pt`, tokenizer files) were copied. M0 makes them re-runnable (§8).
-  - `P/redteam-correctness/` and `P/redteam-feasibility/` hold the reviewers' re-runs and new checks. `P/review-apply/` holds the budget script written for this revision.
+  - The copies are kept for provenance. Most scripts still hard-code the scratchpad paths they ran from, and none of the binary fixtures (`t1/real/*.pt`, `t2-gemma4-ple/hf/real_small.pt`, tokenizer files, the trained 0.5B rows `rows_armA.pt`, `.npy`/`.npz` NLL arrays) were copied. M0 makes them re-runnable (§8).
+  - `P/redteam-correctness/` and `P/redteam-feasibility/` hold the reviewers' re-runs and new checks. `P/review-apply/` holds the budget script written for the first revision.
+  - **`S1/`** = `P/stage1/`: the 2026-11-10 Stage-1 research (prior art, objective and row counts, local compute, evaluation protocol, the Qwen2.5-0.5B ingestion experiment and its skeptic re-run, this revision's own checks in `S1/designrev/`, and the Stage-1 red-team re-runs in `S1/rt-science/` and `S1/rt-feas/`).
+  - **`GF/`** = `P/graftfirst/`: the three graft-first reports with their skeptic verdicts (`GF/REPORTS.md`; where a report and its skeptic disagree, the skeptic is used here) and their scripts (`train_local/`, `skeptic_local/`, `serve-port/`, `serve-skeptic/`, `dissect/`, `skeptic_dissect/`).
 - **Code citations** are relative to the installed transformers 5.22.2 (`…/site-packages/transformers/`):
   - `q4:` = `models/qwen4_exp/modeling_qwen4_exp.py`, `q4c:` = `models/qwen4_exp/configuration_qwen4_exp.py`;
   - `g4:` = `models/gemma4/modeling_gemma4.py`;
@@ -15,8 +17,10 @@ Conventions used throughout:
 - **`R/`** = `/home/user/patcarter883/minisglang-rdna4/python/minisgl/`, and `R/../../tools/` for its tools.
   - Citations are against local **HEAD `df29117`** (2026-11-06). That commit is 293 commits after `b98eb99`, which is an ancestor.
   - `R/ple/`, `R/kvcache/radix_cache.py` and `R/weights/config.py` are unchanged between the two commits (`git diff --stat` is empty). `scheduler.py`, `weights/cpu_tier.py` and `tools/serve.sh` have changed, and are cited at HEAD.
-  - This fork is our *best guess* for the owner's Flash-Next serve. The owner has not confirmed it.
+  - The owner confirmed the serve runs on this fork and pushed the latest code before `df29117` was checked out (2026-11-09); local uncommitted changes, if any, are unknown.
 - **Metric names** follow memory-organ's conventions: validity gate, efficacy, generality, locality. Nothing else from memory-organ (its `cam/` package or its framing) is reused.
+- **Section labels.** The numbered sections §2–§9 keep the numbers that other documents (`serve/INTEGRATION.md`, the research reports) cite. The two sections added on 2026-11-10 carry letter labels: **§I Ingestion (Stage 1)**, placed after §4, and **§D Dissection program**, placed after §6. Milestones were re-sequenced; the old→new milestone map is in §8.
+- **Naming clash.** "Project cartridge" here means a namespaced sparse row overlay. It is unrelated to HazyResearch's *Cartridges* (a trained KV prefix, arXiv 2506.06266), which §9 cites as prior art.
 
 ---
 
@@ -29,28 +33,54 @@ Language models have started to ship **native n-gram lookup tables**: large embe
 - **Qwen3.8-Flash-Next** has an Engram-style "PLE" module. It is 51.2 G parameters, 102.4 GB in bf16, and is keyed by hashed 2- and 3-grams (`P/compute/count.out`).
 - **Gemma 4 E4B** has Per-Layer Embeddings. It is 2.82 G parameters and is keyed by token id.
 
-In such a model a fact can be added by **writing rows**. An edit is a small, auditable, reversible diff to a named tensor. It is not a weight-space edit spread through MLPs.
+In such a model, knowledge can be added by **writing rows**. A write is a small, auditable, reversible diff to a named tensor, not a weight-space edit spread through MLPs. Models without a table get a **graft**: a module that matches the native format in keys and module math, zero-initialised so that it is an exact no-op, after which the same writer fills it.
 
-The durable asset is therefore a **portable table editor**: one key/row addressing scheme, one solver, one edit-record and patch format, and one evaluation harness. Each target model plugs in through a thin backend.
+The durable asset is a **portable row writer**: one key/row addressing scheme, one sparse-row trainer and solver, one patch format, one evaluation harness. Each target model plugs in through a thin backend.
 
-Models without a table get a **graft**: a module that matches the native format **in keys and module math**, zero-initialised so it is an exact no-op, after which the same editor writes into it.
+What the rows are used for is now staged (owner direction, 2026-11-09):
 
-- The graft differs from the native format in three places: it has its own config schema (§2.4), its row width depends on the host's hidden size, and it can add unigram heads.
-- "The same editor gives the same results on native and grafted tables" is a hypothesis. M3 tests it directly with a controlled comparison on Flash-Next (§6, §8). It is not an assumption of the design.
+| Stage | What is written | Unit | Where it runs | Status |
+|---|---|---|---|---|
+| **1. Offline ingestion** | a **project cartridge**: rows trained on a codebase (first target: the owner's minisgl fork, `minisglang-rdna4/python`, 1.44 M tokens) | a namespaced, versioned, switchable, reversible sparse overlay (`ngram-edit/v1` patch + manifest, §3.5) | the owner's machine, serve stopped for the build (§7) | **first** (§I) |
+| **2. Incremental updates** | row diffs from git commits: dirty rows reset and refit, dead rows deleted | one child patch per commit batch (`parent_version`) | nightly local GPU window, or CPU beside the serve for small graft hosts (§7) | after a served cartridge exists (§I.6) |
+| **3. Online per-fact edits** | CounterFact-style facts via RowSolve, solved against the active cartridge | an EditRecord per fact (§3.3, §5) | local GPU or CPU beside the serve, applied live through the overlay | later (§5, §6.B) |
+
+Stage 3 comes last because a cartridge defines the namespace and the row occupancy that per-fact edits are solved against (§I.7).
+
+**What 2/3-gram rows can and cannot hold** decides what Stage 1 can promise (§I.3): identifier spellings, import paths, config and env-var names, local API completions, comment and docstring style — yes, keyed on the last 2–3 tokens. Long-range semantics (what a function does, cross-file types, which call is right here) — not by keying; only through attention reading rows written at earlier positions, which is unproven. The claim to test is "additive with retrieval (E6) at a general-code retention cost of at most +1.0% NLL (R2)", not "replaces RAG" (§9 prior art). It has a kill (E6, §6.A.7). "Near-zero" retention cost, in the sense of Engram Adapter's 99.4–100.1%, would mean R2 ≤ +0.2%; nothing measured so far supports it (the proxy costs +0.5–0.8% on stdlib, §I.8).
+
+"The same writer gives the same results on native and grafted tables" is a hypothesis. A controlled comparison on Flash-Next tests it (§6.A.6, M6). It is not an assumption of the design.
+
+### Priority (owner, 2026-11-10; supersedes the earlier ordering)
+
+**Grafts first.** Flash-Next serves too slowly to be the daily driver (12.9 tok/s decode at TP=2, about 20 tok/s with EP; `R/../../tools/serve.sh:692-694, 1145-1148`), against 102.6 tok/s for the default Qwen3.6-35B-A3B AWQ serve under EP (`serve.sh:148-149`). Flash-Next is kept as the **native reference**: a model trained *with* an n-gram table, dissected forward-only (§D) to inform grafts onto models trained *without* one. The order is (§8):
+
+1. M0 tiny proofs here; M1 the Qwen2.5-0.5B graft proxy (the first data point, already run once, §I.8).
+2. M2-0 one-layer feasibility on the owner's cards (AWQ loader, GDN backward, per-card VRAM), then M2 Stage-1 ingestion of the owner's repo into a graft on **Qwen3.6-35B-A3B** (`cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit`, the fork's default serve) on the owner's GPUs, serve stopped.
+3. M3 the **Qwen3.8-27B** graft (`amd/Qwen3.8-27B-Quark-AWQ-MXFP4`; tokenizer byte-identical to Flash-Next, so keys and rows are directly comparable).
+4. M4 serving a grafted model in minisgl.
+5. The dissection track (§D) runs alongside from the start.
+6. Later: Stage 2 on the served graft (M5), Flash-Next native ingestion (M6), Stage-3 online per-fact editing (M7), Gemma (M8), scale (M9).
 
 ### Targets
 
-| Tier | Model | Table | Key | Source |
-|---|---|---|---|---|
-| Native | Qwen/Qwen3.8-Flash-Next (`qwen4_exp`; 48 layers; d=2560; 512 experts top-10; GDN hybrid; 360 GB) | `layers.1.ple`: 16 heads × ~20M prime-sized rows × 160 | hashed 2-grams (8 heads) and 3-grams (8 heads) | §2 |
-| Native | google/gemma-4-E4B(-it) | `embed_tokens_per_layer` [262144, 42·256] | token id, per layer | §4.2 |
-| Graft | Qwen/Qwen3.8-27B (`qwen3_5`, 64 layers, d=5120) | Flash-Next format, sparse, row width 320 | **same keys as Flash-Next** | §4.3 |
-| Graft | Qwen/Qwen3.6-35B-A3B (`qwen3_5_moe`, 40 layers, d=2048) | Flash-Next format, sparse, row width 128 | **same keys as Flash-Next** | §4.3 |
-| Graft | google/gemma-4-26B-A4B-it, gemma-4-31B-it (`gemma4`, PLE disabled) | Flash-Next format with a Gemma key instance (primary, row width 176 / 336), or Gemma-PLE format with alias ids (alternative) | own tokenizer | §4.4 |
+| Tier | Model | Role | Table | Key | Source |
+|---|---|---|---|---|---|
+| Graft (first) | Qwen/Qwen3.6-35B-A3B (`qwen3_5_moe`, 40 layers, d=2048, 256 experts top-8, GDN 3:1) via `cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit` (24.97 GB) | daily driver; architectural twin of Flash-Next | Flash-Next format, sparse, row width 128 | **same keys as Flash-Next** | §4.3, §4.6 |
+| Graft (second) | Qwen/Qwen3.8-27B (`qwen3_5`, 64 layers, d=5120, dense) via `amd/Qwen3.8-27B-Quark-AWQ-MXFP4` (19.80 GB) | same generation and tokenizer as Flash-Next | Flash-Next format, sparse, row width 320 | **same keys as Flash-Next** | §4.3, §4.6 |
+| Native (reference) | Qwen/Qwen3.8-Flash-Next (`qwen4_exp`; 48 layers; d=2560; 512 experts top-10; GDN hybrid; 360 GB) | dissection; later native ingestion and per-fact edits | `layers.1.ple`: 16 heads × ~20M prime-sized rows × 160 | hashed 2-grams (8 heads) and 3-grams (8 heads) | §2, §4.1, §D |
+| Native | google/gemma-4-E4B(-it) | token-keyed comparison; one-card pilot | `embed_tokens_per_layer` [262144, 42·256] | token id, per layer | §4.2 |
+| Graft | google/gemma-4-26B-A4B-it, gemma-4-31B-it (`gemma4`, PLE disabled) | later | Flash-Next format with a Gemma key instance (row width 176 / 336), or Gemma-PLE format with alias ids | own tokenizer | §4.4 |
+
+Checkpoint sizes: `GF/train_local/hub_detail.out`, re-checked in `GF/skeptic_local/hub_recheck.json`.
 
 ### Out of scope
 
-Training any weights other than table rows (a graft's fixed init is part of the format); retrieval or in-context memory; multimodal keys (text `input_ids` only); weight-space editors except as baselines; memory-organ's `cam/` code; building engines (we define a patch interface and write small overlay adapters).
+- Training any weights other than table rows, with one exception: on **grafts only**, a rows + `value_proj` arm is an ablation (§I.1). A graft's fixed init is part of the format.
+- Retrieval or in-context memory as *our* mechanism (BM25 RAG is a baseline and a composition partner, §6.A.4).
+- Multimodal keys (text `input_ids` only); weight-space editors except as baselines; memory-organ's `cam/` code.
+- Building engines. We define a patch interface and write small adapters. **The engine (minisgl) stays torch-free on the row path.** Training and solving run in ngram-memory's own process, where torch (including torch-ROCm on the owner's GPUs) is fine. **Owner decision (2026-11-10):** that training process may import the fork's differentiable GDN path, `minisgl.gdn.hf_patch.patch_qwen3_5_gdn` (native `gdn_hip`, recompute-backward; validated on Qwen3.5-4B; prefill from a zero state only, so prefix-cached solves use HF's torch fallback). This makes the fork a training-time dependency of ngram-memory, never the reverse.
+- Cloud venues, except as an optional speed-up (§7 footnote).
 
 ---
 
@@ -139,6 +169,10 @@ Then `out_t = 0.5·W_v e_t`, which is **linear in the rows and independent of th
   - The only evidence for it is synthetic. `P/solver/v2_allocation.py` is a 64-d linear model with random-id subjects, puts the unigram heads on the *first* primes, and gives them a different width. Its 1-token "synthetic linear reach" rose from 0.05–0.17 to 0.66–0.81 (`P/solver/v2.out`). That number is also exactly the rate at which the head fires on every other occurrence of the token (§5.3). It does not validate this layout or predict CounterFact generality.
   - Native tables cannot have it.
 - **Format option.** `ple_embed_dim = 2·d` lets 2-gram-only writes reach the whole residual. A 2-gram-only write reached 0.46 of a random target at width d (`P/graft/results_0.json`). Reasoned, not tested end to end.
+- **Revisit after dissection (2026-11-10): the linear profile is not Flash-Next's regime.** In Flash-Next, `N_conv` normalises the gated value per token and per stream *before* the conv, so the conv branch depends only on the **direction** of v; the gate cancels in it except through eps (1e-6 against a variance of about 8e-6). On real weights with the gate at 0.5, the conv branch is larger than the direct term on every stream: **1.4×, 13.9×, 2.7×, 1.7×** (stream 1 conv RMS 0.041 vs direct 0.0029), and the earlier taps (t−3, t−6, t−9) carry 47–75% of the conv on streams 0, 2, 3; only stream 1 is effectively pointwise (`GF/skeptic_dissect/branch_share.out`; consistent with `P/t1/e_express.out`, |silu(conv)| 2.14 vs |u| 0.256). So the editor-init graft (conv = 0, gate fixed 0.5, output linear in row norm) runs in a **different regime** from the model trained with the table: it has no direction-only, norm-saturated path and no temporal taps. Grafts therefore carry **two arms** in M1–M3:
+  - **G-lin** (default, above): conv = 0. Exact closed form, output bounded by row norm, served by the minisgl "linear" mode (§4.7).
+  - **G-dir** (ablation): a **fixed, untrained** direction branch `c_t = silu(Σ_j w_j ⊙ N_conv(u)_{t−3(3−j)})` with `N_conv` weight 0 (scale 1) and fixed taps — either current-position only (`w_3 = α·1`, others 0) or Flash-Next-like dilated taps — with α set from §D's site probe (S) so that ‖c‖/‖h‖ matches the measured per-stream ratio. Still an exact no-op on empty rows (`N_conv(0) = 0`, `silu(0) = 0`), but the output no longer scales with row norm, so the trust region moves from row norm to a cap on how many rows fire (§I.1). Served by the minisgl "general" mode (§4.7). Not yet tested; M0 adds its no-op, decode-state and gradient tests.
+  - Output scale for both arms is set from the measured ‖PLE‖/‖X‖ (§D, experiment S), **not** from embedding-RMS ratios: frequency-weighted token-embedding RMS on real code is 0.0038 (Flash-Next), 0.0138 (27B), 0.0094 (35B-A3B) (`GF/skeptic_dissect/embed_freq.out`), while Flash-Next's PLE output on stream 1 is about 0.04, about 10× its embedding scale.
 
 ### 2.5 Gemma-PLE format (second table kind)
 
@@ -154,31 +188,45 @@ Key = token id t and layer l. Row = `W[t, 256l : 256(l+1)]`. The module math is 
 ngram-memory/
   DESIGN.md
   requirements-dev.txt   pytest, pytest-xdist (pytest is not in the venv today)
-  proofs/                provenance copies of the founding proofs (P/)
+  proofs/                provenance copies of the founding proofs (P/), incl. stage1/ and graftfirst/
   ngram_memory/
     spec.py          KeySpec / TableSpec / ModuleSpec dataclasses (own schema, not HF configs), fingerprints, JSON
-    hashing.py       transformers-free rows_for(ids)->[T,H] rows, rows_for_ngram(), checkpoint_loc();
+    hashing.py       transformers-free rows_for(ids)->[T,H] rows, rows_for_ngram(), checkpoint_loc(),
+                     decode_row_ids_batch() (vectorised decode-step hash, GF/serve-port/vec_decode_hash.py);
                      port of P/t1/src/ngram_format.py; cross-checked against q4 and a vendored copy of
                      R/ple/hashing.py at a recorded commit (test skips cleanly if absent)
     tables.py        RowStore implementations:
                        HFTensorStore      (a loaded nn.Embedding weight)
                        ShardMmapStore     (safetensors shard files, pread by byte offset; never loads the table)
-                       SparseRowStore     (sorted row ids + fp32 values; graft storage; P/graft/graft_proto.py:52)
+                       SparseRowStore     (sorted row ids + fp32 values; graft and cartridge storage; P/graft/graft_proto.py:52)
                        QuantRowCodec      (fp8-global-scale / int6-g32 decode, matching the serve)
     ledger.py        EditRecord, RowLedger, materialise(), rollback(), conflict sets
-    patch.py         ngram-edit/v1 manifest + safetensors payload; apply/verify against any RowStore
+    patch.py         ngram-edit/v1 manifest + safetensors payload; cartridge manifest fields (§3.5); apply/verify
+    cartridge.py     CartridgeManifest, namespace/version chain, per-file reader index (sidecar), compile to served bf16
     backends/
       base.py        Backend protocol (3.2)
       qwen4exp_native.py
       gemma4_ple.py   (+ alias.py: reserved-id alias manager and matcher)
       graft/
         module.py     editor-init PLE: q4.Qwen4ExpTextPLELayer built from a ModuleSpec namespace (not
-                      Qwen4ExpTextConfig, which rejects hc_count=1); UnigramNGramEmbedding subclass for
-                      orders {1,2,3}; SparseRowStore
+                      Qwen4ExpTextConfig, which rejects hc_count=1); G-lin and G-dir arms (§2.4);
+                      UnigramNGramEmbedding subclass for orders {1,2,3}; SparseRowStore
         qwen35.py     hooks + cache slot extension for qwen3_5 / qwen3_5_moe
+        host_quant.py frozen 4-bit host layers: AWQ int4-g32 / MXFP4 dequant-to-bf16 autograd.Function that
+                      returns only dX (no weight grad); chunked MoE experts; optional fp8 activation fake-quant
+        gdn.py        wrapper over the fork's minisgl.gdn.hf_patch (owner decision, §1), widened to
+                      Qwen3_5MoeGatedDeltaNet (§4.6); falls back to HF's torch delta rule for cached calls
         gemma4.py     hooks + side LinearAttentionLayer for gemma4
-        beside_native.py  graft installed next to Flash-Next's native PLE (native-vs-graft arm, §6)
-    solver/
+        beside_native.py  graft installed next to Flash-Next's native PLE (native-vs-graft arm, §6.A.6)
+    ingest/          Stage 1 and Stage 2 (§I)
+      corpus.py      git-blob reader at a pinned commit, filters, secret scan, dedup (sha + MinHash), splits A/B,
+                     framings (bare file, chat fence, cat -n), 4,096-token windows with true n-gram history
+      rowpolicy.py   row census, count>=k / enrichment policies, reuse weights omega_j, collision stats
+      kltargets.py   base-model top-64 log-prob targets for anchor batches (cartridge off)
+      train.py       sparse-row trainer: host-RAM SparseRowStore + row-wise Adagrad, proximal group lasso,
+                     trust-region projection, GPU step overlap, checkpoint/resume
+      increments.py  git-diff reader index, dirty/new/dead rows, reset-and-refit, child patches
+    solver/          Stage 3 (§5)
       prompts.py     X_rw / X_ess / X_col / X_ret builders, template train/held-out split, dedup
       anchors.py     candidate-row policy (tiers), corpus row-load counters
       penalties.py   per-row output-space ridge + reuse/collateral weights
@@ -187,14 +235,17 @@ ngram-memory/
       quantise.py    serve-codec straight-through materialisation (overlay semantics, §3.3)
     serve/
       hf_adapter.py      overlay hook on the embedding output (also the graft runtime)
-      minisgl_adapter.py client for the /ple/* control plane (incl. /ple/score) + overlay patch for R/ple/source.py
+      minisgl_adapter.py client for the /ple/* and /ngram/* control planes (incl. /ple/score) + overlay patch
       offline_patch.py   in-file shard patching (bf16 tables only; refused for quantised tables)
+    dissect/         §D: row_stats.py (G), slice_probe.py (S), ablate_client.py (A), maps.py (M/E/F)
     eval/
       cohorts.py  metrics.py  parity.py  capability.py  matcher_eval.py  report.py
+      stage1/    splits.py (A by file, B by commit time), scoring.py (teacher-forced windows), tokclass.py,
+                 qa.py (AST-generated repo QA), baselines/ (bm25_rag.py, lora.py, knm.py, ngm.py, controls.py)
   tests/   tiny-config proofs (M0), one file per P/ proof; solver proofs marked slow
     fixtures/  small fixtures (headers, hash buffers, .out references); .pt blobs via scripts/fetch_fixtures.py
-  scripts/ solve.py, apply.py, evaluate.py, fetch_rows.py (HTTP-range row fetch), fetch_fixtures.py,
-           count_rows.py (corpus row-load counters)
+  scripts/ ingest.py, update.py, solve.py, apply.py, evaluate.py, fetch_rows.py (HTTP-range row fetch),
+           fetch_fixtures.py, count_rows.py (corpus row-load counters)
 ```
 
 ### 3.2 Backend interface
@@ -245,7 +296,7 @@ Served row = `engine_cast(codec_decode(base[r]) + delta[r])`, the same overlay r
 
 The serve's fp8 global scale (about 2e-4) also clips values above about 0.09 (`P/serve/INTEGRATION.md` §3.5).
 
-Operations: `apply(patch) → epoch`, `revert(edit_id)`, `list()` (per-rank compiled hash), `read_rows(ids)`, `invalidate(row_ids | all)`, `score(ids, positions) → log-softmax` (forward-only, §8 M1), plus an **epoch guard**. The guard stamps requests at admission, and a request admitted before an edit cannot insert prefix-cache state that read edited rows.
+Operations: `apply(patch) → epoch`, `revert(edit_id)`, `list()` (per-rank compiled hash), `read_rows(ids)`, `invalidate(row_ids | all)`, `score(ids, positions) → log-softmax` (forward-only, §8 M6a), plus an **epoch guard**. The guard stamps requests at admission, and a request admitted before an edit cannot insert prefix-cache state that read edited rows.
 
 Adapters:
 
@@ -258,6 +309,22 @@ Adapters:
 4. **Offline:** patch bf16 shard bytes at the §2.1b byte offset, then restart. Allowed only for bf16 tables.
 
 Cache invalidation is part of the contract. A radix node is stale if any position on its path reads an edited row id. Nulling the recurrent snapshot alone re-adopts stale KV (`R/kvcache/radix_cache.py:299-312`; `P/serve/INTEGRATION.md` §3.4). Version 1 therefore **drains traffic and flushes the whole tree**. Targeted detach plus the epoch guard is the steady-state design.
+
+### 3.5 Project cartridges (Stage 1 and 2 artifacts)
+
+A cartridge is an `ngram-edit/v1` patch whose manifest gains (S1/ingest-algo design §6):
+
+- `namespace`, `version`, `parent_version`; `kind = "cartridge" | "increment" | "fact"`;
+- `source`: repo, commit (or commit range for increments), file-list sha, tokenizer.json sha, framings used;
+- `row_policy` (e.g. `count>=2 on split-A train`), `train_config`, `prune_floor`, and the graft arm (G-lin / G-dir);
+- `mode = delta` on native tables, `absolute` on grafts;
+- a sidecar **reader index**: per-file sparse row counts, used by Stage 2 to find dirty rows (§I.6).
+
+**Graft file vs cartridge file.** `W_v` (and any fixed G-dir weights) belong to the host, not the cartridge, so they ship as two artifacts (`GF/REPORTS.md` graft-serve §3): `graft-<host>.safetensors` (value_proj bf16 [d, d], manifest with KeySpec fingerprint, TableSpec, ModuleSpec, host config sha, W_v sha) and `cartridge-<name>-v<k>.safetensors` (`row_ids` int64 sorted [U], `rows` bf16 [U, w], plus the manifest of the graft it was trained against). Loaders refuse on any fingerprint mismatch.
+
+**Layering on a request** (fixed order, fp32 sum, one cast; §3.3): `served(r, ns) = cast(decode(base_r) + δ^cart_ns[r] + Σ_increments δ[r] + Σ_{facts in ns} δ^fact[r])`, with `decode(base_r) = 0` on grafts. A request names at most one cartridge namespace; requests without one are exactly base (invariant I1).
+
+**Switching and reversal.** Each (cartridge, version) is a namespace on the serve; the prefix cache is rooted per namespace (§4.7). Rollback drops patches from the chain. Deleting a row returns it exactly to base.
 
 ---
 
@@ -324,7 +391,7 @@ Cache invalidation is part of the contract. A radix node is stale if any positio
   - `Gemma4Model` passes a dict mask (g4:2422), so the 2-D mask is captured at the top level.
   - `layer_scalar` multiplies the whole residual (g4:1429) and `embed_scale=√d` makes the residual large (g4:1565); per-fact solving absorbs both. In the 26B the router reads the injected residual (g4:1404-1406), so edits also move routing.
   - Layer 1 is a sliding-window KV layer, so a side `LinearAttentionLayer` hangs off the Cache with `reorder_cache`/`reset`/`batch_*` forwarded (`P/graft/graft_proto.py:126`). `crop()` is not forwarded: speculative decoding must raise until it is.
-- **Alternative format (A/B in M5): Gemma's own PLE** via `hidden_size_per_layer_input>0`. Stock `Gemma4ForCausalLM` builds it and reports only the PLE tensors missing.
+- **Alternative format (A/B in M8): Gemma's own PLE** via `hidden_size_per_layer_input>0`. Stock `Gemma4ForCausalLM` builds it and reports only the PLE tensors missing.
   - **Editor-init:** `embed_tokens_per_layer = 0` and `per_layer_model_projection = 0` (optionally `per_layer_projection_norm.weight = 0`) give an exact no-op. Keep `post_per_layer_input_norm.weight` **nonzero** (1, or a calibrated w_l) and G_l, P_l nonzero.
   - Do **not** zero `post_per_layer_input_norm.weight`: because `Gemma4RMSNorm` scales by `weight` itself (g4:222), the branch then outputs 0 whatever the rows hold, so writes are no-ops and have zero gradient. With weight 0 a row write changed logits by 0.0 and the gradient was 0.0; with weight 1 the change was 2.9e-1 and the gradient 7.5e-2 (`P/redteam-correctness/checks.out [3]`).
   - This is the init proof g actually used (`P/t2-gemma4-ple/tiny_ple.py:339-343`: projection and projection-norm weights 0, post-norm weight 1.0; result in `P/t2-gemma4-ple/tiny_results.json`).
@@ -342,9 +409,246 @@ Each host keeps the full logical row space, so primes and row ids are unchanged,
 
 A dense graft at width 320 would be 204.8 GB in bf16 on the 27B. This is why grafts are sparse.
 
+### 4.6 Graft hosts on the owner's machine: checkpoints and training setup
+
+Source: `GF/REPORTS.md` "graft-hosts-local" and its skeptic verdict (the skeptic wins where they differ). All throughput and memory figures are **est.** until M2's first-layer measurement.
+
+**Checkpoints: train against what is served**, so solve/serve parity is a numerics question (as P3/P4 are for Flash-Next).
+
+| Host | Checkpoint | Format | GB | Serve arm | Notes |
+|---|---|---|---|---|---|
+| 35B-A3B | `cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit` | AWQ int4 g32 on routed experts only; GDN, attention, shared expert and lm_head F16 | 24.97 | `qwen35b-awq`, the default `MODEL` (`tools/serve.sh:62, 128-171`) | serve runs experts W4A8 (`MINISGL_MOE_W4A16` off, `R/quant/kernels.py:61`) → optional fp8 fake-quant on expert inputs; serve computes bf16 (`R/server/args.py:534-545`), so F16 dense weights are cast to bf16 in training too |
+| 27B | `amd/Qwen3.8-27B-Quark-AWQ-MXFP4` | Quark MXFP4 g32, served W4A16 | 19.80 | `qwen38-27b-mxfp4`, the fastest 27B arm, 46.5–47.9 tok/s, 60.8 with MTP (`serve.sh:396-419`) | bf16 forward over dequantised weights is the same numerics class |
+
+FP8 (31–37 GB) and bf16 checkpoints do not fit 2×16 GB with activations; bf16 is a CPU/offload reference only. Body sizes for the AWQ 35B: 2.86 GB F16 dense + 18.62 GB experts + 1.02 GB lm_head = 22.5 GB without embeddings (skeptic), about 15.0 GB on card 0 at a 57:43 split, so **split layers across the cards by memory, not by card speed**.
+
+**Training process** (ngram-memory's own torch-ROCm process, serve stopped, every job under `gpu-lease -n 2`; fork `CLAUDE.md:3-40`):
+
+- torch nightly for ROCm 7.2 with gfx1201 (`Dockerfile:31-52`; measurements on `torch=2.15.0.dev20260827+rocm7.2`). Set `TORCH_BLAS_PREFER_HIPBLASLT=0` (intermittent INTERNAL_ERROR, `docs/IMAGE.md:68`).
+- **Frozen 4-bit weights stay resident on the cards**; each layer is dequantised to bf16 just in time inside an `autograd.Function` that returns only dX = dY·W, never a weight gradient. Reuse the fork's `R/quant/mxfp4.py:262` and `R/quant/nvfp4.py:374` reference dequantisers. **AWQ needs a custom loader, not just an unpack:** HF's AWQ path requires gptqmodel (`quantizers/quantizer_awq.py:46`) and converts only `nn.Linear` (`integrations/awq.py:93-96`), while Qwen3.5-MoE experts are fused parameters built by the `qwen2_moe` merge (`cm:2116-2117`), so `from_pretrained` cannot place per-expert qweight/qzeros/scales (inferred from code, not run). The loader reads safetensors directly and keeps experts packed; this is M2-0 (§8). Dequant cost: **about 180 s per 1M tokens on the 35B and 135 s on the 27B** (once per microbatch per pass; `GF/skeptic_local/recheck.out`), not the 10–13 s first estimated.
+- **MoE.** HF `Qwen3_5MoeExperts` takes stacked [E, 2I, d] weights and has a `grouped_mm` fallback with a backward (`integrations/moe.py:189-262`); skip its weight gradient. Push **large per-layer chunks** (8k–16k tokens, i.e. 256–512 tokens per expert): at 2,048-token microbatches each expert sees 64 tokens and is bandwidth-capped at about 41 TF/s (skeptic). Whether `grouped_mm` runs on gfx12 is **unverified**.
+- **GDN: the fork's `gdn_hip`, not flash-linear-attention** (fla hangs on gfx1201: `R/gdn/hf_patch.py:1-3`). `patch_qwen3_5_gdn` runs native prefill with recompute-backward (`R/gdn/layer.py:350-370`). **Only the forward is native:** the backward re-runs a pure-torch reference, a chunked scan of width `max(4, 64//B)` with a Python forward-substitution loop per chunk (`R/../../tools/vhip_patches/gdn/torch-ext/gdn_hip/autograd.py:108-191, 305-347, 502-535`); native backward ops exist only for conv1d and the gated rmsnorm (`:369`, `:403`). At 35B shapes (HV=32, K=V=128) that is **24.1 aten ops per token per GDN layer at B=4** (7.3 of them kernels; 126 at B=1), against **0.41** for HF's `torch_chunk_gated_delta_rule` (`S1/rt-feas/gdn_ref_ops*.out`, `hf_gdn_ops.out`). At 5–10 µs per kernel and 1–2 µs per view from one Python thread (**est.**), the launch overhead alone is 0.44–0.89 h per 1M tokens on the 35B (30 GDN layers) and 0.71–1.42 h on the 27B (48). **Fix before M2's build:** pair the native forward with HF's chunked torch recompute in the backward (one small `autograd.Function`), or capture the reference backward (hipGraph / `torch.compile`), or write a native backward; §7.5 #1 times it. Correctness so far: forward within about 1e-3 of fla, input-gradient cosine > 0.9999 (`tools/gdn_backward_validate.py`, `tools/cam_native_gdn_validate.py`), validated on Qwen3.5-4B only. Ingestion windows all start from a zero state, which suits its prefill-only contract. **Gap found in this revision:** the patch matches layers by the exact class name `"Qwen3_5GatedDeltaNet"` (`R/gdn/hf_patch.py:104`), so on the 35B-A3B (`Qwen3_5MoeGatedDeltaNet`) it would replace **0 layers**. The two HF classes have identical source modulo the `Moe` prefix (`S1/designrev/gdn_class_check.out`), so widening the name test is the expected fix; M2 must validate it (forward and dX against HF's torch fallback). The 27B (`qwen3_5`) matches the class name, **but not the weights**: in the Quark checkpoint the non-embedding body is U8 12.936 GB plus only 0.005 GB BF16 (`GF/skeptic_local/hub_recheck.json`), so the GDN projections are MXFP4-packed, while `_build_native_from_hf` copies `in_proj_qkv`/`in_proj_z`/`out_proj` as dense weights (`R/gdn/hf_patch.py:28-56`). A bf16 copy is 115.8 M params × 48 layers ≈ 11.1 GB, about +8.2 GB over 4-bit, which does not fit the two cards. **M3 prerequisite:** keep the MXFP4 weights packed and use the just-in-time dequant `autograd.Function` inside the native layer's projections. Flash-Next's `Qwen4ExpTextGatedDeltaNet` differs and is not covered.
+- **Activation checkpointing** per layer; logits and cross-entropy in 512-position chunks, with `lm_head` and the cross-entropy off the cards if VRAM requires it; `embed_tokens` gathered on the CPU. **Mixed chunking:** GDN and attention run in 4k-token pieces while the MoE layers get the 8–16k-token chunks (next bullet).
+- **Rows in host RAM** as a `SparseRowStore` (sorted int64 ids + fp32 master values + one fp32 row-wise Adagrad accumulator; §I.2). Each step: hash on the CPU (0.21 M tok/s, `P/redteam-feasibility/count_bench.out`), unique rows, H2D, embedding over remapped ids, dense row gradient back, sparse update on the CPU overlapped with the next GPU step.
+- **VRAM** (skeptic, per card, at two 2,048-token microbatch inputs per layer, `GF/skeptic_local/recheck.py:29`): **35B 15.0 GB (card 0) / 13.8 GB (card 1)**; 27B 12.1 / 13.2 GB (`recheck.out`; an earlier version of this line gave the 27B pair for the 35B). At the 8–16k-token chunks recommended above, the 35B adds about +1.0 GB of layer checkpoints per card plus about 3.6 GB transient for the GDN reference backward (≈ 2.15 GB of saved per-chunk fp32 state + ≈ 1.5 GB of fp32 q/k/v and gradient copies; `autograd.py:174-190, 516-517`), i.e. about **16.6 GB at 8k and 18.7 GB at 16k per card against a 16.82 GB cap** (**est.**), before non-flash SDPA scores (≈ 2.1 GB per 16k chunk at head_dim 256). Hence the mixed chunking above. The report's two budgets (27.2/24.7 GB total in `vram_fit.out`, no script; 30.3/34.2 GB in `cost_model.out`) disagree; measure per-card peak at the real chunk size in M2-0.
+
+**CPU beside a running serve** (4 cores, `MemoryMax=15G`, 4-bit weights read per layer from NVMe with O_DIRECT at about 3 GB/s, INTEGRATION §4.1–§4.2): possible for the 35B but slow (§7); not practical for the 27B. The GDN ratio and CPU rates were measured on this sandbox's Sapphire Rapids (AMX), not the owner's Zen 4, so CPU figures are optimistic.
+
+### 4.7 Serving a grafted model in minisgl
+
+Source: `GF/REPORTS.md` "graft-serve" and its skeptic. Scripts in `GF/serve-port/`, recomputation in `GF/serve-skeptic/recompute.out`.
+
+**Device math exists.** The fork's `Qwen4ExpPLE.compute` (`R/models/qwen4exp.py:290-467`) matches HF `Qwen4ExpTextPLELayer` at `hc_count=1` on CPU: random init max |Δ| 1.7e-6 fp32, 0.039 bf16 (about 2.5 ulp); with the editor init the output is **bit-exact `0.5·(e@W_vᵀ)`** in bf16, and an empty cartridge gives exactly +0.0 (`GF/serve-port/parity_hc1.out`). On GPU, `minv_linear` sends M ≤ 16 to `dense_bf16_gemv` and larger M to `dense_gemm`, which are not bit-identical to each other (`R/layers/minv.py:256-264`), so **GPU graft-vs-HF parity needs a tolerance**, set to the ungrafted minisgl-vs-HF noise floor.
+
+**Port plan** (12 steps, `GF/REPORTS.md` graft-serve §7):
+
+- New `R/models/ngram_graft.py` (`NGramGraftBlock`; a new file because `qwen3_5.py` cannot import `qwen4exp.py`, `qwen4exp.py:110`), with `mode="linear"` (G-lin: `p = value_proj(e)` with W_v pre-scaled by 0.5; chosen only if W_k ≡ 0 and conv ≡ 0 in the graft file) and `mode="general"` (G-dir or any future gate/conv: the unmodified `Qwen4ExpPLE` behind a config shim `hc_count=1, ple_embed_dim=d`).
+- Inject in `Qwen3_5Model.forward` after layer 0 by **folding into `residual`** (the CAM-tap pattern, byte-exact at zero update; `R/models/qwen3_5.py:545-582`, fused norm `R/layers/norm.py:144-159`), placed **after** the `MINISGL_DUMP_LAYERS` dump and DFlash aux capture so those still equal HF's `hidden_states[1]`. Held as `self._ngram_graft` to stay out of `state_dict` (`R/layers/base.py:113`). One edit covers `qwen3_5_moe` and `clover` through the `mlp_factory` seam (`R/models/qwen3_5_moe.py:222-251`).
+- New numpy-only `R/ple/cartridge.py`: sorted composite keys `(ns << 32) | row_id` (row ids < 2^29) plus bf16-bit rows; base + ordered overlays (increments, facts), latest wins; one namespace id per (cartridge, version), pinned per request with a refcount, so no drain is needed; `/dev/shm` memmap + mlock shared across ranks (the container already has `ipc: host`, 16 GB shm, unlimited memlock: `docker-compose.yml:64-82`).
+- bf16-only staging in `R/ple/source.py` straight into `embeddings.view(torch.int16)` (device staging `max_tokens·d·2` instead of `·6`: 32/80 MiB vs 96/240 MiB at 8,192 tokens), vectorised decode-step hash (64,000 rows, 0 mismatches; 9.9 µs at bs1, and 11.5 µs vs 392 µs for the per-sequence loop at bs16; `GF/serve-port/vec_decode_hash.out`), `build_graft_runtime()` beside `build_ple_runtime` (`R/ple/runtime.py:363-438`).
+- Per-request selection: `SamplingParams.ngram_cartridge` → `Req.ngram_ns`, resolved and pinned at admission; a serve default and a model alias for stock OpenAI clients.
+- Prefix cache: **one radix root per namespace** (`RadixPrefixCache.roots`, `R/kvcache/radix_cache.py:199, 299, 390`). Because every Stage-2 increment is a new namespace, **prefix carry-over of clean subtrees (INTEGRATION §3.4(a)) or per-conversation version pinning is required, not optional** (skeptic).
+- Engine plumbing (scheduler staging, ledger, spec rollback, radix snapshots, graph-capture pointer gate) is already keyed on `ctx.ple`, `mc.ple_layer_ids` and `model.ple_block()` (`R/engine/engine.py:737`, `R/scheduler/scheduler.py:426, 474-486, 1500`, `R/engine/config.py:106-109`, `R/engine/graph.py:290-299`).
+
+**Corrections adopted from the skeptic.**
+
+- **The 35B serves EP by default** (`serve.sh:152`). In this fork EP means separate replicas running different requests (`R/scheduler/ep.py:17-41`), not TP lockstep: each replica has its own radix tree, control ops must reach both, and the per-step cross-rank digest test does not apply. **PLE has never run under EP**: the idle-replica dummy prefill (`ep.py:94-97`) goes through `_stage_ple`, which raises for a request without a GDN slot (`scheduler.py:3210-3225`) — whether the dummy gets a slot is untraced. M4 either tests it or starts with `EP=0`.
+- Drop the per-token `active` mask in linear mode: it protects only the sign of zero, which `torch.equal` ignores. Instead **skip the GEMV on steps where every request is on namespace 0** (eager, or a second captured graph), so non-cartridge traffic pays nothing.
+- The bitmap prefilter (5–7× faster on misses, `GF/serve-port/bench_bitmap.out`) does not help at the dense hit rates of project text; the host benchmarks used 0.16–1.6 M rows, not the realistic 2–7.6 M, and dense staging at 100% hits is a single-threaded gather (29–78 ms per 8,192 tokens) worth threading.
+
+**Overhead (est., skeptic-recomputed).**
+
+| Host | Decode: graft cost per step | Current decode step | Decode overhead | Prefill overhead |
+|---|---|---|---|---|
+| 35B-A3B | 47–68 µs | 9.75 ms EP (`serve.sh:148-149`) – 10.5 ms TP (`ROCM10_UPGRADE.md:59`) | **0.5–0.7%** | 0.9–3.0% per 2,048-token chunk (`serve.sh:34`), 1.1–4.1% per 8,192 |
+| 27B | 160–200 µs | about 21.5 ms (MXFP4 W4A16) | **0.75–0.95%** (about half with W_v sharded over 2 ranks) | 0.5–2.1% (backbone prefill rate unmeasured) |
+
+RAM per rank for a 1.42 M-token cartridge, bf16 + int64 id (2w+8 B/row): count ≥ 2 on the train split (2.04 M rows) 0.50 GiB (35B) / 1.23 GiB (27B); a production cartridge trained on all 250 files at count ≥ 2 (2,385,780 rows, `S1/ingest-algo/count_rows.out` line 6, reproduced in `S1/rt-feas/count_rows.out`) is **0.59 / 1.44 GiB**; all rows (7.56 M, all files) 1.86 / 4.56 GiB (`S1/designrev/budget_local.out`). Not measured on GPU: all device times, PLE under EP, the dummy-prefill path.
+
 ---
 
-## 5. The solver ("RowSolve")
+## I. Ingestion (Stage 1): building a project cartridge from a codebase
+
+Sources: `S1/ingest-algo/` (objective, row counts, optimiser bench, increments; the counts were re-run and reproduce the earlier `S1/design/` numbers exactly), `S1/priorart/`, `S1/evalproto*/`, `S1/experiment/` and `S1/verify-experiment/` (the 0.5B proxy and its skeptic re-run). Counts use the Flash-Next tokenizer (sha256 `0997f410…`, equal to `AutoTokenizer` on 5 files) and the fork's `R/ple/hashing.py` with the real multipliers; transformers' `Qwen4ExpTextNGramEmbedding.forward` with an index stub agreed on **11,405 of 11,405 positions** over 21 files, including a mid-sequence EOS (`S1/ingest-algo/extras.out` line 1). Wall-clock figures are **est.**
+
+### I.0 Summary
+
+- **Artifact.** One namespaced, versioned `ngram-edit/v1` patch (§3.5): `row_ids` int64 [R], values [R, w]. Trained by next-token NLL on the project's files plus KL anchors, backbone frozen, **rows only** (grafts: rows + `value_proj` is an ablation arm).
+- **Which rows.** Rows read by training positions, filtered to n-grams with **count ≥ 2** in the training split, with a soft per-row reuse weight for rows general text also reads. For minisgl `python/` (1.42 M tokens): **7,555,967 rows if every row read is kept** (all 250 files), **2.04 M with count ≥ 2 on the train split**, 2.39 M with count ≥ 2 on all files (the production cartridge) (§I.5).
+- **Regularisers.** KL to the base model on non-project text; row-wise group lasso + L2 with a trust region relative to the row scale; injected-residual budget ρ.
+- **Optimiser.** fp32 master deltas with row-wise Adagrad in host RAM, 4w+12 B per row (§I.2).
+- **First build** on the 35B-A3B graft: about **0.7–2.6 h** for 3 epochs including anchors and a serve stop/boot **if the GDN backward is fixed first** (§4.6); about 3.1–7.5 h with the fork's reference backward as it stands (§7.2). Before that, M2 needs several days of engineering (M2-0, §8).
+- **What to expect** (§I.3, §I.8): at the fixed scoring context (≥ 1,024 in-file tokens) the 0.5B proxy's held-out-file gain is about **0.5%** (−0.52%, file-cluster CI [−0.67, −0.33]) at 49k training tokens, against a **+0.5–0.6%** NLL cost on stdlib; with cold 512-token windows it was −1.14% vs +0.51–0.83%. The gain is mostly comment/docstring prose and identifier continuations. The retention-safe part of the rows (the long tail, ≈ 97% of rows) is worth only about 0.3% even at 512 tokens, so the planned row policies are expected to land near **E1 ≈ 0.15–0.3% at retention-safe settings (est.)** unless retraining with KL anchors and ω_j beats the pruning frontier (§I.8). Retention on general *code* is the binding constraint, not general text.
+
+### I.1 Objective
+
+**Trainable set.** The only leaf is a sparse fp32 delta `δ ∈ R^{|J|×w}` added after the gather (the §3.2 rule, `P/serve/v2-solve-venue/autograd_coverage.txt`). The row read is `e_j = decode(base_j) + δ_j` on native tables and `e_j = δ_j` on grafts.
+
+- **Native tables are rows-only, always.** Training `value_proj` would change every position of every request, because native base rows are nonzero. That is not a row diff and would need a per-request device weight, which breaks the torch-free overlay (INTEGRATION §3.1).
+- **Grafts: rows-only by default; rows + `value_proj` is an ablation.** A graft's base is zero and `value_proj(0) = 0`, so a cartridge-private ΔW_v changes only positions that read nonzero rows. In the 0.5B proxy it gained 0.002 nats and slightly raised collateral (§I.8), so it is not the default. If used, ΔW_v ships low-rank (r ≈ 16) in a `module_delta` manifest extension and is valid only when nothing else nonzero is active in that graft.
+
+**Loss.**
+
+```
+min_δ   E_{x∈D_train}  mean_t  NLL(x_{t+1} | x_{≤t}; δ)                  next-token, all positions, per-n-gram weight capped
+      + λ_near · E_{x∈D_near} mean_t KL(p_0 ‖ p_δ)                        other Python (the project's own dependencies)
+      + λ_chat · E_{x∈D_chat} mean_t KL(p_0 ‖ p_δ)                        prose / chat / tool text with no project-specific
+                                                                          n-grams (never the base's answers to project prompts)
+      + Σ_j ω_j · [ λ_2 ‖δ_j‖²/s_j²  +  λ_1 ‖δ_j‖/s_j ]                  L2 to base + row group lasso
+ s.t.   ‖δ_j‖ ≤ κ·s_j                      trust region relative to row scale; projected after each step
+        ‖Δm_t‖ ≤ ρ‖h_t‖ on anchor batches  injected residual vs hidden norm; checked, then penalised
+```
+
+- **Row scale `s_j`.** Native: `‖decode(base_j)‖` (median 0.096 on the served int6 table, INTEGRATION §3.5). Graft G-lin: the output-space scale `‖½ W_{v,h(j)} δ_j‖/‖h̄‖` (§5.3), because a zero base has no norm. Graft G-dir: the output does not scale with row norm (§2.4), so the budget is on **how many rows fire per position** (row policy) plus ρ.
+- **Trust region.** Native κ = 1 to start (not the per-fact κ ≈ 10): a cartridge row fires at every occurrence of its n-gram in project traffic, not at one anchor. Grafts **ρ ∈ {0.003, 0.01, 0.03}, starting at 0.01**: Engram Adapter's injected residual is 0.078% of hidden norm (mean over OOD tokens; 0.28–0.29% on activated tokens, 1.1–1.2% at P95) with 99.4–100.1% OOD retention, while the 0.5B proxy injected a median 3.8%, mean 9.1%, p99 44% on held-out project text and median 2.7%, mean 7.3% on stdlib, and lost 0.8% on stdlib (§I.8; `S1/experiment/run_full.stdout` line 25). At ρ = 0.05 the bound would not bind at the median position of either set, so 0.05 is not a starting point; 0.01 only matches Engram Adapter's P95.
+- **Pruning floor.** After training, drop native rows with ‖δ_j‖ < 0.03·s_j; smaller deltas mostly vanish in the serve's bf16 cast (realised error 0.69 at 0.3% of row norm, 0.22 at 1%, 0.07 at 3%; INTEGRATION §3.5). The group lasso is a proximal step, `δ_j ← max(0, 1 − lr·λ₁ω_j/(s_j‖δ_j‖√a_j))·δ_j`, so rows reach exactly zero.
+- **Reuse weight** `ω_j = 1 + γ·r_j/(p_j + r_j)`, with `p_j` the row's read rate in the project and `r_j` its rate in the reference mix (near Python + chat) scaled by π_other, the share of non-project text inside project requests (unmeasured; 0.3–0.6 for agentic coding traffic, **est.**). It targets shared, heavily read rows: the 14.9% of the project's distinct 2-grams also in stdlib carry **48.2%** of its 2-gram occurrences, and **70.4%** of stdlib positions and **74.3%** of `transformers` positions read at least one project row (`S1/ingest-algo/count_rows.out` lines 10–11). Start γ = 4, λ_near, λ_chat ∈ {0.1, 0.3, 1} (sweep).
+- **KL anchors exclude project-relevant behaviour.** KL to the base on project prompts (or on the base's answers to them) penalises exactly what the cartridge should change (§6.A.5 QA, E4), so D_chat is filtered to text with no project-specific n-gram (absent from the background, §I.3).
+- **KL targets.** Base logits for the anchor batches, computed once with the cartridge off, stored as top-64 log-probs plus a log-sum-exp remainder (≈ 512 B per token; ≈ 0.3 GB at 0.5× the training tokens).
+- **Stopping and selection.** Early-stop, and choose lr, ρ, row policy and arm, on the **dev** files of Split A only (§6.A.1); the test files are scored once, for the chosen configuration, against a grid pre-registered in the run manifest. Split B is reported alongside as a co-primary endpoint (§6.A.2).
+- **Objective upgrade path (Stage-1b, from prior art).** Cartridges/Knowledge-Modules results show distillation from the same model **with the corpus in context** beats next-token training (MTOB 33.5 vs 24.9 chrF; "memorizes well but generalizes poorly" for next-token), and EntiGraph shows synthetic augmentation beats raw continued pretraining on a small corpus (§9). The arm "teacher = host + BM25-retrieved repo files in the window, student = host + rows, loss = KL on the target file" is the first upgrade to test once a next-token baseline exists (M1b on the proxy, M2 on the 35B), and the mandated next step when E1 lands in the 0.5–1% zone (§6.A.7).
+
+### I.2 Sparse optimiser
+
+- **State.** fp32 master δ in a `SparseRowStore` (sorted row ids + [R, w] values) plus one fp32 Adagrad accumulator per row: `a_j += mean(g_j²)`, `δ_j −= lr·g_j/√(a_j + ε)`. The initial accumulator is the median g² of the first 50 steps, so once-seen rows do not take full-size first steps. All 16 heads' rows are separate entries.
+- **Why not (Sparse)Adam.** Row visits are very skewed: 7,069 rows serve 50% of 2-gram-head reads and 151,181 serve 90%; 56.7% of 2-gram rows and 73.7% of 3-gram rows are read once (`S1/ingest-algo/extras.out`, row-load skew). Lazy Adam keeps stale moments on rare rows, normalises their single noisy gradients to full-size steps, and costs about 3× the memory. Prior art agrees on simple optimisers for row-sparse updates (Sparse Memory Finetuning uses SGD; §9).
+- **Throughput.** An 8,192-token microbatch of real project windows touches 96,169 distinct rows (25,323 at 2k tokens; 341,230 at 32k). Coalescing + Adagrad on 4 CPU cores: 0.35 + 0.25 s per 8k microbatch, 0.46 + 0.31 s at 32k (`S1/ingest-algo/optim_bench.out`). That hides under a 3.5–26 s GPU step (**est.**), so the store stays in host RAM; H2D/D2H about 62 MB per microbatch each way.
+- **Memory** (fp32 δ + accumulator + id = 4w+12 B/row; `S1/designrev/budget_local.out`):
+
+| Host (w) | B/row | all rows, all 250 files (7.56 M) | count ≥ 2, all files (2.39 M; production) | count ≥ 2, train split (2.04 M) | count ≥ 5, train split (0.55 M) |
+|---|---|---|---|---|---|
+| 35B-A3B (128) | 524 | 3.96 GB | 1.25 GB | 1.07 GB | 0.29 GB |
+| Flash-Next (160) | 652 | 4.93 GB | 1.56 GB | 1.33 GB | 0.36 GB |
+| 27B (320) | 1,292 | 9.76 GB | 3.08 GB | 2.64 GB | 0.71 GB |
+| SparseAdam fp32 m, v (w = 160, ref.) | 1,928 | 14.6 GB | 4.60 GB | 3.93 GB | — |
+
+Row counts: 7,555,967 and 2,385,780 from all files, 2,040,221 and 550,891 from the Split-A train files (`S1/ingest-algo/count_rows.out` line 6, `row_policy.out`; both re-run identically in `S1/rt-feas/`). The train-split "all rows" figure is 6,721,239. The all-files count ≥ 2 column is arithmetic on those counts.
+
+### I.3 What 2/3-gram rows can and cannot hold
+
+A 3-gram row at position t is keyed on `(x_{t−2}, x_{t−1}, x_t)`. It shifts the prediction of `x_{t+1}` directly, later tokens through attention, and (native, G-dir) the conv taps at +3, +6, +9.
+
+**Can, by keying:** identifier spellings and sub-token completion (`min|is → gl`); import paths (`from minisgl.` → module); env-var and config-key names; local API completions after `.`, `(` or `self.`; argument names and order; decorator and boilerplate idioms; the project's comment and docstring style. The heaviest project-specific n-grams are exactly these: `' min|is|gl'` 736, `'MIN|IS|GL'` 515, `' from| min|is'` 337, `'.get|("|MIN'` 256, `' NV|FP|4'` 181, `':| List|[int'` 172 (`S1/ingest-algo/count_rows.out`). Project-specific 2-grams (absent from 2 M tokens of stdlib, 2 M of `transformers` and 2.5 M of WikiText) fire at 35.9% (2-gram) and 66.4% (3-gram) of project positions.
+
+**Lookup coverage** (a count-based n-gram LM on held-out files, Split A): the 2-gram context was seen in training at 81.5% of positions; "confident" contexts (count ≥ 2, top share ≥ 0.5) cover 24.1% of positions at 58.2% top-1 (3-gram 22.6%, 60.3%); on the time split, confident 3-gram top-1 is 65.4% (`count_rows.out` lines 19, 23). This is **not** an upper bound on what rows can do (rows also act on later positions through attention), and the base model already predicts many of these tokens. M1 adds the **headroom** number (positions where the confident n-gram is right and the base's top-1 is wrong), and the same counts become a zero-training baseline: the host interpolated with a project Kneser–Ney / cache n-gram LM (§6.A.4), which a cartridge must beat.
+
+**Cannot, by keying:** what a function does, cross-file types, invariants, which call is correct in a given context — and **reversed lookups**. Code always orders `from <module> import X`, so ingestion never trains X → module. Measured reach on 1,632 AST-generated repo-QA items (`S1/evalproto2/qa_reach*.out`): "which module defines X" (n=981) and "which file reads env var" (n=239) have a project-specific first-answer key **0.0** of the time; whole-answer recall by pure 3-gram chaining is about 0 for every kind. Partly reachable: signatures after `def name(` (first key project-specific 0.81, 3-gram argmax correct 0.225), import completion (0.46, 0.158), constant values `NAME =` (0.59, **0.646**, but 0.138 if the prompt ends in a space). Any QA gain must come through attention reading rows written at earlier cue positions — the same free-early-delta pathway that leaked in the earlier fact work. Docs prose (`docs/**/*.md`) is the only source that states name → module in cue-first order; ingesting it is the QA ablation.
+
+**Hypothesis, untested:** rows could inject "project identifier with feature F" vectors that later layers use. Matching shallow teacher states failed before (§6.B priors), so there is no evidence for it yet.
+
+### I.4 Data pipeline
+
+1. **Source.** Git blobs at a pinned commit (the working tree plays no part). Filter by extension; exclude vendored, generated, minified and lock files, binaries, files > 256 KB. **Secret scan** and exclude `.env`, keys and tokens: rows memorise code, and the cartridge ships as a file. Scope barely matters for this repo: all 261 text files under `python/` give 1,440,935 tokens and 7,673,035 rows vs 1,418,418 and 7,555,967 for the 250 `.py` files (`extras.out`).
+2. **Dedup.** Exact by blob sha; near-duplicate by MinHash over token 5-gram shingles, each cluster wholly in train or held-out. Cap each n-gram's loss weight at the 99.9th percentile of counts (boilerplate such as `'────────|────────|────────'`, 186 occurrences).
+3. **Splits** (§6.A.1). By file: 15% held-out by `hash(path)`, stable across versions (measured 38 files / 200,897 tokens in the design split). By time: the added lines of the last N commits form a forward held-out set (80 commits `b80007f..df29117`: 60,590 added positions).
+4. **No training on git history.** Every distinct `.py` blob on first-parent history (205 commits, 566 blobs) is 7.41 M tokens, 5.2× HEAD, yet only **163,312 rows (2.1%)** are not live at HEAD. History adds stale APIs, not coverage; use it only for the time split and for Stage 2.
+5. **Framing: train on the forms in which files reach the serve.** Inside a chat turn in a ```` ```python ```` fence (no EOS reset): 9,870 new rows, 99.5% of positions fully covered by the bare-file rows — framing inside chat does not matter. `cat -n`-style numbered tool output: **+36% tokens, 647,624 new rows (+8.6%)**, only 77.2% of positions fully covered (`extras.out`). Mix bare and numbered framings in proportion to the owner's real agent traffic.
+6. **Chunking.** 4,096-token windows; 90 files exceed 4,096 tokens and the largest is 96k (`S1/compute/tokcount.out`). Long files: stride 3,584, the 512-token overlap is context only. Each window keeps its **true two-token n-gram history** at the start, never an EOS seed, or its first row ids differ from what the serve reads. Right-pad only (§5.1). Every window starts from a zero GDN state, which matches the `gdn_hip` patch's contract (§4.6).
+7. **Tokenisation.** The host's own tokenizer, `add_special_tokens=False`, checked against `AutoTokenizer`. Qwen grafts reuse the Flash-Next keys (§4.3; the 35B-A3B tokenizer lacks only 7 special tokens). Gemma needs its own key instance and a recount.
+
+### I.5 Measured row counts for the owner's codebase
+
+Flash-Next keys, minisgl `python/**/*.py` at `df29117` (`S1/ingest-algo/count_rows.out`, `row_policy.out`):
+
+| Quantity | Value |
+|---|---|
+| Files / bytes / tokens | 250 / 5,414,867 / **1,418,418** (3.82 B/token) |
+| Distinct 2-grams / 3-grams | **295,195 / 662,289** (singletons 57.2% / 74.9%) |
+| count ≥ 2 / ≥ 5 / ≥ 20 (2-grams; 3-grams) | 126,438 / 43,168 / 8,403; 166,172 / 37,095 / 4,992 |
+| Distinct rows per 2-gram head / 3-gram head | 292,967–293,114 / 651,345–651,617 (gap to distinct n-grams = within-head collisions) |
+| **Total distinct (head, row)**, all 250 files | **7,555,967** (2.36% of 320 M logical rows) |
+| Overlay at w = 160: fp32 / bf16 / int6-g32 (+ ids) | 4,669 / 2,364 / 994 MiB |
+
+Trainable-row policies on the training split (reach = share of positions reading a selected row, exact-2-gram / any-row incl. collisions):
+
+| Policy | Rows | bf16 + ids (w=160) | Collision rate per head (2g / 3g) | Held-out reach | Near (transformers) reach | General (WikiText) reach |
+|---|---|---|---|---|---|---|
+| all rows read | 6,721,239 | 2,102 MiB | 1.33% / 2.87% | 0.815 / 0.868 | 0.612 / 0.723 | 0.229 / 0.452 |
+| **count ≥ 2 (default)** | **2,040,221** | **638 MiB** | 0.56% / 0.72% | 0.751 / 0.776 | 0.566 / 0.614 | 0.198 / 0.277 |
+| count ≥ 5 | 550,891 | 172 MiB | 0.19% / 0.16% | 0.649 / 0.658 | 0.505 / 0.519 | 0.167 / 0.188 |
+| enrich ≥ 4 vs stdlib + wiki (ablation) | 1,760,641 | 551 MiB | 0.46% / 0.64% | 0.472 / 0.587 | 0.272 / 0.403 | 0.005 / 0.093 |
+
+Enrichment removes nearly all exact general-text exposure but costs 28 points of held-out reach, so it is an ablation arm; count ≥ 2 plus ω_j is the default. Prior art suggests TF-IDF against a background (Sparse Memory Finetuning, §9) as a third arm. A general-code background of 25.6 M tokens already contains 75% of the fork's bigram **occurrences** and 41% of its trigram occurrences (`S1/priorart/repo_ngram_stats.out`, Qwen2.5 tokenizer); against pretraining-scale data the overlap would be higher (**est.**). **Choosing which rows to write is the main retention problem.**
+
+Graft hosts touch the same row ids; bytes scale with width (§I.2, §4.7). Gemma E4B's table is token-keyed: 18,208 distinct token ids appear in the repo (about 196 M trainable parameters; `S1/local-compute/local_cost.out`), so a cartridge there is a project-wide token shift (SWEA-like), with its own row count.
+
+### I.6 Incremental updates from git diffs (Stage 2)
+
+1. **Reader index.** The cartridge's sidecar holds per-file sparse row counts. On each commit: `git diff --name-status`, re-tokenise only the changed files in every framing, compute each row's count before and after.
+2. **Measured per commit** (40 of the 80 commits `b80007f..df29117` touch `.py` files; `count_rows.out`, `S1/ingest-algo/commit_tokens.json`):
+
+| Per commit | Median | p90 | Max |
+|---|---|---|---|
+| dirty rows (count changed) | 4,796 | 26,442 | 167,183 |
+| new rows | 1,312 | 7,277 | 73,998 |
+| dead rows (count → 0) | 128 | 1,381 | 10,352 |
+| tokens of the changed files | 18.8 k | 103 k | 452 k |
+
+   Over the window: 546,621 dirty rows (7.2% of the cartridge), 235,047 new, 32,511 dead. Replaying all commits reproduced the HEAD census exactly (7,555,967 rows).
+3. **Forgetting.** Dead rows and rows that fall below the count threshold are **deleted** (they return exactly to base). Other dirty rows are **reset to zero and refit** (warm start only when speed matters) on the changed files' windows, a replay sample of unchanged windows that read them, and one anchor KL pass; all other rows stay frozen. Rows not marked dirty but co-trained with deleted text keep second-order traces; a **full rebuild** bounds this, triggered when cumulative dirty rows exceed about 20% of the cartridge, or weekly.
+4. **Versioning.** Each increment is a child patch with `parent_version` and its commit range; rollback drops patches; the served value is recompiled exactly as in INTEGRATION §3.3. On the serve each version is a new namespace, so prefix carry-over or per-conversation pinning is required (§4.7).
+5. **Cost** (**est.**; `S1/ingest-algo/walltime.out`): a GPU window is dominated by the serve stop and boot (2 × 300 s): about 0.17–0.31 h per median-to-p90 commit on the 35B-A3B graft, 0.2–1.1 h on the 27B. CPU beside the serve: 0.8–18 h (35B), 6–121 h (27B). So **commits are batched nightly**. "Online" in the strict sense needs either the CPU path on the small graft host for small diffs, or an in-serve backward, which is excluded.
+
+### I.7 Composition with Stage-3 per-fact edits
+
+- **Layering:** cartridge, then increments, then facts in edit-id order, fp32 sum, one cast (§3.5). Facts are either global or scoped to a cartridge namespace.
+- **Project facts** (e.g. "this API was renamed") are solved **with the cartridge active**; their EditRecord gets `parent = cartridge@version`. RowSolve's reuse weight treats cartridge rows as occupied (`occ_j` counts them; `w_freq` uses the project load), and X_col windows come from the project corpus.
+- **Global facts** are solved on the base; their conflict set gains `rows(fact) ∩ rows(cartridge)`, and they are re-validated forward-only under every cartridge they will run with.
+- **Increments and rebuilds** re-validate every fact in the namespace on its held-out paraphrases; facts below the K-scale bar (retention 0.8) are re-solved. The ledger stores diffs, so re-solving is order-free.
+
+### I.8 Evidence: ingestion through a graft on frozen Qwen2.5-0.5B (CPU; first data point)
+
+Setup (`S1/experiment/ingest.py`, `run_full.stdout`, `results.json`): frozen Qwen2.5-0.5B fp32; graft = `Qwen4ExpTextPLELayer` from `P/graft/graft_proto.py` at the input of block 1 with the §2.4 editor init (G-lin), Flash-Next-style KeySpec on the Qwen2.5 vocabulary with ~200k-row heads (3,201,408 logical rows, width 56); 483,519 reachable rows held compactly (identical to a dense zero table in smoke tests). Corpus: minisgl 250 `.py` files, split by file with seed 0 into 212 train / 38 held-out. Training: **49,152 tokens** (96 × 512) for 2 epochs, SparseAdam lr 1e-2, penalty 1e-3·mean‖e‖². One seed, no sweep. **None of the §I.1 objective was tested:** SparseAdam rather than row-wise Adagrad, a plain L2 penalty, and no KL anchors, ω_j, count ≥ 2 filter or ρ budget. Re-run independently with the same data and seeds by a skeptic (`S1/verify-experiment/verify.py`, `verify.stdout`, 36 min on 4 idle threads): **headline numbers reproduce** (held-out −0.03656, stdlib +0.01267, WikiText −0.00079, train −0.5801).
+
+| Set (nats/token) | Base | Rows only (A) | Δ (95% chunk bootstrap) | Rows + value_proj (B) | Δ |
+|---|---|---|---|---|---|
+| **Held-out files** (cold 512-token windows) | 3.2492 | 3.2127 | **−0.0366 (−1.1%)** [−0.0446, −0.0289]; file-cluster [−0.0467, −0.0294]; 31/32 chunks improve | 3.2108 | −0.0384 |
+| Train chunks | 3.0830 | 2.5029 | −0.580 (−18.8%) | 2.4944 | −0.589 |
+| stdlib Python (6,132 tokens) | 1.5304 | 1.5431 | **+0.0127 (+0.83%)** [+0.0079, +0.0178], 11/12 chunks worse | 1.5452 | +0.0147 |
+| WikiText-2 | 2.7363 | 2.7355 | −0.0008 [−0.0044, +0.0022] | 2.7354 | −0.0009 |
+
+**Eval coverage.** "Held-out files" are 32 chunks (16,352 tokens) drawn from only 15 of the 38 held-out files; one file carries 22% of the tokens. Chunks are cut from the concatenated stream, so they start cold mid-file and cross EOS (`S1/verify-experiment/verify.py:79-82`; `S1/rt-science/cluster_ci.out`). R2's +0.83% rests on 6,132 stdlib tokens from 12 chunks.
+
+Checks that held: only the row tensor had `requires_grad` (27,077,064 = 483,519 × 56), host `state_dict` sha256 identical before and after; removing the graft restores base NLL exactly (Δ 0.0); cached decode vs full forward 4.2e-5 (held-out) and 4.5e-5 (train), while dropping the n-gram side state per step gives 2.2 and 8.7, so the check has power; no meaningful train/held-out leakage (0.0% of evaluated target 16- and 32-grams occur in the training chunks used; 8-grams 0.52%, worth 3% of the gain).
+
+**Skeptic corrections (adopted):**
+
+1. **Collisions contribute nothing.** Exact-key rows only: held-out −0.0366, stdlib +0.0119; colliding rows only: −0.0002 and +0.0005. The 32% of the gain on tokens whose 2-gram was never seen comes from rows of seen n-grams at **earlier** positions, carried forward by attention. The stdlib drift is also exact-key, not collision.
+2. **The gain is mostly frequent prose n-grams, not project API knowledge.** By Python token class: string/docstring 41% of held-out tokens, 51% of the gain; comment 22%, 29%; identifiers 18%, 14%; other code 19%, 6% (`S1/verify-experiment/tokclass.json`). Identifier continuation sub-tokens −2.27% (n = 1,182; **all** identifiers), first sub-tokens −0.48% (n = 1,702) (`S1/evalproto2/tokdelta.out` lines 19–20). Project-specific only: continuations −2.15% (226 + 576 tokens), first sub-tokens −0.58% (n = 100), and project repeat first sub-tokens get **worse** (+0.54%, n = 258); general identifier first sub-tokens improve more (−2.52%, n = 179) than project ones (lines 9, 14–17). This is consistent with generic Python/docstring re-specialisation of a weak base rather than project knowledge. Row norm tracks training frequency (corr(log count, norm) = 0.83); the top rows are `", so"` (7 of the top 9), `"(self,"`, `'    """'`, `" which is"`, `" at the"`, `". The"`, `" minis"`. Zeroing the top-100 2-grams + top-100 3-grams (1,598 rows, 0.3%) removes 37% of the held-out gain and halves the stdlib drift; top-1,000 + 1,000 (3.3% of rows) removes 73% of the gain and nearly all the drift (+0.0006).
+3. **A trivial global bias explains about 5%**: adding the mean injected vector (norm 0.048) everywhere gives held-out −0.0019.
+4. **Injection is far larger than Engram Adapter's.** Engram Adapter's 0.078% is a mean over **out-of-distribution** tokens; the like-for-like proxy figure is stdlib: median 2.7%, mean 7.3% (about 34× and 93×). On in-domain held-out text the proxy is median 3.8%, mean 9.1% (`run_full.stdout` line 25).
+5. Uncontended step time about 3.2 s per 512 tokens on 4 threads; the "seen" sets are from the 49k tokens actually trained, not the 1.17 M-token pool.
+
+**Stage-1 red-team re-scoring (same arm-A rows, `S1/rt-science/`):**
+
+6. **The gain halves at the fixed scoring context; the cost does not.** On 24 blocks from 10 held-out files of ≥ 2,048 tokens, the same targets score −1.14% (file-cluster CI [−1.31, −0.92]) with cold 512-token windows and **−0.52% [−0.67, −0.33] with ≥ 1,024 in-file tokens of context**; stdlib (12 blocks, 9 files) costs +0.51% and +0.58% (`ctx_len.out`). The gain-to-cost ratio falls from about 2.2 to about 0.9. Under §6.A.1's context rule the one data point sits on the E1 kill line and fails M1's joint kill; **the number to beat is −0.5%, not −1.1%.**
+7. **The pruning frontier** (512-token context, `S1/verify-experiment/verify.stdout` lines 29–30):
+
+| Rows kept | Held-out gain | stdlib cost |
+|---|---|---|
+| all | 1.13% | +0.83% |
+| top-100 2-grams + 3-grams zeroed (1,598 rows) | 0.71% | +0.41% |
+| top-1,000 + 1,000 zeroed (15,949 rows) | 0.31% | +0.04% |
+
+   The retention-safe long tail (≈ 97% of rows) is worth about 0.3% at 512 tokens, below E1's kill before the context shrinkage in 6. Row policies that only prune move along this frontier; M1b must move **above** it (KL anchors, ω_j, ρ during training).
+8. **Row-hit conditioning is not an invariant.** Only 4.0% of held-out positions read no trained row; there mean |Δ| is 0.127 nats and only 0.15% are bitwise equal, because rows at earlier positions reach them through attention. Only 0.006% of positions have a row-free prefix, and those are exactly equal (`nohit.out`).
+9. **Noise floor.** Between-file SD of the per-file Δ is 0.018–0.023 nats, so with 31 test files the file-cluster MDE (80% power) is about 0.009–0.011 nats, **0.35–0.43%** (`cluster_ci.out`; est., from 13–15 files).
+
+**Not run:** the LoRA arm (budget gate), any sweep, a second seed, the n-gram-interpolation and foreign-repo controls (§6.A.4). **Memorisation:** the train gain is 16× the held-out gain; at 2 epochs this mostly reflects training length, and since served traffic is mostly the ingested files and edits to them, MEM is a diagnostic, not a kill (§6.A.7).
+
+### I.9 Defaults carried into M1–M3, and what the evidence changes
+
+- **Row policy:** count ≥ 2 plus ω_j by default; the frequency ablation above says the high-count generic rows (`", so"`, `"(self,"`) carry both most of the gain and most of the drift, so **enrich ≥ 4 / TF-IDF and a per-row cap on the most generic rows** are first-class arms, not afterthoughts. Pruning alone only moves along the measured frontier (correction 7: ≈ 0.3% gain at +0.04% cost); expect **E1 ≈ 0.15–0.3% at retention-safe settings (est.)** unless training-time regularisation beats it.
+- **Budget:** ρ ∈ {0.003, 0.01, 0.03}, start 0.01 (§I.1); the proxy's 3.8% (held-out) and 2.7% (stdlib) medians are far above the retention-safe regime.
+- **Scoring:** always at the fixed context of §6.A.1, on the dev files for selection and the test files once.
+- **Metrics:** report identifier, comment and docstring NLL separately; a docstring-style gain is not codebase knowledge.
+- **Controls:** a same-recipe **foreign-repo cartridge** and a **train-time key-shuffle** arm (the content controls), random-row and eval-time permuted-key controls (Cross-Model Memory Transfer found random memory matched its perplexity gain), an NGM-style untrained 2/3-gram average, the constant-bias control, and a zero-training **n-gram/cache-LM interpolation** baseline (§6.A.4).
+
+---
+
+## 5. The solver ("RowSolve"): Stage 3 per-fact edits
+
+This is the per-fact solver of the 2026-11-09 design, unchanged. It is used from M7 (§8), solved against the active cartridge when an edit is project-scoped (§I.7). The Stage-1 trainer (§I.1–§I.2) shares its sparse-leaf rule (§3.2), backends and quantisation-aware finish, but not its prompt sets, anchors or objective.
 
 The abstraction: a key function κ(x, t) → {(slot, row)}; a module F gives the additive residual m_t; an edit is a sparse fp32 delta U = {u_j}.
 
@@ -399,7 +703,7 @@ Subject-token statistics from the real Qwen tokenizer (`P/t1/coverage.out`): of 
 - **What the synthetic allocation does and does not show.** `P/solver/v2_allocation.py` is a linear 64-d model with random-id subjects in a Zipf corpus.
   - Its "fit" is the projection of the realised output onto a random target (`:61-63`), called **synthetic linear reach** here. It is not CounterFact generality, and no accept bar is derived from it.
   - Its collateral is `load − own` (`:66`): only hash co-tenants are counted, and the edited n-gram's own other-context occurrences are left out. So the unigram keys show collateral 0.00e+00 with held-out = train = 0.660 / 0.809 (`v2.out` check4). That "reach" and the head firing on every occurrence of the token are the same number.
-  - The per-row versus per-n-gram comparison ("collateral cut by 25–60%") is **not at matched fit**: train fit fell from 0.841 to 0.748 and from 0.935 to 0.879. M3 re-runs it at equal train fit, with full-load collateral.
+  - The per-row versus per-n-gram comparison ("collateral cut by 25–60%") is **not at matched fit**: train fit fell from 0.841 to 0.748 and from 0.935 to 0.879. M7 re-runs it at equal train fit, with full-load collateral.
 - **Trust regions.**
   - Residual change: `‖Δm_t‖ ≤ ρ‖h_t‖`, ρ ∈ [0.5, 1], by projection after each step.
   - Native rows also: `‖u_j‖ ≤ κ‖e_j‖`, κ ≈ 10.
@@ -432,14 +736,122 @@ On native Flash-Next the key for o2 is necessarily relation-crossing, (r_last, o
 
 - Batches of about 100 edits, targets recomputed on the current model. The conflict set (earlier edits sharing candidate rows; mostly same subject, other relation) feeds X_ret. Conflict clusters are periodically re-solved from the original table; stored diffs make this order-free.
 - **XK mode (exact-key overlay):** private rows behind a 64-bit n-gram fingerprint check. This is EngramEdit's B.4.3 side-vector scheme. Needs an engine hook rather than a tensor diff; only κ changes in the solver.
-  - XK rows go through the same module (same W_v, gate and conv) as in-place rows. So XK removes hash co-tenancy and collisions, but **not** a layer-1 expressivity limit. M2's three-arm design (§6) separates the two.
+  - XK rows go through the same module (same W_v, gate and conv) as in-place rows. So XK removes hash co-tenancy and collisions, but **not** a layer-1 expressivity limit. M7's three-arm design (§6.B) separates the two.
 - Rollback = ledger re-materialisation (§3.3).
 
 ---
 
 ## 6. Evaluation protocol
 
-### Priors from earlier work
+Two protocols share the invariants and the serve-transfer checks (§6.B "Hard invariants", "Serve-transfer checks"): **§6.A** for Stage-1/2 cartridges (primary now) and **§6.B** for Stage-3 per-fact edits (kept from the 2026-11-09 design, used from M7).
+
+### 6.A Stage 1 and 2: ingesting a codebase
+
+Source: `S1/evalproto/`, `S1/evalproto2/` (scripts and outputs cited as [ep], [power], [tokdelta], [reach]). Proxy numbers are from the 0.5B experiment (§I.8).
+
+#### 6.A.1 Corpus, document format, splits
+
+- **Corpus v0:** `python/minisgl/**/*.py` at `df29117`: 250 files, 5.41 MB, 1,418,418 Flash-Next tokens. v1 adds `tools/`, `tests/` (about 6.9 MB more `.py`) and optionally `docs/**/*.md` (157 files, 2.87 MB; the QA ablation, §I.3). The local clone is shallow (first commit 2026-09-25).
+- **Document format (training and eval must match):** `# file: <path relative to python/>\n` + source, files separated by EOS (`<|endoftext|>` 248044). EOS is the only history reset (§2.1); `<|im_end|>` does not reset, so chat wrappers are not used in scoring.
+- **Split A, by file (co-primary):** **test** if `h = sha256(path)[:8]/2^32 < 0.15` and size > 400 B: 31 test files, about 200k Flash-Next positions [ep]; **dev** if `0.15 ≤ h < 0.25` (about 10% of files, est. ≈ 25); the rest train (219 − dev ≈ 194 files, est.). Stable as files are added. All early stopping, lr, ρ, row-policy and arm selection use dev; test is scored once per pre-registered configuration. 31 test files give a file-cluster MDE of about 0.35–0.43% (§6.A.7), so corpus v1 (`tools/`, `tests/`) is added to dev and test before any E1 gate is applied to a real host. **Dedupe gate:** held-out files with > 50% verbatim lines (≥ 20 chars) in train move to a near-duplicate diagnostic (currently `minisgl/mamba2/__init__.py`, `minisgl/models/llama.py`; median overlap 9%). Report the share of held-out targets whose ending 16-gram appears in train. (The §I.8 proxy used a different 85/15 shuffle split; M1 re-runs on Split A.)
+- **Split B, by commit time (co-primary: it is the deployment case, edits to files the cartridge has seen; uncontaminated; the bridge to Stage 2):** train on the tree at `T_cut = a4a5543` (2026-10-28); test on lines added in `(T_cut, df29117]`: 110 commits, 4,142 added `.py` lines in 52 files, 6 brand-new files [ep]. At the near-identical cut `b80007f`, about 60.6k added positions, of which 81.7% read a trained 2-gram row and 57.0% a trained 3-gram row. Score each added line in its HEAD-file context; only targets on added lines count. Sub-report the 6 new files (held out by both file and time).
+- **Scoring context (fixed):** sliding window, left context C = 2,048 in-file tokens, stride 1,024, identical windows for every arm. Also report C = 512 and 8,192: the gain should shrink with context as in-file repeats take over, and that curve is a result. (Proxy base NLL is 2.661 nats at 1,024-token context vs 3.249 with 512-token windows from cold, which is why C is fixed.)
+
+#### 6.A.2 Metrics (one teacher-forced forward per condition)
+
+- **Held-out NLL**: co-primary endpoints **E1** (Split A test files) and **E2** (Split B added lines), both at the fixed context: Δ nats/token, relative %, perplexity; paired, **file-clustered** bootstrap (10k resamples), per-window CIs secondary. Breakdowns:
+  - lexical class (Python `tokenize`): string/docstring, comment, keyword, operator/whitespace, identifier;
+  - identifiers: project-specific (absent from stdlib + torch + numpy + transformers; 2,358 of 2,921 defined names) vs general vs builtin; first vs continuation sub-token; first occurrence in file vs repeat; cross-file;
+  - key category: unseen 2-gram / seen 2-gram only / seen 3-gram with new next / seen 3-gram with seen next — memorised continuation vs generalisation;
+  - row-hit conditioning is **not** a code-retention diagnostic: about 96% of held-out positions read a trained row, and the 4% that do not still move (mean |Δ| 0.127 nats) through attention to earlier rows (§I.8 correction 8). The only position-level identity is: **positions with no trained row anywhere in their prefix** (since the last EOS) have ON = OFF bitwise in the graft (0.006% of proxy positions; exact). I1 (§6.B) stays window-level.
+- **Completion (teacher-forced EM = greedy EM up to ties):** next identifier (headline: project-specific first-in-file and cross-file first use; the base proxy already gets repeats at EM 0.708 vs first-in-file 0.108); next line (non-comment lines ≥ 8 chars); RepoBench-style cross-file-first lines. Edit similarity on a 200-line subset once a decode path with the cartridge exists (report-only).
+- **Cost and operations (reported, not gated):** rows touched, artifact bytes, training and eval wall-clock, serve overlay overhead; for Stage 2, rows dirtied and update wall-clock per commit.
+
+#### 6.A.3 Retention
+
+- **R0, OFF is bit-exact (hard invariant).** HF: sha256 of all logits on 64 fixed prompts (code and prose) equals base, cartridge unloaded and loaded-but-disabled; native: the original row bytes' sha256 too. Serve: the I1/I3 rule of §6.B. Plus I2 (cached decode = full forward, with the broken-state power check; proxy 4.2e-5 vs 2.2) and the host-weight hash.
+- **R1, general text ON:** WikiText-2 test, 64k tokens: ΔNLL, per-token KL(base‖ON), top-1 agreement.
+- **R2, general code ON (binding).** 64k tokens of stdlib modules not used by any regulariser, plus 64k of an unrelated ML codebase (e.g. `transformers/models/*`); replay/KL sets disjoint by package; report with and without replay. **Unlike per-fact edits, retention ON is not near-guaranteed by I1 here**: at Flash-Next scale the project's rows are read by 70.4% of stdlib, 74.3% of ML-library and 47.5% of WikiText positions (`S1/ingest-algo/count_rows.out` lines 10–12). The proxy already shows +0.83% on stdlib (§I.8).
+- **R3, capability (forward-only, about 3k items, about 300k tokens):** 1k each of MMLU, ARC-Challenge, HellaSwag by log-likelihood, paired McNemar; HumanEval + MBPP-sanitized pass@1 once the cartridge decodes, with batched generation (on the 0.5B proxy via HF; on real hosts from M4 through the serve, because the GDN shim refuses a cache, `R/gdn/hf_patch.py:68-75`, and eager HF decoding of a 4-bit MoE is too slow). Tencent's repo fine-tune lost 24% HumanEval (§9), the failure to avoid.
+- **REG, regurgitation and secrets (diagnostic):** greedy continuations from 200 train-file prefixes: longest verbatim match with train, share of ≥ 64-token verbatim runs, vs base; plus canary strings planted in a train file and a scan of continuations for secret-shaped strings (the §I.4 secret scan is the primary control).
+
+#### 6.A.4 Baselines and controls (same tokens, split, scoring)
+
+| Arm | Definition | Note |
+|---|---|---|
+| **B0 base** | frozen host, OFF | reference |
+| **RAG-BM25** | index train files (Split B: tree at T_cut), 40-line chunks stride 20; query = last 20 prefix lines; prepend `# retrieved from <path>` chunks up to 1k / 4k tokens | zero training, zero retention cost; beat a full fine-tune in the Tencent study (EM 53.8 vs 44.2); report extra prefill and latency |
+| **RAG-oracle** | prepend definitions of the names the file imports | retrieval upper bound |
+| **RAG + cartridge** | both | the claim to test is additivity (precedent: FT + RAG 57.4 > RAG 53.8); E6 has a kill |
+| **N-gram / cache-LM interpolation** | host interpolated with a count-based project LM: modified Kneser–Ney 2/3-gram on the train files plus an in-file cache component (Tu et al. 2014; Hellendoorn & Devanbu 2017), λ tuned on dev; zero training, zero retention cost (it is off outside project text only if gated like the cartridge, so report both gated and always-on) | the "can counting do what trained rows do" arm; E1 must beat it |
+| **LoRA r=16** | attention + GDN projections, all layers; same tokens/steps; lr sweep | in-domain comparator, **not an upper bar** (MLP/expert LoRA matters for knowledge); offline only (minisgl has no LoRA path) |
+| **LoRA all-linear r=16** | attention + GDN + MLP (dense host); on the MoE host also the shared expert and the routed experts' projections (frozen router) | the stronger reference for E5; learn/forget trade-off on code per Biderman et al. 2024, "LoRA Learns Less and Forgets Less" (arXiv 2405.09673; from memory, not re-read) |
+| **LoRA / cartridge param-matched** | proxy: arm A touched 482,756 rows × 56 = 27.0 M params ≈ all-linear LoRA r=48 (26.4 M). On real hosts the cartridge is larger (count ≥ 2 on Flash-Next keys: 2.39 M × 160 = 382 M params), so match the other way: a cartridge **budgeted to LoRA's parameter count** (top-K rows) | |
+| **Engram-Adapter-style** | replicate its layout: injection at several depths (its layers {1, 3, 7, 15} of 36, scaled to the host's depth), 12 fresh hashed tables of 90,007 rows per injected layer, trainable W_v, W_k/gate, norms, conv and a scalar gate, occupancy masks | graft only; the same-family reference (Engram Adapter reached about 55–65% of LoRA's in-domain gain at 99–101% OOD retention). A single-site table is reported as a separate ablation, not as "Engram Adapter" |
+| **kNM-LM datastore** | forward-only datastore of in-project tokens the base mispredicts | frozen-backbone corpus memory; +8 EM on Android API lines in the source paper, at 2.4× throughput cost |
+| **Foreign-repo cartridge** (main content control) | same recipe, rows trained on an unrelated Python repo with matched tokens and docstring density (e.g. a same-size slice of an ML library not used by R2 or the regularisers) | separates "project knowledge" from generic Python/docstring re-specialisation (the proxy's gain looks like the latter, §I.8); C1 is judged on project-specific tokens against it |
+| **Train-time key shuffle** | same recipe, with each training position's row ids replaced by those of a random other position (fixed permutation of n-gram → row) | content-free rows with real training; tests whether the keys carry the gain |
+| **Controls** | random rows at matched norms (can only hurt, so a sanity check, not a C1 control); **eval-time** permuted keys (trained rows read through a fixed random permutation of row ids); NGM (untrained causal 2/3-token embedding averages, about +1–2 points generic gain with no corpus); constant mean-injection bias (5% of the proxy gain) | a Stage-1 claim must beat all of them on project text |
+
+#### 6.A.5 Repository QA (report-only in Stage 1)
+
+1,632 AST-generated seed items ([qa] `S1/evalproto/qa_seed.jsonl`): 1,065 "which module defines X", 317 "signature of Y", 250 "which file reads env var `MINISGL_*`"; generated import-completion and constant-value items added. JSONL schema: `kind, question, cue/answer (code form), answer, aliases, evidence file:line, commit, split, reach_class`; the owner appends lines. Scoring: teacher-forced EM, 4-way MC by answer log-likelihood with same-package distractors, answer NLL. Base proxy: EM 0.0 on all kinds; MC 0.323–0.407. Reach (§I.3) says only signature, import and constant items are plausibly helped; track them separately.
+
+#### 6.A.6 Native vs graft (controlled on Flash-Next) and cross-host
+
+- **N:** native-row overlay on `layers.1.ple` (base rows + Δ through the trained W_v, gate and conv). **G:** a zero-init graft **beside** the native PLE at decoder index 1, same KeySpec, orders {2,3}, output into all 4 streams (needs its M0 tiny test), in both arms G-lin and G-dir.
+- Held fixed: row ids (the same set S), tokens, data order, optimiser, steps; a 3-point lr sweep **per arm** (natural row scales differ: RMS(v) 0.0058, §4.1).
+- Report the paired ΔNLL_N − ΔNLL_G (file-cluster bootstrap), the same for R1/R2, and ‖Δh‖/‖h‖.
+- Cross-host grafts (35B-A3B, 27B, Gemma) are **not** controlled; report each as a fraction of that host's own LoRA all-linear r=16 gain.
+
+#### 6.A.7 Gates and numeric criteria (per host; provisional, revised after M1)
+
+**Gates (any failure is a bug):** R0 bit-exact OFF; I2 at the host's repeat-run noise floor with a broken-state control ≥ 100× larger; host hash unchanged; I4 row-id parity on ≥ 10k positions; dedupe audit (held-out 16-gram-in-train ≤ 2%, near-duplicate files excluded).
+
+All E-criteria are scored at the fixed context of §6.A.1 (C = 2,048 in-file tokens) on the Split-A **test** files (or Split B), once, for the configuration chosen on dev; CIs are file-cluster bootstrap 95%. A "bound" below means the CI bound, not the point estimate.
+
+| ID | Metric | PASS | KILL |
+|---|---|---|---|
+| E1 | Held-out by-file NLL (test files), relative reduction | ≥ 2.0%, lower bound > 0.5% | upper bound < 0.5% at the operating point (below) after the lr pilot + 1 epoch in **every** arm (G-lin, G-dir, and N where run) → stop ingesting into layer-1 rows on that host |
+| E2 | Split-B added lines (co-primary; the deployment case) | ≥ 1.5%, lower bound > 0 | report; with E1 killed, E2 alone cannot rescue the host |
+| MEM | Memorisation: held-out vs train gain (diagnostic) | report; train ≤ 10× held-out | none (training length dominates train gain at 2–3 epochs; REG covers the risk) |
+| REG | Regurgitation / secrets (§6.A.3) | ≥ 64-token verbatim runs ≤ 2× base; no canary or secret-shaped string reproduced | any canary reproduced → fix the secret scan before shipping |
+| E3 | Project-identifier continuation sub-tokens | ≥ 3% (proxy 2.15%, 512-token windows) | report; first sub-token report-only (proxy −0.58%) |
+| E4 | Teacher-forced EM: project identifier first-in-file / next line | ≥ +2 pts / ≥ +1 pt, paired CI excludes 0 | report |
+| E5 | vs LoRA all-linear r=16 at equal tokens | cartridge E1 gain ≥ 50% of LoRA's | < 25% of LoRA's **and** R2 no better than LoRA's → LoRA dominates on quality; the cartridge case rests only on servability, OFF-exactness and per-commit cost |
+| E6 | vs RAG-BM25 (4k) at the operating point | "additive" if RAG + cartridge minus RAG ≥ 0.5% E1, lower bound > 0 | RAG + cartridge minus RAG < 0.25% E1, or its CI includes 0 → drop the additivity claim (§1) |
+| NGI | vs n-gram/cache-LM interpolation | E1 gain ≥ 1.5× the interpolation's | cartridge ≤ interpolation → counting does what the rows do; ship the count LM instead |
+| C1 | vs foreign-repo cartridge (on project-specific identifier tokens) and train-time key shuffle, eval-time permuted keys, NGM (on all test tokens) | gain ≥ 3× the best control's | best control ≥ 50% of the cartridge gain → the gain is content-free / generic re-specialisation |
+| R1 | WikiText-2 ON: ΔNLL / mean KL | ≤ +0.2% and ≤ 0.005 nats | > +0.5% or > 0.02 nats at the operating point |
+| R2 | General code ON (stdlib + unrelated ML repo) | ≤ +1.0% (proxy +0.5–0.8%) | judged jointly with E1 at the operating point (below) |
+| R3 | Capability, forward-only MC, paired | ≥ 99% of base (cf. Engram Adapter 99.4–100.1%) | < 97%, or a significant paired drop > 2 pts |
+| NG | Native vs graft on Flash-Next (paired) | G ≥ 80% of N's E1 gain at ≤ N's R2 cost → "format portable for ingestion" | G < 50% of N → grafts need trained projections; promote the Engram-Adapter arm |
+| QA | Reachable kinds, train-file items, 4-way MC | +5 pts (soft) | none in Stage 1 |
+
+**One operating point, one decision.** The **operating point** is the dev-selected configuration with the largest dev E1 among those with dev R2 ≤ +1.0% (and R1 within PASS). The host decision is joint, at that one point:
+
+| Zone (test, at the operating point) | Action |
+|---|---|
+| no configuration has R2 ≤ +1.0%, or E1 upper bound < 0.5% | **stop** rows-only layer-1 ingestion on this host (record the negative result) |
+| otherwise below the next row (upper bound ≥ 0.5% but point < 1.0%, or lower bound ≤ 0.5%) | **do not scale**: the only next step is the objective upgrade (Stage-1b distillation with context, §I.1) on the same host, once; if it stays in this zone, stop |
+| E1 1.0–2.0%, lower bound > 0.5%, C1 and NGI pass | proceed to the next milestone, with E1 recorded as "partial" |
+| E1 ≥ 2.0% (PASS) with R2 ≤ +1.0%, C1, NGI pass | PASS |
+
+E5's and E6's gaps (25–50% of LoRA; 0.25–0.5% over RAG) are reported as "dominated on quality" / "not shown additive" and do not stop the host by themselves.
+
+**Power.** The paired per-token Δ has window-level SD 0.023 nats (design effect 2.2); window-level MDEs are 0.0056 nats at 64k tokens and 0.0028 at 262k [power]. **The unit that matters is the file:** between-file SD of the proxy's per-file Δ is 0.018–0.023 nats, so with 31 test files the file-cluster MDE (80% power) is about **0.009–0.011 nats, 0.35–0.43%** (`S1/rt-science/cluster_ci.out`; est., from 13–15 files). The 0.5% E1 kill is therefore only about 1.2–1.4× the noise floor, which is why kills are CI-based and why corpus v1 adds test files before gating real hosts. For fine identifier classes (n ≈ 100–1,200 on the proxy), pool classes or raise held-out tokens before gating. Split B has 52 files; its file-cluster MDE is reported with it.
+
+**Stage 2 criteria** (M5): replaying the post-`T_cut` commits incrementally reaches ≥ 80% of a full retrain's Split-B gain; forgetting on unchanged files ≤ 0.2% NLL; rollback bit-exact.
+
+#### 6.A.8 Public benchmarks and the private equivalent
+
+Offline-usable after one download (counts and licences to verify on download): RepoEval (≈ 14 repos, function level with tests; best per-repo fit), EvoCodeBench (≈ 25 repos with execution), RepoBench v1.1 Python (`cross_file_first` / `cross_file_random` / `in_file`), CrossCodeEval Python (StarCoder-15.5B code EM: in-file 8.82 → BM25 15.72 → with reference 21.01; `S1/priorart/cceval.txt:331-336`), Long Code Arena project-level completion (closest public analogue of Split B), CodeUpdateArena (54 updated APIs, 670 tasks; the natural test for Stage 2/3). **Caveat:** 2022–2024 public repos are very likely in the hosts' pretraining, so gains there measure re-specialisation, not new knowledge. The decisive test is the private **MSB** built from `minisglang-rdna4`: frozen split manifest (file list, `T_cut`, per-file sha256, tokenizer sha256, KeySpec fingerprint), AST-generated RepoBench-style and RepoEval-API-style items, the QA JSONL, a contamination probe (anomalously low base NLL per file), and the Stage-2 replay of the 110 post-cut commits.
+
+### 6.B Stage 3: per-fact edits (kept from the 2026-11-09 design)
+
+The rest of this section is the per-fact protocol, unchanged except for milestone references (old → new IDs in §8). It applies from M7. Its hard invariants and serve-transfer checks also apply to cartridges.
+
+#### Priors from earlier work
 
 From `docs/research/gemini-engram-code-review.md`, on frozen Qwen2.5-0.5B (one model, one seed, n=12):
 
@@ -455,13 +867,13 @@ From `docs/research/gemini-engram-code-review.md`, on frozen Qwen2.5-0.5B (one m
 
 **Prior art on native n-gram memory editing exists.** EngramEdit (2610.10533) edits the natively pretrained n-gram memory of LongCat-Flash-Lite (68.5B total, ~3B active, over 30B in embeddings; 2601.21204). Its abstract says it "jointly updates the shared n-gram embeddings", and it reports that > 92% of new unrelated errors involve updated rows (engram-graft-assessment.md:101). This repo's earlier review reads its B.4.3 as storing edits in exact-n-gram side vectors with the pretrained tables fixed (gemini-engram-code-review.md:148-150). Which mode its headline numbers use is **unverified** here (full text not re-read).
 
-### Oracles (defined)
+#### Oracles (defined)
 
 - **O-site (primary):** one free δ ∈ R^d per fact, shared across positions, added at the PLE-output site (decoder layer 1 input on Flash-Next and Qwen grafts; the graft site on Gemma) at **the same hit positions as the anchor keys**, with the same ρ trust region and the same objective.
 - **O-last (comparability):** one δ at the last subject token only, same site and ρ, for comparison with the earlier result.
-- On Flash-Next, O-site is also the expressivity arm (c) of M2.
+- On Flash-Next, O-site is also the expressivity arm (c) of M7.
 
-### Cohorts
+#### Cohorts
 
 - CounterFact: 2,000 sequential; 500 for ablations. zsRE: 2,000.
 - **SSOR:** CounterFact subjects × other-relation templates, split by template into train (in X_ess) and held-out. Relations the new fact implies (ripple, e.g. country → language) are reported separately from non-implied ones.
@@ -474,7 +886,7 @@ From `docs/research/gemini-engram-code-review.md`, on frozen Qwen2.5-0.5B (one m
 - **Short-subject cohort:** at least 150 subjects each of 1, 2 and ≥3 tokens per tokenizer, crossed with anchor tier.
 - **Same-subject multi-relation:** k = 2..5 edits per subject, the conflict mode tier-1 keys are exposed to.
 
-### Metrics
+#### Metrics
 
 - **Efficacy:** P(new) > P(old) on the rewrite prompt; also top-1 and P(new). Reported as a mean with a Wilson 95% interval.
 - **Generality:** held-out paraphrases never in X_rw (after dedup), **split by whether the subject token sequence is preserved**; novel wordings and the alias/surface cohort reported separately. EngramEdit's 97% is over paraphrases that keep the subject string (engram-graft-assessment.md:96-97), so only the preserved split is comparable to it.
@@ -492,7 +904,7 @@ From `docs/research/gemini-engram-code-review.md`, on frozen Qwen2.5-0.5B (one m
 - **Sequential curves:** early-edit retention on held-out paraphrases, row occupancy, conflicts.
 - Bootstrap 95% CIs throughout.
 
-### Baselines
+#### Baselines
 
 - No edit; in-context ceiling (same run, same prompts); O-site and O-last oracles.
 - **EngramEdit**, verbatim configuration (two-stage δ* then ridge, its η and λ), on every W1 host.
@@ -500,11 +912,11 @@ From `docs/research/gemini-engram-code-review.md`, on frozen Qwen2.5-0.5B (one m
 - **NeuralDB** control, and **GRACE / WISE / MEMOIR** for the sequential runs.
 - ROME/MEMIT/AlphaEdit on graft hosts, and MEMIT/AlphaEdit at small n on Flash-Next (MoE/GDN feasibility **unverified**).
 
-### Native vs graft (controlled)
+#### Native vs graft (controlled)
 
 On Flash-Next itself, install a zero-init editor-init graft **beside** the native PLE at decoder layer 1, with the same KeySpec, orders {2,3}, and output added into all 4 streams (**unverified**: needs an M0 tiny test). Solve the same facts both ways with the same solver code (Adam path). Report the paired difference in efficacy, generality and leakage, normalised by the same-host O-site oracle. This is the only test of "same editor, same results" with the host held fixed.
 
-### Hard invariants (a failure is a bug and stops the run)
+#### Hard invariants (a failure is a bug and stops the run)
 
 - **I1.** Windows that read no edited row are unchanged.
   - On HF: **bitwise**. This held on all tiny proofs.
@@ -513,14 +925,14 @@ On Flash-Next itself, install a zero-init editor-init graft **beside** the nativ
 - **I3.** Rollback restores pre-edit outputs: bitwise on HF; on the serve, under the same pinned conditions and tolerance rule as I1.
 - **I4.** `rows_for` matches the model's lookups on at least 10k positions, including EOS edge cases.
 
-### Serve-transfer checks (P0–P5, from `P/serve/INTEGRATION.md` §5)
+#### Serve-transfer checks (P0–P5, from `P/serve/INTEGRATION.md` §5)
 
 - Row ids, base row bytes and edit transport are bitwise equal between the solve and the serve.
 - Pre-edit top-1 agreement between the solve model and the serve is at least 95%. Otherwise add fp8 activation emulation: the serve's per-token fp8 expert activations have 4.09e-2 relative error per layer (`R/weights/cpu_tier.py:38-40`).
-- Realised ΔNLL / predicted ΔNLL ≥ 0.7 on targets, read through `/ple/score` (§8 M1).
+- Realised ΔNLL / predicted ΔNLL ≥ 0.7 on targets, read through `/ple/score` (§8 M6a).
 - Cache hygiene: warm, then edit, then query must equal a cold run, under the I1 pinned conditions.
 
-### Proposed accept bars (unverified; to be revised after M2)
+#### Proposed accept bars (unverified; to be revised after M7)
 
 All locality bars are read on **held-out** templates.
 
@@ -538,11 +950,11 @@ All locality bars are read on **held-out** templates.
 | Capability retention, hit-conditioned | ≥ 96% at 5k edits (EngramEdit's stability tests run to 5,000) |
 | Alias matcher (Gemma) | false-fire ≤ 0.01 on lexical neighbours; miss ≤ 0.10 on surface variants |
 
-### Ablations
+#### Ablations
 
 λ_KL ∈ {0, 0.0625, 0.25, 1}; anchor tier; per-row vs per-n-gram penalty at equal train fit; in-place vs exact-key overlay (XK mode); ρ and κ; grafts: orders {2,3} vs {1,2,3} (each paired with its lexical-neighbour and SSOR leakage), width d vs 2d, closed-form vs Adam; native vs graft on Flash-Next; Gemma: Flash-Next-format graft vs Gemma-PLE plus aliases vs SWEA.
 
-### Kill criteria
+#### Kill criteria
 
 - **K-native (with attribution).** On Flash-Next, with ρ ≤ 1 and κ ≤ 10, on 50 validity-gated facts, run three arms on the same facts: (a) in-place rows, (b) XK rows, (c) O-site free δ. Kill if the upper 95% Wilson bound of **mean** efficacy for (a) is below 0.5. Then:
   - (c) passes and (a) fails → the cause is hashing or co-tenants; move to XK.
@@ -556,11 +968,81 @@ All locality bars are read on **held-out** templates.
 
 ---
 
-## 7. Compute plan
+## D. Dissection program: Flash-Next (trained with a table) vs grafted hosts (trained without)
 
-### Sizes and per-iteration cost
+Source: `GF/REPORTS.md` "dissection" and its skeptic (the skeptic wins). Scripts: `GF/dissect/` (range reads, row pilot, embedding scale), `GF/skeptic_dissect/` (branch shares, frequency-weighted embedding RMS). Purpose: settle the graft design questions that rows-only ingestion cannot settle by itself — gate, conv/direction branch, output scale and trust region, which n-grams to store, injection site, whether transplanting Flash-Next rows is worth anything — using **forward-only** access to Flash-Next (row range reads, a 2-layer slice, the owner's serve). No backward pass on Flash-Next is needed until M6.
 
-Sizes are exact, from safetensors headers (`P/compute/count.out`). FLOP is **6·active·N**: forward, recompute forward under per-layer checkpointing, and backward. N is the per-iteration token count of §5.1: 251–497 with prefix caching (used), 674–1548 for full prompts. The earlier figure used 4·active·N at N=320 (`P/compute/plan_calc.py:34`), which left out the recompute and did not match §5.1. Activations scale linearly from `P/compute/plan_calc.out`. All per-iteration figures come from `P/review-apply/budget.out` and are **est.**
+### D.1 Mechanics the experiments rely on (checked in code)
+
+- **Zero rows are an exact, full ablation**: `key_proj`/`value_proj` have no bias (q4:1196-1197) and RMSNorm(0) = 0 (eps inside the rsqrt), so e = 0 → output 0 (bit-exact in `P/graft/bf16_noop.out`). Zero-all, zero-2-gram-heads, zero-3-gram-heads, mean-row and shuffled-id ablations are all **numpy-only** on the serve: fill `_host_rows` after the decode at `R/ple/source.py:243`, before the H2D at `:244` (the overlay hook), or remap ids in `begin_rows` (`source.py:227`).
+- **Gate and conv ablations are torch-side** in `Qwen4ExpPLE.compute` (`R/models/qwen4exp.py:421-443`): a boot-time env flag, graph-capture-safe, one restart (about 300 s, `R/weights/ckpt_read.py:5-10`) per variant; owner approval needed.
+- **The gate is one scalar per (token, stream)** — 4 per token — computed from the concatenation of all 16 heads (q4:1240-1241). Per-order effects need leave-one-order-out recomputation.
+- **The gate depends only on what enters layer 1** (`embed(x)` ×4 → layer 0 GDN + MoE → PLE; q4:1278), so gate, value, conv share and output scale can be measured on a **2-layer slice**: Flash-Next layer 0 is 5.19 GB bf16, embedding 1.27 GB, the PLE block without the table 0.066 GB (`P/compute/hdr/*.json`, re-checked by the skeptic).
+- **Scoring.** No teacher-forced path exists today (`R/server/api_server.py:415-420, 1637-1638`); A needs `/ple/score` (M6a). Fallback without engine changes: one `max_tokens=1, top_logprobs=20` request per prefix (NLL censored outside the top 20; pilot only).
+- **Range reads of the public bf16 shards** (`GF/dissect/range_probe.out`, `row_pilot.out`): one 320 B row ≈ 0.20 s serial; 200 rows/s at 48 threads; a contiguous 2,048-row block is one 0.32 s request; multi-range requests are refused (HTTP 416). About 12 n-grams/s, so 5k n-grams ≈ 7 min; the whole-repo 7.7 M rows would take 11–16 h (**est.**; HF rate limits at 10^4–10^5 requests untested), so whole-codebase row reads belong on the owner's Optane through `R/weights/row_table.py` (numpy, int6). The public checkpoint is bf16; the serve uses int6-g32 (median relative error 1.4e-3), fine for statistics.
+
+### D.2 Findings so far
+
+1. **Row coherence vs frequency (pilot G0, `GF/dissect/row_pilot.out`).** Centre each head's row on its head mean and map through the real W_v slice; coherence = mean pairwise cosine over the n-gram's 8 heads (co-tenant noise is independent across heads, the n-gram's own signal is shared). Frequent code/prose 2-grams: 0.150 / 0.194; 3-grams 0.161; count 5–20 code 2-grams 0.017; once-seen 0.003 (2-gram), 0.013 (3-gram); random buckets 0.000. Derived SNR of the summed 8-head value ≈ 8ρ/(1−ρ): 1.4–1.9 for top n-grams, about 0.02 for the long tail. **Flash-Next's rows for locally rare (project-specific) n-grams are mostly co-tenant noise**, so a cartridge should spend rows on n-grams frequent in the project but rare in general, and a Flash-Next → graft transplant is predicted to be worth about 0 (hypothesis; F tests it). Caveats: frequency from a 400k-token local corpus, n = 32–48 per bucket, value path only.
+2. **The conv/direction branch dominates the PLE output** (`GF/skeptic_dissect/branch_share.out`): conv/direct = 1.4, 13.9, 2.7, 1.7 per stream at gate 0.5; it depends only on the direction of v. Consequences adopted in §2.4 (two graft arms) and below (what A can and cannot show).
+3. **Output scale** (`GF/skeptic_dissect/embed_freq.out`): frequency-weighted embedding RMS 0.0038 (Flash-Next) / 0.0138 (27B) / 0.0094 (35B-A3B); Flash-Next's stream-1 PLE output is about 0.04. Uniform-vocabulary sampling doubles Flash-Next's embedding RMS, so the report's "0.6× host embedding RMS ≈ 0.008" calibration is withdrawn. Set the graft scale from S's measured ‖PLE‖/‖X‖.
+4. **Hints only:** the value aligns with lm_head of the next token (z +1.03) almost exactly as much as with the current token (+1.02), so no next-token-specific "direct logit" claim; never-read padding rows have median norm 8e-18 but mean 0.015, so "trained with weight decay" is not shown.
+5. **Placement.** Flash-Next's `ple_layer_ids=[2]` (1-based) is the Engram paper's best single-module site, "Layer 2" (arXiv 2601.07372 §6.2), the same site the grafts use (decoder index 1).
+
+### D.3 Experiments
+
+| ID | What | Where / cost (**est.**) | Measures | Decides |
+|---|---|---|---|---|
+| **G** (first) | Scale G0 to ≈ 5k n-grams per order; frequency from the 1B-token row-load counters (§7) or a public proxy | CPU here (≈ 7 min of range reads) or numpy on the owner's Optane; ≈ 1 day of code | coherence-vs-frequency curve and the crossing frequency f* (coherence ≈ 0.05); 2- vs 3-gram value share (W_v slices 12.3 vs 6.3 Frobenius); row norm vs load | cartridge row policy (spend rows below f*); graft row norm prior; whether F is worth building |
+| **S** (first) | 2-layer Flash-Next slice (embed + layer 0 + PLE), sparse rows for 20–50k tokens of the owner's code + prose | here from a 6.5 GB public bf16 range fetch (≈ 8 GB peak RAM if kept bf16); on the owner's box only with a dequantising loader for the MXFP4 local checkpoint; 1–2 days of code | per token and stream: gate sigmoid(g_s), direct vs conv share, ‖PLE out‖/‖X‖, leave-one-order-out Δgate and Δv; cut by token class, coherence, frequency; within- vs between-n-gram gate variance | graft output scale and ρ; the G-dir arm's α and taps; whether the gate is context selection (needs a calibrated, non-zero W_k init: W_k = 0 is a dead point, `P/graft/calib_grad.out`) or between-n-gram |
+| **A** (after M6a) | Serve ablation sweep through `/ple/score`: none, zero-all, zero-2g, zero-3g, mean-row, shuffle, gate-constant (boot flag), conv-off (boot flag) | owner's serve, forward-only; ≈ 0.5 M tokens per variant at 10–14 min each (single 16k-prompt prefill rates of 1,250–1,430 tok/s, `serve.sh:1145-1148`, are optimistic for 5.6k-token files with full-vocab scoring), + 300 s per boot-flag restart; radix and GDN/conv state flushed between variants; measures the quantised (MXFP4, W4A8) model | ΔNLL per token by class, seen-before, coherence bin | how much a co-trained model depends on its table and where (Engram §6.3: suppressing the table kept 29–44% of factual-QA vs 81–93% of reading comprehension). **Not** a test of the graft's fixed gate: gate-constant only touches the direct term (≈ 7% of stream 1), and conv-off removes most of the PLE output plus a train/test mismatch |
+| D | Downstream reach: per-layer ‖Δh_L‖ zero-rows vs none; logit-lens KL; CKA of Flash-Next's post-PLE layer-1 state vs every layer of the 27B and 35B-A3B | serve debug dump (prefill only) or an HF forward-only session during downtime | | injection site |
+| M | Ridge map from Flash-Next layer-1 inputs (2560) to 27B layer-1 inputs (5120), position-aligned by the shared tokenizer | CPU, hours (27B slice 3.3 GB) | held-out R² | prerequisite for E, F |
+| E | Ingested 27B graft rows vs native rows on the same n-grams: RSA/CKA (map-free) and cos(M·v_FN, v_27B) per frequency bin | CPU minutes after M3 | | whether the graft learns what the native table holds above f*, and something new below |
+| F | Transplant: graft rows `e = 2·W_vᵀ·M·v_FN` (min-norm for G-lin); arms zero / transplant / shuffled / above-f* only / ×0.5, ×1, ×2 | 27B harness, GPU, serve down; 2–12 min per arm | held-out code ΔNLL | a free generic init if positive (predicted ≈ 0) |
+| N | Native cartridge on Flash-Next (= M6b) | downtime, §7 | | the with/without contrast with the same keys |
+
+**Order:** G and S run now, alongside M1–M3 (cheap, feed the graft design directly). A waits for the Flash-Next control plane (M6a) and a graft baseline. D/M/E/F follow M3; N is M6b.
+
+**Decision rules (numeric).**
+
+- **G-dir is mandatory in M2/M3** if S confirms conv ≥ 2× direct on the median token in ≥ 2 of 4 streams (the skeptic's real-weight check already shows it on all 4 at gate 0.5).
+- **Calibrated gate arm** if S finds ≥ 50% of gate-logit variance *within* n-grams (context selection); otherwise the fixed 0.5 gate stays.
+- **Row policy:** if G finds f* and project rows below f* carry ≥ 70% of the M2 cartridge's E1 gain, the default row policy becomes "count ≥ 2 in project, below f* in general".
+- **Transplant F is dropped** if it reaches < 10% of the trained cartridge's E1 gain at its best scale.
+
+---
+
+## 7. Compute plan (local-first, wall-clock)
+
+Everything runs on the owner's machine. Cloud is at most an optional speed-up (footnote at the end of this section). All throughput and wall-clock figures are **est.** unless a measurement is cited; the efficiency brackets are replaced by M2's first-layer measurement.
+
+### 7.1 The machine and its constraints
+
+- **Owner's machine.** 2 × 16 GB AMD RDNA4 (gfx1201): card 0 RX 9070 XT, card 1 RX 9070 (fork `CLAUDE.md`). Measured hipBLASLt dense bf16 115.3 TF/s at M=2048 on card 0 (`docs/journal/BLOCKWISE_FP8_BRIEF_2026-09-22.md:167`); PCIe H2D 28.93 / 14.48 GB/s (`R/weights/cpu_tier.py:6`); DDR ceiling 57 GB/s (`cpu_tier.py:420`). 96 GB RAM: about **20 GB MemAvailable while the Flash-Next serve runs** (it pins a 53.75–55.9 GiB host arena), all of it when the serve is down; host headroom beside a 35B-A3B or 27B serve is likely larger (unmeasured). The Flash-Next n-gram table and swap live on an Optane drive; checkpoints on other NVMe.
+- **The GPUs are not in constant use; the serve can be stopped for jobs.** A Flash-Next stop + boot costs about 300 s (`R/weights/ckpt_read.py:5-10`, 300.1 s; boots of up to 618 s were recorded earlier, INTEGRATION §4.2). Every GPU job goes through `gpu-lease -n N -- <cmd>` (fork `CLAUDE.md:3-40`).
+- **CPU beside a running serve:** 4 cores pinned away from the serve's, `systemd-run --scope -p MemoryMax=15G -p MemorySwapMax=0`, NVMe O_DIRECT reads, no Optane, no GPU (INTEGRATION §4.2(A)). CPU rates here were measured on this sandbox's Sapphire Rapids (AMX); the owner's Zen 4 is probably slower.
+- **This container** (4 CPUs, 15 GB RAM, no GPU, about 25 GB free disk): M0 and M1 (the 0.5B proxy), §D's G and S experiments, row censuses, packaging. Measured: the 0.5B graft trains at about 3.2 s per 512 tokens on 4 idle threads (`S1/verify-experiment/verify.stdout`); bf16 GEMM 2,235 GFLOP/s (`P/redteam-feasibility/cpu_flops.out`). The container is **shared**: during the Stage-1 review a sibling job used 227% CPU and fp32 GEMM fell to 7.8 GFLOP/s, ruining a timing run (`S1/rt-feas/cpu05b.out`), so CPU wall-clock here is a lower bound. A 0.5B fp32 forward + backward at 4,096-token windows was reported OOM-killed in 15 GB (the run ended without output; not reproduced), so 4k windows need activation checkpointing.
+
+### 7.2 Stage 1 and 2 on each host
+
+Inputs: graft hosts from the skeptic verdict in `GF/REPORTS.md` (graft-hosts-local; includes the ~180 s / 135 s per 1M tokens of dequant the first estimate missed; 27B efficiency capped at about 35% of peak). **The Qwen GDN-host GPU figures assume a GDN backward at kernel speed** (the old "GDN multiplier 1.05–1.5"); with the fork's pure-torch reference backward as it stands, add 0.44–0.89 h (35B) / 0.71–1.42 h (27B) per 1M tokens (§4.6; **est.**), shown in brackets; Flash-Next and Gemma from `S1/local-compute/local_cost.out` (not skeptic-checked); cartridge arithmetic in `S1/designrev/budget_local.out` (3 epochs over the 1.22 M-token Split-A train set, +0.5× anchor KL tokens, + 2 × 300 s serve stop/boot); increments from `S1/ingest-algo/walltime.out`.
+
+| Host | GPU, serve stopped: per 1M training tokens | **One cartridge, 3 epochs (minisgl `python/`)** | CPU beside the serve: per 1M tokens | Per commit (median–p90), GPU incl. stop/boot | Fits? |
+|---|---|---|---|---|---|
+| **Qwen3.6-35B-A3B graft** (AWQ, both cards) | **0.1–0.45 h** [reference GDN bwd: 0.54–1.34 h] | **0.7–2.6 h** [3.1–7.5 h] (skeptic: 0.6–2 h without anchors/boot) | ≥ 11–35 h (a cartridge takes **2.5–8 days**: 60.4–192.2 h with anchors, `S1/designrev/budget_local.out` line 17) | 0.17–0.31 h | 15.0 / 13.8 GB per card at 2k-token microbatches, ≈ 16.6–18.7 GB at 8–16k (cap 16.82; §4.6, est.) → mixed chunking required; rows + Adagrad 1.25 GB (count ≥ 2, all files) to 4.0 GB (all) in host RAM |
+| **Qwen3.8-27B graft** (Quark MXFP4, both cards) | **0.5–1.0 h** [1.2–2.4 h] | **2.9–5.7 h** [6.8–13.5 h] (skeptic: 2–4.5 h without anchors/boot) | 62–205 h (not practical) | 0.2–1.1 h | 12.1 / 13.2 GB per card **only if the GDN projections stay MXFP4-packed** (§4.6; a bf16 copy adds ≈ 8.2 GB); rows 3.1–9.8 GB |
+| Flash-Next native (both cards, MXFP4 experts streamed from pinned host RAM, 8,192-token batches) | 0.15–1.0 h (9–59 min) | 1.0–5.6 h; **0.8–4.8 h of downtime** in `local_cost.out`'s recipe | 27 h – 4.7 d | 0.18–0.53 h | experts 59.77 GiB + trainer 1.3–4.9 GB in 96 GB; data-transfer bound |
+| Gemma 4 E4B native (one card) | 0.12–0.32 h (7–19 min) | about 0.6–2.6 h | 14 h – 2.3 d | 0.17–0.34 h | fits one card; the other card stays free |
+| gemma-4-26B-A4B / 31B grafts | 0.07–0.35 h / 0.4–1.8 h | 0.6–2.6 h / 3.4–17 h (`walltime.out`, unreviewed) | 14 h – 2.3 d / 4–15 d | — | later (M8) |
+
+So: **once the GDN backward is fixed (§4.6), a codebase cartridge on the 35B-A3B is one evening of serve downtime**, the 27B one night, and a 6-configuration sweep on the 35B fits in one or two evenings. With the reference backward a 35B cartridge is 3.1–7.5 h (over M2's 4 h bar) and a 27B one 6.8–13.5 h (reaching M3's 12 h demotion trigger), so the fix is an M2 prerequisite. These are training hours; M2 also needs several days of engineering first (M2-0, §8). The CPU-beside-the-serve path is for small increments on the 35B graft only.
+
+**Evaluation points.** One Stage-1 evaluation point is about 0.65–0.7 M tokens (Split A + Split B in context + R1 + R2; R3 adds about 0.3 M). In ngram-memory's process with the serve stopped: about 1–3 min on the 35B, 4–19 min on the 27B, 1–9 min on Flash-Next (`local_cost.out`, unreviewed). Through a served graft (after M4) the 35B prefill is about 7,000 tok/s (`serve.sh:149`), about 2 min per point. Through the Flash-Next serve, scoring needs `/ple/score` (M6a) and runs at roughly 1,250–1,430 tok/s for single long prompts, so 8–20 min per point including the overheads in §D.3.
+
+### 7.3 Stage 3 per-fact solves (later)
+
+Sizes are exact, from safetensors headers (`P/compute/count.out`). FLOP is 6·active·N (forward, recompute under per-layer checkpointing, backward), with N the per-iteration token count of §5.1: 251–497 with prefix caching (used), 674–1548 for full prompts (`P/review-apply/budget.out`).
 
 | Target | Weights (bf16) | Table | Active params / token | TFLOP / iter, prefix-cached N | TFLOP / iter, full N | Ckpt activations (GB) |
 |---|---|---|---|---|---|---|
@@ -573,96 +1055,72 @@ Sizes are exact, from safetensors headers (`P/compute/count.out`). FLOP is **6·
 
 Weights, not activations, decide the hardware. The table never needs to be resident: a batch reads about 5 KB of rows per token.
 
-### Per-venue plan
+**Iterations per solve: 20–30**, not the 100–300 the 2026-11-09 cost table assumed. The audited EngramEdit stage 1 is 20 Adam steps plus a closed-form ridge and about 2 forward-only checks, about 21–25 iteration-equivalents (INTEGRATION §4.2). M7 logs NLL per step on the first solves and replaces this.
 
-> **Open conflict, to be settled by the owner (2026-11-09).** [`serve/INTEGRATION.md`](serve/INTEGRATION.md) v2
-> (verified against minisgl `df29117`) recommends the **local CPU solve beside the serve** as the venue for the *first*
-> native experiment: ngram-memory's own MXFP4 loader, `MemoryMax=15G`, 4 cores, 54–115 s per iteration, 19–40 min for
-> one edit, 3.2–6.9 min per edit when 16 facts × 4 prompts are batched in RAM. This document instead treats local CPU
-> streaming as **steady-state only** (below, venue (b)) and puts the first native solve in the cloud (M2-lite, then (d2)).
-> The two documents estimate different per-iteration rates (32–91 s here, 54–115 s there), because they make different
-> kernel assumptions.
->
-> What settles it:
-> - the owner's answers on free memory (`MemAvailable` vs `MemFree`, about 20 GB stated);
-> - core count and acceptable slowdown;
-> - whether the EP arm leaves the cards to the serve;
-> - an M0 measurement of one decoder layer's forward+backward on CPU.
->
-> Until then, M2-lite in the cloud stays the cheapest experiment that can fire K-native, and the local CPU solve is
-> its no-cloud alternative.
+| Host | Venue | Per edit (21–25 iterations) | 2,000-fact cohort |
+|---|---|---|---|
+| 35B-A3B graft | GPU, serve stopped | 10–30 s (0.5–1.5 s/iter; skeptic: no script, re-derivation agrees) | 5.6–17 h (`budget_local.out`) |
+| 35B-A3B graft | CPU beside the serve | 12–38 min (expert dequant dominates) | not practical; use nightly batches of a few dozen |
+| 27B graft | GPU, serve stopped | 10–40 s | 5.6–22 h |
+| Flash-Next native | (A) CPU beside the serve, prefix-cached, batched | 19–40 min single; 3.2–6.9 min/edit at 16 × 4 in RAM; 2.2–4.8 min at 32 × 4 with NVMe-spilled prefix state; 70–200 edits per 8-h night (INTEGRATION §4.2–4.3) | 7–20 nights |
+| Flash-Next native | (B) both GPUs, serve stopped | 3–10 s/iter; 1–2 min single, seconds per edit at K = 32 (INTEGRATION §4.2) | one or two downtime windows |
 
-- **This container** (4 CPUs, 15 GB RAM, no GPU, about 27–30 GB free disk): M0 — all tiny proofs, the full pipeline, and patch round-trips through the HF adapter and the overlay prototype (`P/serve/ple_path/ple_overlay.py`).
-  - Measured CPU rates: bf16 GEMM 2,235 GFLOP/s; bf16 gated-MLP forward plus input gradient 1,457 GFLOP/s (`P/redteam-feasibility/cpu_flops.out`, 4 threads). The end-to-end HF rate (GDN torch fallbacks, small ops) is **unmeasured**. M0 measures one E2B-shaped decoder layer forward+backward at the corrected N. Use `OMP_NUM_THREADS=1` when the CPUs are shared.
-  - Optional: Gemma E2B real weights (9.3 GB text-only fetch, **needs the owner's go-ahead**), est. 8–47 s per iteration with prefix caching and 21–147 s with full prompts, assuming 10–30% of the measured MLP rate (`P/review-apply/budget.out`). This is the only real-weights native proof possible here.
-- **Owner, 2×16 GB RDNA4 (ROCm).** Every job must go through `gpu-lease -n N -- <cmd>`, because the cards are shared across repos (fork `CLAUDE.md:3-30`).
-  - Gemma E4B native fits one card (about 9.4 GB body + up to 0.6 GB activations at the corrected N, table on CPU; est. 0.3–1.2 s per iteration).
-  - Grafted hosts at about 4.5 bits per weight (15–21 GB) need both cards and a differentiable dequant matmul on ROCm (**unverified**).
-  - **Conflict:** the qwen4exp serve arm (`R/../../tools/serve.sh:823`) now defaults to `EP=1`, `EP_SPLIT=2:1` and a 40 GB host weight-offload clamp (`serve.sh:1145-1158`). Its pinned host arena is 53.75 GiB, and boots failed when other work held about 8 GiB (`serve.sh:1149-1153`). The serve very likely occupies both cards, so local GPU work needs serve downtime.
-- **Owner's Flash-Next serve: forward-only.** It runs under `torch.inference_mode` with graph capture (`R/scheduler/scheduler.py:1369`).
-  - It serves the validity gate, evaluation, P0–P5 and forward-only acceptance, and applies patches through the overlay.
-  - The only measured headroom, 11.1 GiB available with 33.9 GiB swap in use, is a **TP=2** measurement (`serve.sh:1119-1123`). The EP arm's headroom is unmeasured (owner question 2). No concurrent local HF solves.
-  - **Scoring path.** At HEAD the API returns logprobs only for generated tokens, top-N capped at 20, on non-streaming requests (`R/server/api_server.py:415-420`). `echo` (prompt logprobs) is rejected (`api_server.py:1637-1638`). So teacher-forced NLL, multi-token P(o_new) vs P(o_old), full-vocabulary KL and P4 need the `/ple/score` control (M1 deliverable).
-  - **Eval time budget** (est.). Scoring is prefill-only: about 1,250–1,430 tok/s at 16k-token prompts on the EP arm (`serve.sh:1145-1148`), so 2,000 facts × ~50 prompts × ~25 tokens ≈ 2.5 M tokens ≈ 30 min per evaluation point. Generation is 12.9 tok/s at TP=2 (`serve.sh:692-694`) or about 20 tok/s with EP (`serve.sh:1145-1148`), so 2,000 × 100-token generations ≈ 2.8–4.3 h per evaluation point, each behind a drain-and-flush. Generation-heavy capability evals therefore move to the cloud solve model wherever P3 parity holds.
-- **Flash-Next solve venues** (`P/serve/INTEGRATION.md` §4.2, `P/serve/v2-solve-venue/cost_model.txt`; all est.):
-  - **(M2-lite) stock HF bf16, cloud.** The table sits in 31 table-only files plus 2 mixed ones; the non-table files total 255.7 GB (`P/redteam-feasibility/hub_quant.out`). 4× H100 SXM 80 GB or 2× H200 hold the bf16 body, with table rows read through `ShardMmapStore` or HTTP range. No NVFP4 expert module is needed.
-  - **(d2)** 1× cloud H200, quantised body dequantised per layer: 1.1–3.2 s per iteration at 256 tokens, 1.5–4.0 s at 1024 (cost_model column C); the serve stays up. Needs the 2–4-day NVFP4 expert module plus loader (INTEGRATION.md §4.2). The body can come from the public `RadixArk/Qwen3.8-Flash-Next-NVFP4` (135.2 GB including a 51.2 G-element F8_E4M3 table, so ~84 GB body). Table rows are range-fetched on the pod from the repo the owner serves (e.g. int6-g32 `tcclaviger/...`, 120.3 GB), if that repo is public (owner questions 3–4). Otherwise rows are shipped from home.
-  - **(f)** Local downtime, both cards, experts in RAM: 3.6–30 s per iteration plus about 10 min reboot (`R/weights/config.py:46`).
-  - **(b)** Local CPU streaming beside the serve: 32–50 s per iteration at 256 tokens and 57–91 s at 1024 with a native kernel (cost_model column A-native); overnight steady state only.
-  - Expert codec: INTEGRATION.md says NVFP4; `P/serve/v2-solve-local/bench_dequant2.T4.txt` benchmarks MXFP4 bit-exact against the fork; confirm. A dequantised-expert module matched dense experts exactly (`P/serve/v2-solve-venue/autograd_coverage.txt`).
-- **Corpus row-load pass (§5.3).** Measured at 0.21 M tok/s per process for the vectorised 16-head hash plus `np.add.at`: 1.3 h per 1B tokens per core, 13 h for 10B, before tokenisation (`P/redteam-feasibility/count_bench.out`). 10B tokens of raw text (~40 GB) exceeds the free disk here. The Gemma key instance needs a second counter set.
-  - Plan (M0/M3 task): stream 1B tokens here on 4 processes with per-process counters (~5 GB RAM) and a sort-and-bincount kernel, est. under an hour. Run 10B on cloud CPU only if M3 shows the 1B percentiles are unstable.
-- **Cloud, RunPod** ($/GPU-hour community/secure, read 2026-11-09 from a page summary; reconfirm): 1× A100 80 GB $1.39/$1.79; RTX PRO 6000 96 GB $1.69/$2.49; 1× H200 $3.59/$5.29; 4× H100 $10.76/$15.96. Volume storage $0.10/GB/month.
+### 7.4 Venue decision (replaces the 2026-11-09 "open conflict" note)
 
-### Cost per milestone (est., `P/review-apply/budget.out`)
+The conflict was between INTEGRATION.md (first native solve on the local CPU beside the serve) and this document (cloud M2-lite first). **Resolved in favour of local** by the owner's direction: all stages run on the owner's machine. Concretely: Stage 1/2 builds and cohort-scale solves use the GPUs in serve-downtime windows; small Stage-2 increments (35B graft) and single native per-fact solves use INTEGRATION's option (A) beside the serve; forward-only checks use the serve itself. The cloud M2-lite arm is removed from the milestone path (footnote). The per-iteration disagreement (32–91 s here vs 54–115 s in INTEGRATION) is settled the same way as everything else: by the first measured layer on the owner's machine (M2 for grafts; M6/M7 for Flash-Next), and INTEGRATION's numbers are used meanwhile.
 
-Cost = solves × iterations/solve (100–300, **assumed**) × s/iteration × $/h, plus setup hours. The s/iteration for graft hosts on A100 (0.3–2.0 s) and for 4× H100 bf16 is **assumed**.
+### 7.5 First measurements on the owner's machine (they replace the assumed brackets)
 
-| Milestone | Venue | Solves | GPU-h | $ |
-|---|---|---|---|---|
-| M2-lite (10 facts) | 4× H100 bf16 | 10 | 1.8–4.0 | 19–64 |
-| M2 (3 arms × 2 λ × 60 facts) | H200 (d2) | 360 | 12–97 | 43–513 |
-| M2g (2 hosts × 3 arms × 50) | A100 | 300 | 3–51 | 4–90 |
-| M3 native (150/length × 3 lengths × 2 tiers) | H200 (d2) | 900 | 29–241 | 102–1,275 |
-| M3 graft (450 × 4 λ × 2 orders) | A100 | 3,600 | 31–601 | 42–1,075 |
-| M3 native-vs-graft on Flash-Next | H200 (d2) | 100 | 4–28 | 15–146 |
-| M4 E4B (200 × 2) | A100 | 400 | 4–67 | 5–120 |
-| M5 (2 formats × 2 hosts × 200) | A100 | 800 | 7–134 | 10–240 |
-| M6 sequential 5k + re-solves (~1.5×) | H200 (d2) | 7,500 | 230–2,001 | 826–10,585 |
-| **Total** | | | | **≈ $1.1k–14k** + storage (~$15/month for 150 GB) |
+1. **(M2-0)** One real-size 35B-A3B decoder layer of each kind (GDN, attention, MoE), loaded from safetensors with the custom AWQ unpack, forward + input-gradient backward on gfx1201, with `gdn_hip` (widened to `Qwen3_5MoeGatedDeltaNet`, §4.6). Includes **a GDN timing at B=4, T=4096 on one layer, forward and backward**, with the reference backward and with the fix, and **per-card peak VRAM at the real chunk size** (4k GDN/attention pieces, 8–16k MoE chunks) at the planned layer split.
+2. Whether `torch.nn.functional.grouped_mm` runs on gfx12; otherwise a chunked bmm fallback.
+3. The fp8-activation gap between the W4A8 expert serve and a bf16-activation training forward (top-1 agreement ≥ 95% or add fake-quant; §6.B P-checks).
+4. Both cards streaming from host at once vs the 57 GB/s DDR ceiling (Flash-Next only).
+5. Decode and prefill overhead with the graft (M4), and PLE under EP.
 
-The earlier "$60–120 campaign" was wrong by more than an order of magnitude. M6 dominates the cost. The main levers are fewer iterations per solve (measured in M2-lite), batching facts per iteration, and running most of M6 on a graft host with only a 2k subset on Flash-Next.
+### 7.6 Corpus row-load pass (§5.3, §I.1)
 
-### Questions for the owner about the Flash-Next serve
+Measured at 0.21 M tok/s per process for the vectorised 16-head hash plus `np.add.at`: 1.3 h per 1B tokens per core, 13 h for 10B, before tokenisation (`P/redteam-feasibility/count_bench.out`). Plan: 1B tokens on 4 processes with per-process counters (about 5 GB RAM) and a sort-and-bincount kernel, est. under an hour on the owner's CPU; 10B only if the 1B percentiles are unstable. The Gemma key instance needs a second counter set. These counters feed ω_j (§I.1), RowSolve's `w_freq` (§5.3) and §D's frequency axis.
 
-1. **Engine.** Is the serve `patcarter883/minisglang-rdna4`, and at which commit (local HEAD is `df29117`)? Has anything changed in `R/ple/source.py` (`finish_rows`), `graph_capture.py`, `radix_cache.py` or `_process_one_msg`?
-2. **Hardware and topology.** Which arm runs: EP=1 with `EP_SPLIT=2:1` (the current default) or TP=2? What are RAM, swap and NVMe, and what do `free -g`, `swapon --show` and `arc_summary` show under load on that arm?
-3. **Table codec.** fp8 E4M3 with a global scale, or int6-g32? What is the exact scale and any `scale_override`? Is `MINISGL_PLE_META_FILES` set? Where does the table live (mmap from NVMe, with the ZFS ARC)? Is the served table file a public HF repo (so rows can be range-fetched on a cloud pod)?
-4. **Body.** Is the expert codec NVFP4 or MXFP4, and which checkpoint and HF commit are served? Which tokenizer and chat template?
-5. **Caches.** Is `--gdn-radix` on, and what is `max_rec_snapshots`? Is MTP speculative decoding on? Is traffic single-user, so drain-and-flush on every edit is acceptable?
-6. **Control plane.** Is it acceptable to add a `/ple/*` control plane, including the forward-only `/ple/score` endpoint, behind `MINISGL_PLE_EDIT=1` and an overlay directory `MINISGL_PLE_OVERLAY`? Should edits persist across restarts?
-7. **Hidden states.** Can the serve export layer-1 hidden states (for an optional value map)?
-8. **Solve venue.** Is a cloud solve (M2-lite on stock bf16; then (d2) with an ~84 GB body download) acceptable, or scheduled downtime of about 10 min plus the session?
-9. **Table placement.** Under the running arm, is the PLE table replicated per rank, column-sharded or row-sharded? This decides how the overlay is sliced and what the per-rank `list()` hash covers.
+### 7.7 Questions for the owner
+
+1. **Engine.** The serve is `patcarter883/minisglang-rdna4` (confirmed). Is the running build still `df29117`, and has anything changed since in `R/ple/source.py` (`finish_rows`), `graph_capture.py`, `radix_cache.py`, `qwen3_5.py` or `_process_one_msg`?
+2. **Hardware.** `free -g`, `swapon --show` and `arc_summary` under load with (a) the Flash-Next serve and (b) the 35B-A3B serve. Which arm runs by default for each (EP or TP)?
+3. **Downtime.** Acceptable serve-downtime windows (an evening for a 35B cartridge, a night for the 27B), and whether the 35B serve may run on one card while a job uses the other. Note that the AWQ 35B checkpoint is 24.97 GB (22.5 GB of body without embeddings) against one 16 GB card, so a one-card serve would run host-offloaded at PCIe-bound speed (est. far below the 102.6 tok/s EP serve); one-card 35B training with experts streamed from host is an option in `S1/local-compute/local_cost.out`.
+4. **Corpus.** Which repos to ingest after minisgl, and which file types and framings match the owner's agent traffic (bare files vs `cat -n` output; §I.4 step 5)? Any paths that must never be ingested (secrets)?
+5. **Flash-Next table codec and body** (for M6): fp8 E4M3 global scale or int6-g32, any `scale_override`, `MINISGL_PLE_META_FILES`; expert codec (MXFP4 vs NVFP4), HF commit, tokenizer and chat template.
+6. **Caches.** `--gdn-radix`, `max_rec_snapshots`, MTP on/off for each serve; is traffic single-user, so a per-namespace flush (and, for Flash-Next v1, drain-and-flush) is acceptable?
+7. **Control plane.** May we add `/ngram/*` (cartridge load/unload/overlay/list/drop_ns) to the qwen3_5 serve and `/ple/*` (incl. the forward-only `/ple/score`) to the Flash-Next serve, behind env flags, with authentication? Should cartridges persist across restarts?
+8. **Hidden states.** Can the serve export layer-1 hidden states (for §D's D and M experiments)?
+9. **Table placement** on the Flash-Next serve: replicated per rank, column- or row-sharded?
+
+### Footnote: cloud (optional speed-up only)
+
+Nothing in the plan needs the cloud. It could shorten hyperparameter sweeps on the 27B/31B grafts or a Flash-Next per-fact cohort. RunPod prices read 2026-11-09 from a page summary (reconfirm): 1× A100 80 GB $1.39/$1.79 per GPU-hour (community/secure); RTX PRO 6000 96 GB $1.69/$2.49; 1× H200 $3.59/$5.29; 4× H100 $10.76/$15.96. The 2026-11-09 per-fact campaign table ($1.1k–14k, assuming 100–300 iterations per solve) rescales at **20–30 iterations per solve** to about **$0.2k–1.4k** (low end ×0.2, high end ×0.1, setup hours not rescaled; `S1/designrev/budget_local.out`), of which the 5k sequential run is $165–1,058. Cloud Flash-Next options remain as INTEGRATION §4.2 (C): 1× H200 with the MXFP4 body resident, 1–5 s per iteration; prompts leave the machine.
 
 ---
 
-## 8. Milestones
+## 8. Milestones (re-sequenced 2026-11-10: grafts first)
+
+Order: M0 → M1 → M2-0 → M2 → M3 → M4 → M5, with the dissection track (§D) alongside from M0; M6 (Flash-Next native) and M7 (Stage-3 online per-fact edits) later; M8 Gemma, M9 scale. Criteria IDs (E1, MEM, R1–R3, C1, NG…) are defined in §6.A.7; invariants I1–I4 and P-checks in §6.B. Wall-clock is **est.** (§7).
 
 | M | What | Where | Pass | Kill / stop |
 |---|---|---|---|---|
-| **M0** | Package skeleton (§3.1) with `requirements-dev.txt` (pytest, pytest-xdist). Port the P/ proofs into `tests/`: hashing parity (I4) against real buffers; native locality, decode and gradient on tiny qwen4_exp; graft no-op, decode, padding and gradient on tiny qwen3_5, qwen3_5_moe and gemma4 (26B- and 31B-like); graft built **without** `Qwen4ExpTextConfig`; unigram-head subclass (no-op, gradient, heads 0–15 row-id parity); graft-beside-native on tiny qwen4_exp; graft `crop()` / speculative-decode test; Gemma PLE locality, alias, and the corrected editor-init (post-norm weight nonzero); ledger rollback with overlay materialisation; `ngram-edit/v1` round-trip HF adapter ↔ overlay prototype with bitwise equal logits. Copy small fixtures (headers, hash buffers, reference outputs) into `tests/fixtures/`; replace the `.pt` blobs with `scripts/fetch_fixtures.py` (pinned repo + commit + byte ranges); vendor `R/ple/hashing.py` at a recorded commit or skip cleanly. `scripts/fetch_rows.py` HTTP-range reader. Count CounterFact prompt tokens to replace the illustrative N_fact. Start the 1B-token row-load count. | this container | All invariants bitwise as in P/ outputs; default suite under 10 min on 4 CPUs (measured pieces sum to about 280 s serial, `P/redteam-feasibility/times.txt`); solver proofs (v3 took 273 s) marked `slow` and excluded | none (engineering) |
-| **M1** | **First write into the REAL Flash-Next table, through the owner's serve, forward-only.** Overlay patch to `R/ple/source.py:242-244`, drain-and-flush, and a forward-only `/ple/score` (token ids in, full log-softmax at named positions out). Run P0–P2 against the deployment's files. Apply a *synthetic* diff (random direction, norms 0.1×/1×/10× row norm) on the rows of a chosen 2-gram, then measure: I1 on 200 prompts that do not read it; ΔNLL / KL on prompts that do, via `/ple/score` (the real conv-saturation curve); I3 after revert; P5 cache hygiene. All at bs=1, sequential, fixed chunk size, against a no-edit control under identical conditions. | owner's serve (forward-only); patch built here | I1, I3 and P5 under the §6 serve rule (bitwise where the control is bitwise, else within its measured noise floor; stated); `/ple/score` matches HF on a tiny or shared prompt set; dose-response curve recorded | If I1 or P5 fails: engine integration bug; fix before any solve |
-| **M2-lite** (parallel with M1) | 10 validity-gated facts, tier 1, on stock HF bf16 Flash-Next in the cloud, with arms (a) in-place, (b) XK and (c) O-site. Measures iterations per solve. | 4× H100 or 2× H200, stock HF | Efficacy of (a) ≥ 0.9 | K-native can fire here |
-| **M2** | **Native fact solve on Flash-Next.** 50 validity-gated CounterFact facts, tiers 1 and 2, λ_KL ∈ {0, 0.0625}, three arms (a)/(b)/(c). Run P3 and P4; ship deltas home; apply through M1's path; evaluate on the serve via `/ple/score`. | (d2) 1× H200 cloud, or (f) local downtime | Mean efficacy (a) ≥ 0.9; subject-preserved generality ≥ 0.6; realised/predicted ≥ 0.7; I1 holds | K-native (with attribution), K-transfer |
-| **M2g** (parallel) | Real-weights solver validation on a cheap graft host: Qwen3.6-35B-A3B, then Qwen3.8-27B, with Flash-Next keys; Adam and closed-form paths. Includes the multimodal-class path check, and re-uses M2's edit specs (keys transfer). Optional: fit the value map M from paired layer-1 activations and measure the warm-start gain. | RunPod RTX PRO 6000 / A100 | I1 and I2 on real weights; efficacy ≥ 0.9; within 0.1 of the O-site oracle | K-graft |
-| **M3** | Leakage, short subjects and native-vs-graft: held-out SSOR, lexical neighbours, NS+, alias/surface cohort, short-subject cohort per tier and length, the λ_KL sweep, tier ablation, unigram-order grafts (with their leakage), per-row vs per-n-gram penalty at equal fit, and the controlled native-vs-graft comparison on Flash-Next. | same venues as M2 / M2g | Locality bars of §6 on held-out templates; 1-token generality ≥ 0.6 (graft) | K-leak, K-native-short |
-| **M4** | Gemma E4B native (W2) with aliases: 200 facts; layer selection 0–22; matcher false-fire/miss rates; SWEA baseline. | 1× RDNA4 card (during serve downtime, via `gpu-lease`) or cloud A100; E2B on CPU here as a fallback (needs the owner's go-ahead) | Efficacy ≥ 0.9; matcher bars of §6; locality bars on lexical neighbours; row-norm trust region respected; beats SWEA on generality at equal locality | Efficacy < 0.5 at the trust region: Gemma PLE is not a fact store |
-| **M5** | Gemma 26B/31B grafts: Flash-Next-format (Gemma keys) vs Gemma-PLE plus aliases vs SWEA, A/B/C. | RunPod A100 | Pick the format with the better generality at equal locality (matcher errors counted against the alias format) | K-graft for both formats |
-| **M6** | Scale: sequential 100 → 2k (→ 5k, 10k) edits with conflict re-solving; same-subject multi-relation cohort (k=2..5); a stress run at ≥ 1e4 anchors with real corpus loads; hit-conditioned capability retention; GRACE/WISE/NeuralDB baselines. | cloud (solve; mostly on a graft host) + serve (eval) | Early-edit retention on held-out paraphrases ≥ 0.8 at 2k; multi-relation retention ≥ 0.8; hit-conditioned capability ≥ 96% at 5k | K-scale: fall back to the exact-key overlay (XK mode) if M2 attributed failures to hashing |
-| **M7** | Steady-state serve integration: targeted radix detach plus epoch guard, persistence, `/ple/list` per-rank hash agreement (P6), batched edits with forward-only acceptance. | owner's serve | P5 holds with targeted detach equal to drain-and-flush; no serve regression | — |
+| **M0** | Package skeleton (§3.1) with `requirements-dev.txt`. Port the P/ proofs into `tests/`: hashing parity (I4) against real buffers; native locality/decode/gradient on tiny qwen4_exp; graft no-op, decode, padding and gradient on tiny qwen3_5, **qwen3_5_moe** and gemma4; graft built without `Qwen4ExpTextConfig`; **G-dir arm** no-op, decode-state and gradient tests (§2.4); unigram-head subclass; graft-beside-native on tiny qwen4_exp; graft `crop()`; Gemma PLE editor-init; ledger rollback; `ngram-edit/v1` + cartridge manifest round-trip HF adapter ↔ overlay prototype with bitwise equal logits. `ingest/` pipeline on the minisgl corpus: blob reader, secret scan, dedup, Splits A/B, framings, windows with true history; row census reproduces `S1/ingest-algo/count_rows.out` (7,555,967 rows) and the 11,405/11,405 HF stub parity. Fixtures + `fetch_fixtures.py`; vendored `R/ple/hashing.py`. Start the 1B-token row-load count. | this container | All invariants bitwise as in P/; census exact; default suite < 10 min on 4 CPUs; slow solver proofs marked | none (engineering) |
+| **M1** | **Proxy ingestion, Qwen2.5-0.5B graft (first data point).** Done once (§I.8): at the fixed context E1 −0.52% [−0.67, −0.33] with stdlib +0.58% (cold 512-token windows: −1.14% / +0.51–0.83%); the pruning frontier tops out at ≈ 0.3% gain for retention-safe rows. **This is the number M1b must beat, not 1.1%.** **M1b** (pre-registered grid; selection on Split-A dev, one test read; Split A on the Flash-Next-style KeySpec over the Qwen2.5 vocabulary; activation checkpointing for 4k windows): about **8 trained arms, one seed, G-lin unless stated**, one factor at a time — count ≥ 2 + ω_j + KL anchors at ρ = 0.01 (base arm), the same at ρ = 0.003 and 0.03, enrich ≥ 4 at the best ρ, G-dir at the best setting, a **foreign-repo cartridge** and a **train-time key-shuffle** arm (C1), LoRA all-linear r=16; eval-only: base, n-gram/cache-LM interpolation, RAG-BM25 1k/4k, kNM-lite, NGM, eval-time permuted keys, constant bias; the headroom number (§I.3); Split-B scoring of the chosen arm. Deferred: second seed, LoRA r=48, HumanEval/MBPP (to M4, or batched generation here if time allows). | CPU here: ≈ 45–65 min per trained arm uncontended, so ≈ 6–9 h of training plus ≈ 8–10 h of eval-only conditions (RAG 4k ≈ 3× an evaluation point) — **about one day**, more when the container is shared; or one RDNA4 card in a few hours | Gates; operating-point decision of §6.A.7 with these bars: E1 ≥ 1.5% (lower bound > 0.5%) **with** R2 ≤ +0.5% and R1 ≤ +0.2%, and the operating point lies **above the pruning frontier** (more E1 than the frontier at equal R2); C1 and NGI pass; REG; report E2, E5, MEM | no configuration with R2 ≤ +1% reaches E1 ≥ 1% (lower bound > 0.5%) at the fixed context → rows-only layer-1 ingestion does not transfer from the proxy; stop before M2 and report. In the 0.5–1% zone: one Stage-1b (distillation-with-context) arm, then decide |
+| **M2-0** | **One-layer feasibility on the owner's machine** (written in M0, run before any M2 build): custom AWQ loader from safetensors (experts packed; gptqmodel-free), one real 35B layer of each kind (GDN, attention, MoE) forward + dX backward with timings and per-card peak VRAM at the real chunk sizes; GDN at B=4, T=4096 with the reference backward and with the fixed backward (§4.6); `grouped_mm` on gfx12. | owner's 2 cards, serve stopped; ≈ 1–2 h to run (est.) | (provisional) the fixed GDN backward within 1.5× of the native forward's cost per token and dX cosine ≥ 0.9999 vs HF's torch delta rule; per-card peak ≤ 15.5 GB at the planned split | GDN backward cannot be brought below 0.2 h per 1M tokens on the 35B → re-cost M2 before starting it |
+| **M2** | **Stage-1 cartridge of the owner's repo on a Qwen3.6-35B-A3B graft** (`cyankiwi/…-AWQ-4bit`). Prereqs: M2-0 passed; `gdn_hip` widened to `Qwen3_5MoeGatedDeltaNet` and validated (forward rel. err ≤ 1e-3 and dX cosine ≥ 0.9999 vs HF's torch delta rule on real layer shapes); AWQ dequant bit-exact vs a reference unpack; W4A8 vs bf16 expert top-1 agreement ≥ 95% (else fp8 fake-quant); mixed chunking (4k GDN/attention, 8–16k MoE). Then: 3-point lr pilot × 100k tokens per arm on dev, 1–3 epochs of Split A train; arms G-lin and G-dir (and rows + W_v); best M1 row policy and ρ; LoRA all-linear r=16 baseline; RAG and RAG + cartridge; n-gram interpolation and foreign-repo controls; all §6.A metrics except HumanEval/MBPP (M4). | owner's 2 cards, serve stopped, `gpu-lease -n 2`; **several days of engineering** (loader, GDN backward, chunking, eval harness) plus ≈ 0.7–2.6 h per 3-epoch arm with the fixed GDN backward (3.1–7.5 h without), ≈ one or two evenings for the sweep | Gates (R0 bit-exact OFF, I2, host hash, I4); §6.A.7 operating-point decision: E1 ≥ 2.0% (lower bound > 0.5%) with R2 ≤ +1.0%, R1, R3 ≥ 99%; E2 ≥ 1.5%; E3 ≥ 3%; C1; NGI; REG; E5 ≥ 50% of LoRA's E1 gain; 3-epoch build ≤ 4 h wall-clock | **joint, at the operating point:** no configuration with R2 ≤ +1% reaches E1 ≥ 1% (lower bound > 0.5%) after pilot + 1 epoch in both G-lin and G-dir → stop rows-only graft ingestion on this host; the 0.5–1% zone → one Stage-1b arm, then decide; E5 dominated (< 25% of LoRA **and** R2 no better) → LoRA wins on quality, re-scope the cartridge case to servability/reversibility/per-commit cost |
+| **M3** | **Qwen3.8-27B graft** (`amd/…-Quark-AWQ-MXFP4`), same recipe and arms. Prereq: the GDN patch keeps the MXFP4 projections packed with just-in-time dequant (§4.6; a bf16 copy does not fit); keys and rows directly comparable with Flash-Next (same tokenizer): I4 against Flash-Next's buffers on ≥ 10k positions; feeds §D experiments E and F. | owner's 2 cards, serve stopped; ≈ 2.9–5.7 h per 3-epoch arm with the fixed GDN backward (6.8–13.5 h without) | Same bars as M2; cross-host consistency: E1 as a fraction of the host's own LoRA gain within ×0.5–2 of the 35B's | as M2; additionally, a 3-epoch build > 12 h measured → demote the 27B to dissection-only (E/F) |
+| **M4** | **Serve a grafted model in minisgl** (35B-A3B first, 27B second): the §4.7 port — `ngram_graft.py` (linear + general modes), numpy `cartridge.py`, bf16 staging, vectorised decode hash, per-request `ngram_cartridge`, per-namespace radix roots with carry-over or per-conversation pinning, `/ngram/*` control plane, all-ns-0 GEMV skip; EP: test the dummy-prefill path or start `EP=0`. | owner's serve | Bit-exact no-op: empty cartridge and ns-0 requests vs the ungrafted serve (`torch.equal` logits + 512-token greedy over prefill, chunked prefill, decode, eager and graph replay, radix hits); mixed batch: ns-0 request identical to running alone; GPU parity with the HF graft within the ungrafted minisgl-vs-HF noise floor; realised/predicted ΔNLL on held-out project text ≥ 0.7; decode overhead ≤ 1.5% (est. 0.5–0.7% on the 35B), prefill ≤ 5%; both EP replicas on the same cartridge version; spec-verify with rejections equals non-spec greedy | realised/predicted < 0.5 even with fp8 activation emulation (K-transfer) → train with W4A8 emulation and bf16 STE on rows, then re-test; decode overhead > 5% → move to sharded W_v / skip paths before Stage 2 |
+| **M5** | **Stage 2: incremental updates on the served 35B cartridge.** Replay the 110 post-`T_cut` commits in nightly batches (§I.6): reader index, delete dead rows, reset-and-refit dirty rows, child patches, namespace bump with carry-over. | GPU window (≈ 0.17–0.31 h per median–p90 commit incl. stop/boot) or CPU beside the serve for small diffs | Split-B gain ≥ 80% of a full retrain; forgetting on unchanged files ≤ 0.2% NLL; rollback bit-exact; nightly batch ≤ 30 min wall-clock including stop/boot | incremental < 50% of full retrain → nightly full rebuilds only (and record the negative result) |
+| **D-track** (from M0) | §D: **G** (row statistics at ≈ 5k n-grams/order) and **S** (2-layer Flash-Next slice) now; **A** after M6a; D/M/E/F after M3. | this container (G, S); owner's serve (A) | G: coherence-vs-frequency curve with f* and a bootstrap CI; S: per-stream gate, direct/conv share and ‖PLE‖/‖X‖ on ≥ 20k tokens. Each experiment's decision rule (§D.3) is applied to M2/M3 arms | F dropped if < 10% of the trained cartridge's gain; A deferred if M6a slips |
+| **M6** | **Flash-Next native.** **M6a** (was M1): overlay patch at `R/ple/source.py:242-244`, drain-and-flush, forward-only `/ple/score`; P0–P2; a synthetic diff (0.1×/1×/10× row norm) on one 2-gram's rows: I1 on 200 non-reading prompts, ΔNLL/KL on reading prompts (dose-response through the conv-dominated path), I3, P5 — bs=1, sequential, fixed chunk, vs a no-edit control. **M6b**: native cartridge N and beside-graft G (G-lin, G-dir) on the same rows (§6.A.6), during downtime. | owner's serve (M6a, forward-only); both cards, serve stopped (M6b, ≈ 1–5.6 h per 3-epoch arm) | M6a: I1, I3, P5 under the §6.B serve rule; `/ple/score` matches HF on a shared prompt set. M6b: §6.A.7 gates and E1/R1–R3; NG ≥ 80% → "format portable for ingestion" | M6a: I1/P5 fail → engine bug, fix before any native write. M6b: N and G both < 0.5% E1 → stop native ingestion at layer 1; N < 0.5% with G ≥ 1% → native co-tenants/gate are the problem, use the beside-graft |
+| **M7** | **Stage 3: online per-fact edits** (was M2-lite, M2, M2g, M3). First on the 35B graft with its cartridge active (project facts; EditRecord `parent = cartridge@version`), then global CounterFact facts; then Flash-Next native (arms a in-place, b XK, c O-site). Logs iterations per solve (20–30 expected). | 35B: GPU windows (10–30 s/edit) or CPU beside the serve (12–38 min/edit); Flash-Next: INTEGRATION (A) nightly, (B) downtime | §6.B bars: efficacy ≥ 0.9; subject-preserved generality ≥ 0.6 (≥ 0.8 by the end of M7); realised/predicted ≥ 0.7; I1. Composition: the cartridge's E1 retained ≥ 95% after 100 facts in its namespace; facts retain ≥ 0.8 after a cartridge increment (re-solve otherwise) | K-native (with attribution), K-transfer, K-leak, K-native-short, K-graft (§6.B) |
+| **M8** | Gemma (was M4, M5): E4B native with aliases (200 facts; SWEA baseline) and an E4B token-keyed cartridge; 26B/31B grafts, Flash-Next-format vs Gemma-PLE + aliases vs SWEA. | one card (E4B); both cards (26B/31B) | §6.B M4/M5 bars; for the E4B cartridge, §6.A.7 E1/R2 | Efficacy < 0.5 at the trust region → Gemma PLE is not a fact store; K-graft for both formats |
+| **M9** | Scale and steady state (was M6, M7): several cartridges (≥ 3 repos) switched per request; sequential 100 → 2k (→ 5k) facts with conflict re-solving; targeted radix detach + epoch guard, persistence, per-rank hash agreement (P6). | owner's machine | §6.B K-scale bars; per-request switching overhead within M4's bounds; P5 with targeted detach equal to drain-and-flush | K-scale → exact-key overlay (XK) if M7 attributed failures to hashing |
 
-M1 deliberately comes before any serve-side solve. It edits the real native table with no gradient machinery, tests the engine contract, and measures how the real model's output responds to row-delta magnitude through the conv-dominated path. M1 cannot decide the thesis, so M2-lite runs in parallel on stock HF in the cloud: it is the cheapest experiment that can fire K-native.
+**Old → new milestone IDs** (old IDs still appear in §5 and §6.B text and in `serve/INTEGRATION.md`): M0 → M0; M1 → **M6a**; M2-lite, M2, M2g, M3 → **M7**; M4, M5 → **M8**; M6, M7 → **M9**. The cloud M2-lite arm is dropped (§7.4).
+
+Why this order: M1 can kill the approach cheaply on CPU; M2 is the cheapest real-weight host that is also the daily driver and the architectural twin of Flash-Next; M3 shares Flash-Next's tokenizer, so its rows feed the dissection; M4 turns a cartridge into something the owner uses daily; Stage 2 needs a served cartridge; native and per-fact work depend on the Flash-Next control plane and on the cartridge namespace they are solved against.
 
 ---
 
@@ -670,26 +1128,32 @@ M1 deliberately comes before any serve-side solve. It edits the real native tabl
 
 ### Risks
 
-1. **Conv dominance on native Flash-Next.** Small edits cannot steer the direction-only conv term. Row edits reached only R² 0.29–0.36 with the conv on (`P/t1/e_express.out`), but with proxy queries, not real layer-1 states. XK does not remove this limit (§5.6). The real-weight answer comes from M1 (dose-response) and the M2-lite/M2 arm (c). *Mitigation:* larger κ, accepting the conv spill to t+3, t+6, t+9 (measured at 1–8% of the target size).
-2. **Shared bigram rows leak.** A 2-gram edit fires in every context containing the bigram. The prior reference for same-subject leakage is 19–25%. *Mitigation:* KL term, right-crossing keys, per-row full-load penalty; measured on held-out templates and lexical neighbours.
-3. **Short subjects have no subject-only native key.** One third of the subjects are 1 token. Left-crossing keys failed before (0.000 for 1-token subjects). *Mitigation:* the unigram extension (grafts only, unproven) and right-crossing keys; K-native-short decides.
-4. **Collisions as edits accumulate.** About 0.8% of positions are touched at 1e4 anchors and 7.7% at 1e5, under a uniform assumption. *Mitigation:* the exact-key overlay (XK mode).
-5. **Solve/serve numeric mismatch.** fp8 table, fp4 experts and fp8 activations. Gated by P3 and P4.
-6. **Stale prefix caches.** Contract plus invalidation (§3.4).
-7. **Hardware contention.** The owner's GPUs are probably busy serving, and are shared across repos through `gpu-lease`.
-8. **Engine support for grafted serving** (vLLM, SGLang, llama.cpp) does not exist, and a graft is not a valid qwen4_exp config (hc_count=1). Grafts are HF-only until a model-class patch is written.
-9. **Cost.** The corrected campaign estimate is $1.1k–14k (§7), dominated by sequential scale runs.
-10. **Ephemeral evidence.** The binary fixtures still live only in the session scratchpad; M0's fetch script removes the dependency.
-11. **Security.** A writable table is a backdoor surface (BadEngram). Patches carry provenance and fingerprints; the serve's control plane must be authenticated (**owner decision**).
+1. **Retention on general code (Stage 1, binding).** Project rows are read by 70–74% of positions of other Python (§I.1); the proxy already shows +0.5–0.8% stdlib NLL, all from exact-key rows, against a fixed-context gain of only 0.5% (§I.8), and pruning alone trades gain for cost along a frontier that is ≈ 0.3% at near-zero cost. *Mitigation:* row policy (count ≥ 2, enrichment/TF-IDF, cap on the most generic rows), reuse weight ω_j, KL anchors, ρ ∈ {0.003, 0.01, 0.03}, per-request switching (the cost is paid only inside project traffic). R2 and E1, jointly at one operating point, decide.
+2. **Memorisation instead of ingestion.** Train gain 16× held-out gain on the proxy (§I.8). For a cartridge that serves the files it ingested this is partly the point; the risks are verbatim regurgitation and secrets. *Mitigation:* frequency filter, group lasso, early stopping on Split-A dev; REG (§6.A.3) and the secret scan; MEM is reported as a diagnostic.
+3. **The gain is style, not knowledge.** 80% of the proxy gain is docstring/comment prose; project identifier first sub-tokens move −0.58% while general ones move −2.52%, and project repeats get worse. *Mitigation:* report by token class; E3/E4 are gated separately; the foreign-repo cartridge (C1) and n-gram interpolation (NGI) controls; the distillation-with-context objective (§I.1) is the first upgrade.
+4. **Graft regime mismatch.** Flash-Next's PLE output is dominated by a direction-only conv branch; the G-lin graft has none (§2.4, §D.2). *Mitigation:* the G-dir arm and §D's S experiment.
+5. **Local toolchain on gfx1201.** `gdn_hip` patch misses the MoE class name and densifies the 27B's MXFP4 GDN weights; its backward is a pure-torch Python-loop reference (≈ 60× HF's op count; §4.6); the 35B does not fit at 8–16k-token chunks without mixed chunking; AWQ needs a custom loader; `grouped_mm`, SDPA kernels for head_dim 256/512 and real per-layer efficiency are unverified. *Mitigation:* M2-0 first; fallbacks exist (HF torch delta rule in the backward, chunked bmm, chunked attention).
+6. **Serve integration of grafts.** PLE never ran under EP (the 35B default); GPU parity needs a tolerance; every Stage-2 version cold-misses the prefix cache without carry-over (§4.7). *Mitigation:* M4 gates; `EP=0` first if needed.
+7. **Conv dominance on native Flash-Next** (Stage 3, M6–M7). Small edits cannot steer the direction-only conv term; row edits reached only R² 0.29–0.36 with the conv on (`P/t1/e_express.out`, proxy queries). XK does not remove this limit (§5.6). M6a's dose-response and M7's arm (c) decide.
+8. **Shared bigram rows leak** (Stage 3). A 2-gram edit fires in every context containing the bigram; the prior same-subject leakage is 19–25%. *Mitigation:* KL term, right-crossing keys, per-row full-load penalty.
+9. **Short subjects have no subject-only native key** (Stage 3). One third of subjects are 1 token. K-native-short decides.
+10. **Collisions as writes accumulate.** Within one cartridge the per-head collision rate is 0.56–0.72% at count ≥ 2 and 1.3–2.9% for all rows (§I.5); collisions contributed nothing measurable in the proxy (§I.8), but several cartridges plus facts in one namespace raise occupancy. *Mitigation:* per-request namespaces, the XK overlay for facts.
+11. **Solve/serve numeric mismatch.** 4-bit experts, W4A8 activations on the 35B, fp8/int6 tables on Flash-Next. Gated by the P-checks and M4's realised/predicted ratio.
+12. **Downtime contention.** Builds need serve downtime and both cards; the cards are shared across repos through `gpu-lease`.
+13. **Secrets in cartridges.** Rows memorise code and a cartridge ships as a file: secret scan before ingestion (§I.4), cartridges treated like source.
+14. **Ephemeral evidence.** Binary fixtures (tokenizers, trained rows, NLL arrays) still live only in the session scratchpad; M0's fetch script removes the dependency.
+15. **Security.** A writable table is a backdoor surface (BadEngram). Patches carry provenance and fingerprints; the serve's control planes must be authenticated (**owner decision**).
 
 ### Open questions
 
-- Real layer-1 query states and gate sparsity on Flash-Next.
-- Whether the fitted Flash-Next → host value map M beats re-solving per host.
-- Which reset token Gemma grafts should use (`<eos>` vs `<end_of_turn>`).
-- Whether to calibrate the graft gate and conv (dead point at `W_k = 0`).
-- Whether alias handling belongs in the tokenizer or the serving loop.
-- How many iterations a solve needs (drives cost; M2-lite measures it).
+- Does any objective beyond next-token NLL (distillation with the repo in context, synthetic queries) move identifier first-use and cross-file metrics, which keying alone cannot reach?
+- What share of a project request is non-project text (π_other in ω_j)?
+- Does the G-dir arm (fixed direction branch) ingest better than G-lin at equal R2, as Flash-Next's structure suggests?
+- Is Flash-Next's gate context selection or a collision denoiser (S)?
+- Real torch-ROCm throughput per layer on gfx1201, and PLE under EP.
+- Whether the fitted Flash-Next → host map M (§D) beats training each host from scratch (predicted: no, for project n-grams).
+- Which reset token Gemma grafts should use (`<eos>` vs `<end_of_turn>`); whether alias handling belongs in the tokenizer or the serving loop.
+- How many iterations a per-fact solve needs (M7 measures; 20–30 assumed).
 
 ### Prior art
 
@@ -703,13 +1167,39 @@ From `docs/research/engram-relaunch-proposal.md` and the reviews; arXiv abstract
 - **SWEA (2401.17809):** token-id-keyed subject embeddings at the input. **NeuralDB (2507.18028).**
 - **GRACE (2211.11031), WISE (2405.14768), MEMOIR (2506.07899):** discrete keyed edit codebooks on frozen models.
 
+**Prior art for Stage 1 (ingesting a corpus into an n-gram or embedding memory of a frozen model; repository-specialised code models).** Source: the 2026-11-10 prior-art report (papers read that day). **Provenance:** `S1/priorart/` holds only `pdf/knm.txt`, `cceval.txt` and the n-gram statistics, so only the kNM-LM and CrossCodeEval figures are backed by saved excerpts; the Engram Adapter, Cartridges, EntiGraph, Tencent, Memory Decoder, Sparse Memory FT and other figures below are **as reported, not re-checked** until excerpts are saved (M0 task).
+
+- **No published work we found trains n-gram rows on a codebase with the backbone frozen, and none writes a corpus into a model's *native* pretrained n-gram table.** Count-based n-gram and cache language models of code are, however, old prior art and the obvious zero-training competitor (next item).
+- **Count-based n-gram / cache LMs of code** (recalled from memory, not re-read here): Hindle et al. 2012, "On the naturalness of software" (ICSE; n-gram LMs capture code's repetitiveness); Tu, Su & Devanbu 2014, "On the localness of software" (FSE; a cache component for local repetition); Hellendoorn & Devanbu 2017, "Are deep neural networks the best choice for modeling source code?" (FSE; a nested-cache n-gram model competitive with neural LMs on in-project code); infini-gram (arXiv 2401.17377; ∞-gram interpolation improves neural LMs' perplexity). Source of the NGI baseline (§6.A.4, §6.A.7).
+- **Engram Adapter (Hou & Wang, 2608.29327; closest prior art).** Fully frozen Qwen3-4B/8B; trains 12 fresh hashed tables (90,007 rows × 128/256), a zero-init projection and a scalar gate per injected layer (layers {1, 3, 7, 15} of 36), with non-trainable occupancy masks (a lookup counts only if all k hashes are occupied). About 154 M parameters, 1.2× LoRA r=64; 1k–10k examples, one epoch, AdamW 1e-3. In-domain: 4B AG-News 85.14 → 87.93 (LoRA r=32 90.15), MedMCQA 53.65 → 55.79 (57.10), 8B AG-News 79.49 → 86.47 (LoRA r=64 90.29): about **55–65% of the best LoRA-family gain**. OOD retention 99.38% / 100.07% (4B), 101.0% (8B; LegalBench 72.53 vs LoRA's 44.67); MBPP 97.7%. Injected residual 0.078% of hidden norm over all OOD tokens, 0.28–0.29% on activated tokens (P95 1.1–1.2%), 26–28% of OOD tokens activate. Limits: classification/MCQ domains, one family, ≤ 8B, no composition, Python hashing costs +9–11% decode and up to +40% prefill. **Positioning:** its tables are fresh and small with a trained projection; ours are a native pretrained table or a graft with a fixed projection, at 2–7.6 M rows per repo — so its numbers are a prior to calibrate against (the E5 bar uses its 55–65%), not a prediction.
+- **DeepSeek Engram (2601.07372).** Co-trained (262B tokens; table Adam at 5× lr, no weight decay; conv zero-init); zeroing it at inference keeps 29–44% of factual-knowledge scores but 81–93% of reading comprehension (§6.3). No table-only or frozen-backbone training.
+- **LongCat-Flash-Lite (2601.21204).** 31.4 B n-gram parameters co-trained from scratch; mixed coding gains (HumanEval+ 28.7 → 31.1, MultiPL-E 30.2 → 30.0). No evidence that the n-gram axis is unusually good for code.
+- **STAPLE (2610.12599).** Token-id tables in the FFN; only the up-projections frozen, ≈ 100 B tokens of warm-up; no fully frozen run. No support for "backbone frozen, tables only" at our budget.
+- **User as Engram (2606.19172).** Per-user row writes on self-pretrained 178 M–1.22 B Mini-Engram models: +0.00005 bpb contamination vs +1.784 for per-user LoRA, at about 16 rows per fact and < 1% occupancy. Row writes keep locality **when occupancy is sparse**; a repo write hits 0.4–2.2 M n-gram types, a different regime.
+- **Cross-Model Memory Transfer (2608.17050).** Hashed memory trained on 10–30 M tokens, then frozen with a small trained reader: Mistral-7B QA 32.1 → 38.5–38.8 (RAG 33.4, LoRA 32.3). **Random memory scores 34.6 and matches the perplexity gain**; permuted keys 32.5. Hence the random-row and permuted-key controls; since there the random memory had a trained reader, while untrained random rows here can only hurt, C1's content controls are the foreign-repo cartridge and the train-time key shuffle (§6.A.4).
+- **NGM (2605.16893).** Training-free causal 2/3-token embedding averages at layers 2 and 15: +0.98 to +1.72 average on Qwen3 0.6–8B. A Stage-1 cartridge must beat this generic floor on project text.
+- **Sparse Memory Finetuning (Lin et al., 2510.15103).** Updates only top-t slots of a *pretrained* memory layer by TF-IDF against background access counts, with SGD: NaturalQuestions F1 −11% vs −71% for LoRA and −89% for full FT at equal new-fact learning. Closest analogue to rows-only updates on a native table; source of the TF-IDF row-policy arm and the simple-optimiser default.
+- **Memory Grafting (2605.20948).** Forward-only memory values from a frozen donor (recipient pretrained with the memory): a precedent for forward-only row fills (§D experiment F).
+- **kNN-LM / kNM-LM (1911.00172; ASE 2023, 2308.09313).** Forward-only datastore of in-project tokens the LM mispredicts: Android API line EM 5.99 → 13.74 (CodeGPT), intra-project token accuracy 54.6 → 69.7, at 2.4× lower throughput; FT2Ra (2404.01554) beats it (26.32 vs 13.93 EM). The kNM baseline in §6.A.4.
+- **Memory Decoder (2508.09874)** (a plug-in 0.5B decoder trained to imitate kNN; Qwen2.5 domain perplexity 17.0 → 3.7 at 0.5B) and **Cartridges (HazyResearch, 2506.06266)** (a trained KV prefix via self-study and context distillation; distillation beats next-token, MTOB 33.5 vs 24.9; MMLU 54.7 → 54.3 vs LoRA → 45.3; ≈ 30 min on 8×H100 per corpus). Strong frozen-backbone baselines that need a second model or a KV prefix in the serving path. Knowledge Modules / Deep Context Distillation (2503.08727) is the same lesson for LoRA.
+- **EntiGraph (2409.07431).** 1.3 M source tokens → 455 M synthetic; Llama-3-8B QuALITY 39.49 → 56.22 (RAG 60.35; both 62.60); raw continued pretraining on the small corpus scored below base. Augmented data matters more than epochs (inference for code, untested).
+- **Repository fine-tuning vs RAG.** Tencent (2505.15179, FSE'25 Industry): 401 M tokens of internal C++, six models, EM base 24.79 / FT 44.20 / **BM25 RAG 53.76** / FT + BM25 57.43; FT cost HumanEval −24.1%, MBPP −11.7%. Semantic Scopes (2602.05780): FT beats RAG on Levenshtein distance in 24/24 settings (forgetting not measured). Benchmarks: CrossCodeEval, RepoBench, RepoEval/RepoCoder, EvoCodeBench, ExecRepoBench, REPOCOD, Long Code Arena, CodeUpdateArena (§6.A.8).
+- **Expected outcome (est., from these and §I.8):** a small perplexity drop on held-out repo code at realistic context (the proxy: 0.5%), mostly idiom and docstring style, with identifier gains on continuations; unlikely to beat BM25 repo-RAG on cross-file completion; whether it is **additive with RAG** at R2 ≤ +1.0% is the test (E6), and whether it beats a count-based n-gram interpolation is the first thing to establish (NGI).
+
 ### What would be novel (narrowed)
 
-1. **Hashed co-tenant in-place writes** into a shipped native table, measured against EngramEdit-style exact-key (XK) writes on the same table and the same facts, with the three-arm attribution of §6.
-2. A **live-serve diff and cache-invalidation contract**: engine-agnostic, reversible row diffs with an epoch guard and radix invalidation, applied to a running Flash-Next serve.
-3. A **controlled native-vs-graft comparison** on one host, with the same keys and solver code.
+Stage 1–2:
 
-Not claimed as novel: key transfer across models that share a tokenizer (true of any token-id hash); optimising memory parameters through a frozen model (BadEngram, EngramEdit); frequency-priced penalties (EngramEdit A.3.3).
+1. **Ingesting a codebase into a production model's native, pretrained n-gram table** (Flash-Next PLE) with the whole backbone frozen, and the same into grafts on models trained without one (35B-A3B, 27B), **with one row format, one trainer and identical keys**, including the controlled native-vs-graft comparison on one host (§6.A.6) and the dissection that explains it (§D).
+2. **Code repositories as the target of an Engram-family memory**, with background-relative row selection on a dense hashed table, a residual budget, content-free controls and a commit-time split on private repos.
+3. **Namespaced, switchable, reversible cartridges with per-commit row diffs**, served through a torch-free overlay on consumer AMD GPUs.
+
+Stage 3 (unchanged from 2026-11-09):
+
+4. **Hashed co-tenant in-place writes** into a shipped native table, measured against EngramEdit-style exact-key (XK) writes on the same table and the same facts, with the three-arm attribution of §6.B.
+5. A **live-serve diff and cache-invalidation contract**: engine-agnostic, reversible row diffs with an epoch guard and radix invalidation, applied to a running Flash-Next serve.
+
+Not claimed as novel: key transfer across models that share a tokenizer (true of any token-id hash); optimising memory parameters through a frozen model (BadEngram, EngramEdit, Engram Adapter); frequency-priced penalties (EngramEdit A.3.3); TF-IDF slot selection (Sparse Memory Finetuning).
 
 ### Sources
 
@@ -723,12 +1213,16 @@ Every script cited inline has a matching `.out`/`.txt`/`.json`/`.log` beside it 
 - `P/serve/`: serve integration, overlay, requantisation and venue benchmarks (and `INTEGRATION.md`).
 - `P/redteam-correctness/`, `P/redteam-feasibility/`: review re-runs and checks.
 - `P/review-apply/`: the corrected N, FLOP, overlay-size and cost budget.
+- `P/stage1/` (= `S1/`): Stage-1 research of 2026-11-10 — `priorart/` (n-gram overlap with a general-code background, CrossCodeEval text), `ingest-algo/` (row census, policies, optimiser bench, per-commit increments, wall-clock), `design/` (the earlier attempt whose counts `ingest-algo/` reproduced), `compute/` and `local-compute/` (local throughput models, token counts, CPU calibration), `evalproto/` and `evalproto2/` (splits, QA seed, power, token-class deltas, QA reach), `experiment/` (0.5B graft ingestion) and `verify-experiment/` (its skeptic re-run, leak and token-class checks), `designrev/` (this revision's GDN class check and budget arithmetic).
+- `P/graftfirst/` (= `GF/`): `REPORTS.md` (three reports + skeptic verdicts) and their scripts and outputs.
 
 Prior evidence: `/home/user/memory-organ/docs/research/gemini-engram-code-review.md` (§5, §8), `/home/user/memory-organ/docs/research/engram-relaunch-proposal.md`, `/home/user/memory-organ/docs/research/engram-graft-assessment.md`.
 
 ---
 
 ## Review log
+
+### Revision 2026-11-09: three red-team reviews
 
 Each finding was checked against the cited code, outputs or documents before it was applied. "C" = correctness review, "S" = science review, "F" = feasibility review.
 
@@ -772,3 +1266,54 @@ Each finding was checked against the cited code, outputs or documents before it 
 | F10 | 178 GFLOP/s uncited | **applied** (§7) | not present in act.out or any output; replaced with `cpu_flops.out` figures, end-to-end marked unmeasured |
 
 No finding was rejected outright. F1 was applied only in part: its N assumed no prefix caching.
+
+### Revision 2026-11-10: owner's new direction (Stage 1 ingestion, local-first, grafts first)
+
+| # | Change | Where | Basis |
+|---|---|---|---|
+| N1 | Project restructured into Stage 1 (offline codebase ingestion into project cartridges), Stage 2 (incremental git-diff updates), Stage 3 (online per-fact RowSolve) | §1, §3.5, §I, §5 title | owner direction 2026-11-09 |
+| N2 | New section §I Ingestion: objective, regularisers, row-wise Adagrad, data pipeline, measured row counts (7,555,967 rows; 2.04 M at count ≥ 2), increments, composition, what 2/3-gram rows can and cannot hold | §I | `S1/ingest-algo/*.out`, `S1/evalproto2/qa_reach*.out` |
+| N3 | 0.5B graft ingestion added as evidence with the skeptic's corrections (collisions contribute nothing; gain mostly frequent prose n-grams; injection 47–114× Engram Adapter's) | §I.8 | `S1/experiment/run_full.stdout`, `S1/verify-experiment/verify.stdout`, `tokclass.json` |
+| N4 | Evaluation split into §6.A (Stage-1 protocol: Splits A/B, token-class and key-category breakdowns, R0–R3 with general code as the binding retention constraint, RAG/LoRA/Engram-Adapter/kNM/NGM baselines and random-row/permuted-key controls, numeric criteria with power) and §6.B (per-fact protocol, unchanged) | §6 | `S1/evalproto*/` |
+| N5 | Compute plan rewritten local-first in wall-clock; dollar table moved to a footnote and rescaled to 20–30 iterations per solve ($1.1k–14k → about $0.2k–1.4k); the venue conflict resolved in favour of local | §7 | `GF/REPORTS.md` skeptic figures, `S1/local-compute/local_cost.out`, `S1/designrev/budget_local.out`, INTEGRATION §4.2–4.3 |
+| N6 | Milestones re-sequenced, grafts first: M1 0.5B proxy, M2 35B-A3B AWQ graft, M3 27B Quark MXFP4 graft, M4 graft serving in minisgl, M5 Stage 2, D-track alongside, M6 Flash-Next native, M7 per-fact, M8 Gemma, M9 scale; numeric pass/kill per milestone; old → new ID map | §8 | owner priority 2026-11-10 |
+| N7 | Graft profile: two arms (G-lin, G-dir) because Flash-Next's PLE output is dominated by a direction-only conv branch (1.4–13.9× the direct term); output scale from the site probe, not embedding RMS | §2.4, §D | `GF/skeptic_dissect/branch_share.out`, `embed_freq.out` |
+| N8 | Graft hosts locally: checkpoints, dequant-per-layer training with dX-only autograd, ~180 s / 135 s per 1M tokens of dequant, large per-layer MoE chunks, memory-based layer split; owner decision to import the fork's `gdn_hip` patch | §1, §4.6 | `GF/REPORTS.md` graft-hosts-local + skeptic |
+| N9 | **New check:** `patch_qwen3_5_gdn` matches the exact class name `Qwen3_5GatedDeltaNet`, so it patches 0 layers on the 35B-A3B (`Qwen3_5MoeGatedDeltaNet`, identical source modulo the prefix); M2 prerequisite | §4.6, §8 M2 | `S1/designrev/gdn_class_check.out`; `R/gdn/hf_patch.py:104` |
+| N10 | Graft serving in minisgl: port plan, numpy cartridge store, per-namespace radix roots with required carry-over, EP as the 35B default (PLE never run under EP), GPU parity needs a tolerance, all-ns-0 GEMV skip instead of the active mask, ~0.5–0.75% decode overhead | §4.7, M4 | `GF/REPORTS.md` graft-serve + skeptic |
+| N11 | New section §D Dissection program (G, S, A, D, M, E, F, N), with the skeptic's corrections on conv, gate-constant interpretation and output scale, and numeric decision rules | §D | `GF/REPORTS.md` dissection + skeptic |
+| N12 | Prior-art positioning for Stage 1 (Engram Adapter as closest; Sparse Memory FT, Cross-Model Memory Transfer, NGM, kNM-LM, Cartridges, Memory Decoder, EntiGraph, Tencent FT-vs-RAG) and narrowed novelty | §9 | `S1/priorart/` |
+| N13 | Experiment scripts and outputs copied into `P/stage1/` and `P/graftfirst/` (binaries excluded) | header, §9 Sources | — |
+
+Kept unchanged: the format spec (§2.1–§2.3, §2.5), architecture and patch contract (§3.1–§3.4, extended), native and Gemma backends (§4.1–§4.5), RowSolve (§5), the per-fact protocol and invariants (§6.B), the 2026-11-09 review log above.
+
+### Stage-1 revision 2026-11-10: science and feasibility red-team of the restructure
+
+Each finding was checked against the cited scripts, outputs or code before it was applied. The reviewers' scripts and outputs are copied to `S1/rt-science/` (`ctx_len`, `nohit`, `cluster_ci`; they reuse the skeptic's `rows_armA.pt`, not copied) and `S1/rt-feas/` (`count_rows`, `row_policy` re-runs, `gdn_ref_ops*`, `hf_gdn_ops`, `cpu05b`). "S" = science, "F" = feasibility. The pre-revision file was saved (ephemeral) as `/tmp/claude-0/-home-user-memory-organ/8d3a7b83-cc3c-5a8e-b480-88fd8f40a919/scratchpad/nm/stage1/DESIGN.pre-stage1-revision.md`.
+
+| # | Finding | Verdict | Check / reason |
+|---|---|---|---|
+| S1 | Proxy gain halves at the design's fixed context (−1.14% → −0.52%), stdlib cost does not (+0.51/+0.58%) | **applied** (§I.0, §I.8 corr. 6, §8 M1, §9 risk 1) | `ctx_len.out`: short −1.135% [−1.31, −0.92], long −0.517% [−0.67, −0.33]; `ctx_len.py:66-85` uses the same targets with ≥ 1,024 in-file tokens vs cold 512. Caveat kept: 24 blocks / 10 files ≥ 2,048 tokens |
+| S2 | Gain/cost frontier never stated; M1b/M2 bars lie beyond it | **applied** (§I.0, §I.8 corr. 7, §I.9, M1 pass) | `verify.stdout` lines 29–30: −0.0231 / +0.0062 and −0.0099 / +0.00058 nats = 0.71% / +0.41% and 0.31% / +0.04%. Bars kept; M1b must land above the frontier. "0.15–0.3% at retention-safe settings" is marked est. |
+| S3 | Early stopping and sweeps selected on the test split | **applied** (§I.1, §6.A.1, §6.A.7, M1, M2) | grep finds no dev/validation split. Dev = `0.15 ≤ h < 0.25`, test unchanged, grid pre-registered, one test read |
+| S4 | Noise floor in the wrong unit | **applied** (§6.A.7 Power, §I.8 corr. 9, §6.A.1) | `cluster_ci.out`: between-file SD 0.0228, MDE 0.0114 nats @31 files = 0.43% / 0.35% of base. Kills made CI-based; corpus v1 adds test files before real-host gating |
+| S5 | Row-hit "invariant" false at position level | **applied** (§6.A.2, §6.A.3 R1, §I.8 corr. 8) | `nohit.out`: 4.0% no-hit, mean \|Δ\| 0.127, 0.15% bit-equal; prefix-clean 0.006%, \|Δ\| 0.0 |
+| S6 | Undecided gaps; M2 kills not joint | **applied** (§6.A.7 operating-point table, M1, M2) | the old E1 KILL and R2 KILL were judged at different settings; one operating point (best dev E1 with dev R2 ≤ +1%) with an action per zone |
+| S7 | Central claim has no kill; "near-zero" undefined | **applied** (§1, E6 kill, §9 expected outcome) | E6/QA KILL were "none"; E6 now kills at < 0.25% or CI including 0; "near-zero" defined as R2 ≤ +0.2% and not claimed |
+| S8 | No foreign-repo content control; "permuted keys" undefined | **applied** (§6.A.4, C1, §I.9, M1b) | `tokdelta.out` lines 9, 15, 17: gen first −2.52% (n 179), proj first −0.58% (n 100), proj repeat first +0.54% (n 258). Eval-time permutation defined; train-time key shuffle added; random rows demoted to a sanity check |
+| S9 | Count-based n-gram/cache LMs missing as baseline and prior art; "upper bound" wrong | **applied** (§I.3, §6.A.4, NGI, §9) | absent from §6.A.4 and §9. Citations recalled from memory, marked not re-read. Headroom number added to M1 (not computed in this revision) |
+| S10 | MEM kill penalises the deployment case; Split B should be co-primary | **applied** (§6.A.1, §6.A.2, §6.A.7, §9 risk 2) | served traffic is the ingested files plus edits = Split B. MEM → diagnostic; REG (regurgitation, canaries, secrets) added. Split B's smaller file count (52) noted for power |
+| S11 | ρ default contradicts the design's reasoning | **applied** (§I.1, §I.9, M1b) | `run_full.stdout` line 25: stdlib inj median 2.69%, mean 7.27%; held-out 3.77% / 9.14%. Grid {0.003, 0.01, 0.03}, start 0.01 |
+| S12 | Proxy numbers overstated or mislabelled | **applied** (a–e, §I.8, E3) | (a) `tokdelta.out` line 20 is `ID\|cont (all)`; project-only (226 × −0.0752 + 576 × −0.0508) / (226 × 4.006 + 576 × 2.159) = −2.15%. (b) `cluster_ci.out`: 15 files in eval, max token share 0.219; `verify.py:79-82` chunks the concatenated stream. (c) 6,132 stdlib tokens. (d) stdlib 0.0727 / 0.00078 = 93×, 0.0269 / 0.00078 = 34×. (e) §I.8 setup line |
+| S13 | KL anchor on the base's own project answers works against Stage 1 | **applied** (§I.1) | dropped; D_chat restricted to text with no project-specific n-grams |
+| S14 | Baselines under-specified | **applied** (§6.A.4, E5, §6.A.6, §9) | (a) EA layout from §9 (layers {1,3,7,15}, 12 × 90,007) now replicated; single-site kept as an ablation. (b) all-linear / expert LoRA added and used for E5; Biderman et al. cited from memory. (c) `ls S1/priorart/` = `cceval.txt`, `pdf/knm.txt`, n-gram stats/census only; other figures marked "as reported, not re-checked" |
+| F1 | GDN backward is a pure-torch Python-loop recompute | **applied** (§4.6, §7.2 brackets, §7.5 #1, M2-0, M2, M3, §I.0, §9 risk 5) | `autograd.py:305-347` backward calls `ref_gdn_prefill_core` under `enable_grad`; `:502-535` chunk `max(4, 64//B)`; native bwd only at `:369`, `:403`. `gdn_ref_ops.out` 24.1 ops/token at B=4 vs `hf_gdn_ops.out` 0.41. Time conversion is est. |
+| F2 | 35B VRAM figure is the 27B's; 35B does not fit at 8–16k chunks | **applied** (§4.6, §7.2, M2) | `recheck.out` lines 13–14 (35B 15.0 / 13.8) vs 22–23 (27B 12.1 / 13.2); `recheck.py:29` 2 × 2,048-token inputs. 16.6–18.7 GB at 8–16k is the reviewer's est. |
+| F3 | 27B GDN weights are MXFP4; the patch densifies them | **applied** (§4.6, §7.2, M3 prereq) | `hub_recheck.json`: 27B "other" U8 12.936 GB + BF16 0.005 GB; `hf_patch.py:28-56` copies dense weights |
+| F4 | AWQ loader unscoped; M2 not runnable in hours | **applied** (§4.6, M2-0, M2, §6.A.3 R3) | `quantizer_awq.py:46` (gptqmodel), `integrations/awq.py:93-96` (`nn.Linear` only), `cm:2116-2117` (`qwen2_moe` merge); `hf_patch.py:68-75` refuses a cache. M2-0 pass/kill thresholds are provisional |
+| F5 | M1 "5–6 h total" contradicts M1b scope | **applied** (M1, §7.1) | M1b pruned to ≈ 8 trained arms, one seed, one factor at a time; ≈ 1 day CPU. The 4,096-token OOM is recorded as reported (the run's output stops, `cpu05b.out`; not reproduced) |
+| F6 | CPU cartridge "2–6 days" uses a different recipe | **applied** (§7.2) | `budget_local.out` line 17: 60.39–192.15 h = 2.5–8.0 days |
+| F7 | Row counts from different corpora paired | **applied** (§I.0, §I.2, §I.5, §4.7) | `count_rows.out` line 6: 2,385,780 rows at count ≥ 2 on all files, bf16 + ids 746.3 MiB; 2,385,780 × 524 / 1,292 B = 1.25 / 3.08 GB; × 264 / 648 B = 0.59 / 1.44 GiB |
+| F8 | One-card 35B serve cannot hold the model | **applied** (§7.7 Q3) | 24.97 GB checkpoint, 22.5 GB body vs 16 GB |
+
+No finding was rejected. Four were applied with qualifications: S2's 0.15–0.3% expectation and F1/F2's times and VRAM are kept as estimates; S9's headroom number is an M1 task, not computed here; F5's OOM is recorded as reported.
