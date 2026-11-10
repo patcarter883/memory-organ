@@ -127,22 +127,23 @@ def test_key_shuffle_permutes_as_specified():
     if not bool(torch.isin(outside, src)):
         assert torch.equal(sh.remap(outside), outside)                    # unreserved rows unchanged
     tr.train()
-    # the served cartridge through the plain (unshuffled) graft reproduces the trained function
+    # the RELABELLED rows through the plain (unshuffled) graft reproduce the trained function (permutation check)
     ids = torch.from_numpy(ws[0].ids)[None]
     tr.installed.context = torch.from_numpy(ws[0].context)[None]
     with torch.no_grad():
         want = KL.final_hidden(host, ids)
     tr.installed.context = None
     tr.close()
-    plain = NGramGraft(fmt, rows=tr.cartridge(prune_zero=False))
+    plain = NGramGraft(fmt, rows=tr.relabelled_store())
     inst = plain.install(host, record=False)
     inst.context = torch.from_numpy(ws[0].context)[None]
     with torch.no_grad():
         got = KL.final_hidden(host, ids)
     inst.remove()
     assert torch.allclose(got, want, atol=1e-6)
-    # and the trained slots differ from the served rows (the permutation is real)
-    assert not torch.equal(tr.trained_store().values, tr.cartridge(prune_zero=False).values)
+    # the C1 cartridge is the trained slots as stored, read through the TRUE keys (VI-1): not the relabelled rows
+    assert torch.equal(tr.cartridge(prune_zero=False).values, tr.trained_store().values)
+    assert not torch.equal(tr.relabelled_store().values, tr.cartridge(prune_zero=False).values)
 
 
 def test_checkpointing_does_not_change_gradients():

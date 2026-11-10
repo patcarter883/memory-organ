@@ -247,7 +247,11 @@ def run_attn_moe(args, cfg, rd, dev: Dev, res: dict):
     if args.moe_reference:
         # dX against autograd through HF's own experts module holding the dequantised bf16 stacks
         from transformers.models.qwen3_5_moe.modeling_qwen3_5_moe import Qwen3_5MoeExperts
-        hf_ex = Qwen3_5MoeExperts(tcfg).to(dev.d, torch.bfloat16)
+        with torch.device("meta"):
+            hf_ex = Qwen3_5MoeExperts(tcfg)
+        E_, I_ = ex.num_experts, ex.intermediate_dim
+        hf_ex.gate_up_proj = torch.nn.Parameter(torch.empty(E_, 2 * I_, d, dtype=torch.bfloat16, device=dev.d))
+        hf_ex.down_proj = torch.nn.Parameter(torch.empty(E_, d, I_, dtype=torch.bfloat16, device=dev.d))
         with torch.no_grad():
             for e0 in range(0, ex.num_experts, 32):
                 ids = torch.arange(e0, min(ex.num_experts, e0 + 32), device=dev.d)
@@ -403,7 +407,7 @@ def main():
         val = "-" if b["value"] is None else f"{b['value']:.4g}"
         print(f"{st} {b['bar']}: {val}{tag}" + (f"  ({b['baseline']})" if "baseline" in b else ""))
     hard = [b for b in bars if b["passed"] is not None and not b.get("proxy")]
-    overall = all(b["passed"] for b in hard) and (dev.cuda or True)
+    overall = all(b["passed"] for b in hard)
     print(("OVERALL (non-proxy bars): PASS" if overall else "OVERALL (non-proxy bars): FAIL")
           + ("" if dev.cuda else "  -- CPU smoke run: GPU bars must be measured on the owner's cards"))
     print("wrote", args.out)

@@ -141,8 +141,14 @@ def test_whole_model_logits_grad_and_cached_fallback(kind):
         assert cfg.calls == 3
         assert ((l1 - l0).norm() / l0.norm()).item() < 1e-5 and _cos(d1, d0) > 0.99999
         with torch.no_grad():
-            c1 = host(ids, use_cache=True).logits
-        assert cfg.fallbacks == 3 and torch.equal(c1, c0)   # cached prefill handed to HF's own forward
+            o1 = host(ids, use_cache=True)
+            c1 = o1.logits
+            # a fresh-cache prefill (zero initial state) is served by our kernel and fills the cache (VGK-1) ...
+            assert cfg.calls == 6 and cfg.fallbacks == 0
+            assert ((c1 - c0).norm() / c0.norm()).item() < 1e-5
+            # ... and the cached decode step that follows is handed to HF's own forward
+            host(ids[:, -1:], past_key_values=o1.past_key_values, use_cache=True)
+        assert cfg.fallbacks == 3
     finally:
         gdn.unpatch_gdn(host)
 
@@ -168,7 +174,7 @@ def test_native_forward_plumbing_matches_ours():
     v, a, b = torch.randn(B, T, HV, dv), torch.randn(B, T, HV), torch.randn(B, T, HV)
     A_log, dt = torch.randn(HV), torch.randn(HV)
     ins = [t.requires_grad_(True) for t in (q, k, v, a, b, A_log, dt)]
-    o1 = gdn.gated_delta_rule_from_raw(*ins, impl="ours", chunk_size=32)
+    o1 = gdn.gated_delta_rule_from_raw(*ins, impl="hf_math", chunk_size=32)
     o2 = gdn.gated_delta_rule_from_raw(*ins, impl="native", native_op=_fake_native_op, chunk_size=32)
     assert ((o1 - o2).norm() / o1.norm()).item() < 1e-5
     go = torch.randn_like(o1)
@@ -188,3 +194,22 @@ def test_patch_native_requires_op_and_rejects_empty_model():
         assert cfg.impl == "native"
     finally:
         gdn.unpatch_gdn(host)
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+@pytest.mark.parametrize("save_states", [True, False])
+def test_raw_path_matches_hf_math_path(dtype, save_states):
+    """RawGDN (saves raw tensors, recomputes the prep) == prep-with-autograd + chunk_gated_delta_rule."""
+    g = torch.Generator().manual_seed(11)
+    B, T, H, HV, dk, dv = 2, 75, 2, 4, 16, 8
+    ins = [torch.randn(*s, generator=g).to(dtype) for s in
+           ((B, T, H, dk), (B, T, H, dk), (B, T, HV, dv), (B, T, HV), (B, T, HV), (HV,), (HV,))]
+    ins = [t.requires_grad_(True) for t in ins]
+    o1 = gdn.gated_delta_rule_from_raw(*ins, impl="ours", chunk_size=16, save_states=save_states, max_bh=3)
+    o2 = gdn.gated_delta_rule_from_raw(*ins, impl="hf_math", chunk_size=16)
+    assert o1.dtype == dtype
+    tol = 1e-6 if dtype == torch.float32 else 1e-2
+    assert ((o1.float() - o2.float()).norm() / o2.float().norm()).item() < tol
+    go = torch.randn(o1.shape, generator=g).to(dtype)
+    for x, y in zip(torch.autograd.grad(o1, ins, go), torch.autograd.grad(o2, ins, go)):
+        assert _cos(x, y) > (0.999999 if dtype == torch.float32 else 0.999)

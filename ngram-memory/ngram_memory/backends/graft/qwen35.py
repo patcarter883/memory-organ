@@ -20,6 +20,8 @@ eos-seeded.
 """
 from __future__ import annotations
 
+from collections import OrderedDict
+
 from typing import Any
 
 import torch
@@ -222,6 +224,8 @@ class InstalledGraft:
         self.last: dict = {}
         # true n-gram history [B, n-1] for the next UNCACHED calls (training windows); None = fresh segment
         self.context: torch.Tensor | None = None
+        # forward-time (ids, mask, context) per layer-input storage, for gradient-checkpoint recomputes
+        self._bound: "OrderedDict[tuple, tuple]" = OrderedDict()
         layers = decoder_layers(host)
         self._handles = [
             host.register_forward_pre_hook(self._capture, with_kwargs=True),
@@ -232,6 +236,7 @@ class InstalledGraft:
         for h in self._handles:
             h.remove()
         self._handles = []
+        self._bound.clear()
 
     def __enter__(self) -> "InstalledGraft":
         return self
@@ -247,20 +252,37 @@ class InstalledGraft:
         self._ids = ids
         self._mask2d = m if isinstance(m, torch.Tensor) and m.ndim == 2 else None
 
+    @staticmethod
+    def _bind_key(hidden: torch.Tensor) -> tuple:
+        # the layer input is kept alive by the checkpoint (saved by reference, or detached sharing storage), so
+        # its storage address identifies the forward call during the backward recompute
+        return (hidden.data_ptr(), tuple(hidden.shape), tuple(hidden.stride()))
+
     def _inject(self, module, args, kwargs):
         hidden = args[0] if args else kwargs["hidden_states"]
         T = hidden.shape[1]
-        ids = self._ids
+        if torch._C._current_graph_task_id() != -1 and torch.is_grad_enabled():
+            # gradient-checkpoint RECOMPUTE inside backward: use the ids/mask/context bound at forward time, not
+            # those of the most recent top-level call (a later forward may have replaced them)
+            bound = self._bound.get(self._bind_key(hidden))
+            if bound is None:
+                raise RuntimeError("graft recompute: no forward-time binding for this layer input")
+            ids, mask2d, context = bound
+        else:
+            ids, mask2d, context = self._ids, self._mask2d, self.context
+            self._bound[self._bind_key(hidden)] = (ids, mask2d, context)
+            while len(self._bound) > 256:
+                self._bound.popitem(last=False)
         if ids is None or ids.shape[1] != T:
             raise RuntimeError(f"captured ids {None if ids is None else tuple(ids.shape)} do not match hidden "
                                f"{tuple(hidden.shape)}")
-        conv_mask = recurrent_conv_mask(self._mask2d, T)
+        conv_mask = recurrent_conv_mask(mask2d, T)
         ple_ids = torch.where(conv_mask.bool(), ids, self.graft.eos) if conv_mask is not None else ids
         cache = kwargs.get("past_key_values")
-        if self.context is not None:
+        if context is not None:
             if cache is not None:
                 raise RuntimeError("InstalledGraft.context is for uncached calls; got past_key_values")
-            ctx = self.context.to(ids.device)
+            ctx = context.to(ids.device)
             if ctx.shape != (ids.shape[0], self.graft.key.context_len):
                 raise ValueError(f"context {tuple(ctx.shape)} != {(ids.shape[0], self.graft.key.context_len)}")
             state = PrefixContext(ctx)

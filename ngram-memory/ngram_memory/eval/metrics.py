@@ -127,9 +127,10 @@ def class_breakdown(base_nll: np.ndarray, cond_nll: np.ndarray, groups: np.ndarr
 
 
 def retention(base_nll: np.ndarray, cond_nll: np.ndarray, groups: np.ndarray, kl: np.ndarray | None = None,
-              agree: np.ndarray | None = None, n_boot: int = 10_000, seed: int = 0) -> dict:
-    """R1/R2: paired ΔNLL plus mean KL(base || ON) and top-1 agreement when available."""
-    r = paired(base_nll, cond_nll, groups, n_boot=n_boot, seed=seed)
+              agree: np.ndarray | None = None, n_boot: int = 10_000, seed: int = 0,
+              base_hit: np.ndarray | None = None, cond_hit: np.ndarray | None = None) -> dict:
+    """R1/R2: paired ΔNLL (and EM) plus mean KL(base || ON) and top-1 agreement when available."""
+    r = paired(base_nll, cond_nll, groups, base_hit=base_hit, cond_hit=cond_hit, n_boot=n_boot, seed=seed)
     if kl is not None:
         r["mean_kl"] = float(np.mean(kl))
     if agree is not None:

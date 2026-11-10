@@ -59,26 +59,36 @@ def test_evaluate_cli_all_arms(tmp_path, monkeypatch):
     (tmp_path / "ref.json").write_text(json.dumps({"os": 5, "value": 3, "other": 3}))
     out = tmp_path / "out"
     conds = f"base,countlm,rag1k,knm,ngm,rows:{rows},perm:{rows},random:{rows},constbias:{rows},rag1k+rows:{rows},lora"
-    argv = ["evaluate.py", "--splits", str(sp), "--host", str(host), "--out", str(out), "--sets", "dev,splitb,r2",
-            "--context", "128", "--stride", "64", "--min-context", "64", "--max-files", "1", "--tune-files", "1",
-            "--retention-tokens", "256", "--knm-tokens", "256", "--lora-tokens", "256", "--lora-window", "64",
-            "--lora-lr", "1e-3", "--threads", "1", "--fmt", str(tmp_path / "fmt.json"), "--ref-vocab-cache",
-            str(tmp_path / "ref.json"), "--ngm-ratios", "0.01,0.1", "--conditions", conds]
     spec = importlib.util.spec_from_file_location("evaluate_cli", ROOT / "scripts/evaluate.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    monkeypatch.setattr(sys, "argv", argv)
-    mod.main()
-    s = json.loads((out / "summary.json").read_text())
-    assert not [k for k in s["tuning"] if k.startswith("error:")], s["tuning"]
     want = {"base", "countlm", "rag1k", "knm", "ngm", "rows[rows]", "perm[rows]", "random[rows]", "constbias[rows]",
             "rag1k+rows[rows]", "lora"}
-    for set_name in ("dev", "splitb", "r2"):
-        got = {k for k in s["sets"][set_name] if not k.startswith("_")}
-        assert got == want, (set_name, got ^ want)
-        for k in want - {"base"}:
-            p = s["sets"][set_name][k]["paired"]
-            assert p["n_tokens"] == s["sets"][set_name]["base"]["n_tokens"] > 0
-    assert "mean_kl" in s["sets"]["r2"]["rows[rows]"]["paired"]
-    assert "classes" in s["sets"]["dev"]["rows[rows]"] and "dup:16gram_in_train" in s["sets"]["dev"]["_class_fractions"]
-    assert s["warnings"] and (out / "report.md").read_text().startswith("# Stage-1 eval")
+    # Split B is scored in its own run (its data-dependent arms are built from the tree at T_cut, VE-1)
+    for sets, o in (("dev,r2", out), ("splitb", tmp_path / "out_b")):
+        argv = ["evaluate.py", "--splits", str(sp), "--host", str(host), "--out", str(o), "--sets", sets,
+                "--context", "128", "--stride", "64", "--min-context", "64", "--max-files", "1", "--tune-files", "1",
+                "--retention-tokens", "256", "--knm-tokens", "256", "--lora-tokens", "256", "--lora-window", "64",
+                "--lora-lr", "1e-3", "--threads", "1", "--fmt", str(tmp_path / "fmt.json"), "--ref-vocab-cache",
+                str(tmp_path / "ref.json"), "--ngm-ratios", "0.01,0.1", "--conditions", conds]
+        monkeypatch.setattr(sys, "argv", argv)
+        mod.main()
+        s = json.loads((o / "summary.json").read_text())
+        assert not [k for k in s["tuning"] if k.startswith("error:")], s["tuning"]
+        assert s["data_regime"]["regime"] == ("b" if sets == "splitb" else "a")
+        for set_name in sets.split(","):
+            got = {k for k in s["sets"][set_name] if not k.startswith("_")}
+            assert got == want, (set_name, got ^ want)
+            for k in want - {"base"}:
+                p = s["sets"][set_name][k]["paired"]
+                assert p["n_tokens"] == s["sets"][set_name]["base"]["n_tokens"] > 0
+        if sets == "splitb":
+            assert s["warnings"]
+        else:
+            assert "mean_kl" in s["sets"]["r2"]["rows[rows]"]["paired"]
+            assert "classes" in s["sets"]["dev"]["rows[rows]"] and "dup:16gram_in_train" in s["sets"]["dev"]["_class_fractions"]
+            assert (o / "report.md").read_text().startswith("# Stage-1 eval")
+    # mixing Split B with Split-A sets and data-dependent arms is refused
+    monkeypatch.setattr(sys, "argv", argv[:argv.index("--sets") + 1] + ["dev,splitb"] + argv[argv.index("--sets") + 2:])
+    with pytest.raises(SystemExit):
+        mod.main()

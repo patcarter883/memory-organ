@@ -47,9 +47,27 @@ def array_sha256(a: np.ndarray) -> str:
     return sha256_bytes(str(a.dtype).encode() + str(a.shape).encode() + a.tobytes())
 
 
+# config fields that describe how a host was loaded or run, not which host it is (dropped from the pin; VF-5)
+RUNTIME_CONFIG_KEYS = frozenset({
+    "transformers_version", "use_cache", "_name_or_path", "name_or_path", "_commit_hash", "dtype", "torch_dtype",
+    "_attn_implementation", "_attn_implementation_internal", "attn_implementation", "_experts_implementation",
+    "output_attentions", "output_hidden_states", "return_dict", "use_return_dict", "torchscript",
+    "_output_attentions", "_output_hidden_states", "chunk_size_feed_forward", "pruned_heads", "tf_legacy_loss",
+    "use_bfloat16", "gradient_checkpointing", "problem_type"})
+
+
+def _strip_runtime(x):
+    if isinstance(x, Mapping):
+        return {k: _strip_runtime(v) for k, v in x.items() if k not in RUNTIME_CONFIG_KEYS}
+    if isinstance(x, (list, tuple)):
+        return [_strip_runtime(v) for v in x]
+    return x
+
+
 def config_sha256(cfg: Mapping) -> str:
-    """sha256 of a canonical JSON of a host config dict."""
-    return sha256_bytes(json.dumps(cfg, sort_keys=True, separators=(",", ":"), default=str).encode())
+    """sha256 of a canonical JSON of a host config dict, without runtime-only fields (RUNTIME_CONFIG_KEYS, at any
+    nesting level, e.g. text_config), so the pin survives a transformers upgrade or a different load path."""
+    return sha256_bytes(json.dumps(_strip_runtime(cfg), sort_keys=True, separators=(",", ":"), default=str).encode())
 
 
 # ------------------------------------------------------------------------------------------- graft file
@@ -226,6 +244,8 @@ class CartridgeChain:
                 raise ValueError(f"v{inf.version}: graft pin differs from the root's")
             if p.manifest.mode != self.patches[0].manifest.mode:
                 raise ValueError("mixed modes in a chain")
+            if inf.kind == "fact" and p.reset_row_ids.size:
+                raise ValueError(f"v{inf.version}: a fact patch may not reset rows (only increments do)")
         self.infos = infos
 
     @property
@@ -245,11 +265,18 @@ class CartridgeChain:
         k = [i.version for i in self.infos].index(version)
         return CartridgeChain(self.patches[:k + 1])
 
+    def layered(self) -> list[Patch]:
+        """§I.7 layering: the cartridge, then its increments (chain order), then facts (chain order). An increment's
+        reset therefore never erases a fact that precedes it in the chain (VF-3); facts carry no resets."""
+        inc = [p for p, i in zip(self.patches, self.infos) if i.kind != "fact"]
+        facts = [p for p, i in zip(self.patches, self.infos) if i.kind == "fact"]
+        return inc + facts
+
     def compose(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """(ids, fp32 delta sum, reset_mask): fixed chain order; a patch's reset rows go back to base (delta 0,
-        and the row leaves the overlay unless a later patch writes it). reset_mask marks rows present only because
-        they were reset (they serve base)."""
-        return compose_patches(self.patches)
+        """(ids, fp32 delta sum, reset_ids) in the §I.7 layer order (`layered`): a patch's reset rows go back to
+        base (delta 0, and the row leaves the overlay unless a later layer writes it). reset_ids are rows present
+        only because they were reset (they serve base)."""
+        return compose_patches(self.layered())
 
 
 def compose_patches(patches: Sequence[Patch]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -313,7 +340,8 @@ def compile_chain(chain: CartridgeChain, base_rows_fn=None) -> ServedCartridge:
                module_fingerprint=m.module_fingerprint, format_fingerprint=m.format_fingerprint,
                row_width=m.row_width, padded_rows=m.padded_rows, graft=chain.infos[0].graft,
                base_fingerprint=None if base_rows_fn is None else
-               _base_fp(ids, base_rows_fn), rows_sha256=array_sha256(bits), n_rows=int(ids.size))
+               _base_fp(ids, base_rows_fn), rows_sha256=array_sha256(bits),
+               row_ids_sha256=array_sha256(np.ascontiguousarray(ids, dtype="<i8")), n_rows=int(ids.size))
     return ServedCartridge(chain.namespace, chain.version, ids, bits, man)
 
 
@@ -337,6 +365,10 @@ def read_served(path: str, graft: GraftManifest | None = None, fmt: FormatSpec |
     ids, bits = t["row_ids"], t["rows"]
     if array_sha256(bits) != man["rows_sha256"]:
         raise ValueError("served rows sha256 mismatch")
+    if "row_ids_sha256" not in man or array_sha256(np.ascontiguousarray(ids, dtype="<i8")) != man["row_ids_sha256"]:
+        raise ValueError("served row_ids sha256 missing or mismatched")  # the ids decide WHICH rows change (VF-6)
+    if int(man.get("n_rows", ids.size)) != ids.size or bits.shape[0] != ids.size:
+        raise ValueError("served row count mismatch")
     if ids.size and ((np.diff(ids) <= 0).any() or ids[0] < 0 or ids[-1] >= man["padded_rows"]):
         raise ValueError("served row ids must be sorted, unique and in range")
     if fmt is not None and man["format_fingerprint"] != fmt.fingerprint():

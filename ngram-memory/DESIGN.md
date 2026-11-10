@@ -522,7 +522,7 @@ min_δ   E_{x∈D_train}  mean_t  NLL(x_{t+1} | x_{≤t}; δ)                  n
 | 27B (320) | 1,292 | 9.76 GB | 3.08 GB | 2.64 GB | 0.71 GB |
 | SparseAdam fp32 m, v (w = 160, ref.) | 1,928 | 14.6 GB | 4.60 GB | 3.93 GB | — |
 
-Row counts: 7,555,967 and 2,385,780 from all files, 2,040,221 and 550,891 from the Split-A train files (`S1/ingest-algo/count_rows.out` line 6, `row_policy.out`; both re-run identically in `S1/rt-feas/`). The train-split "all rows" figure is 6,721,239. The all-files count ≥ 2 column is arithmetic on those counts.
+Row counts: 7,555,967 and 2,385,780 from all files, 2,040,221 and 550,891 from the train side of the legacy 85/15 seed-0 shuffle split (`S1/ingest-algo/count_rows.out` line 6, `row_policy.out`; both re-run identically in `S1/rt-feas/`). *Correction 2026-11-10:* that split is not Split A. On the real Split-A train files (`ingest_splits/split_a.json`, 204 files) count ≥ 2 gives 1,935,008 n-grams, or 1,973,707 rows after hashing collisions; the row-policy table below still quotes the legacy-split figures. The train-split "all rows" figure is 6,721,239. The all-files count ≥ 2 column is arithmetic on those counts.
 
 ### I.3 What 2/3-gram rows can and cannot hold
 

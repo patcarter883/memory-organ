@@ -1,7 +1,7 @@
 """Real weights (slow): G-lin graft on frozen Qwen2.5-0.5B fp32 with the Stage-1 proxy KeySpec
 (P/stage1/experiment: no-op max|dlogit| = 0.0 bitwise; host decode parity 5.2e-5; trained-graft parity 4.2e-5).
 
-Peak RSS is about 2.3 GB (fp32 weights); run alone. Writes a JSON summary to $NGRAM_MEMORY_LOG_DIR if set."""
+Peak RSS is about 3.2 GB (fp32 weights; measured 3,187 MB); run alone. Writes a JSON summary to $NGRAM_MEMORY_LOG_DIR if set."""
 import json
 import os
 import resource
@@ -43,7 +43,15 @@ def test_qwen25_05b_noop_and_decode_parity():
     tok = AutoTokenizer.from_pretrained(str(HOST))
     text = TEXT.read_text() if TEXT.exists() else "def f(x):\n    return x + 1\n" * 40
     ids = torch.tensor([tok(text)["input_ids"][:96]])
-    sha0 = {k: v.clone() for k, v in list(model.state_dict().items())[:4]}
+    def _host_sha() -> str:
+        import hashlib
+        h = hashlib.sha256()
+        for k, v in sorted(model.state_dict().items()):
+            h.update(k.encode())
+            h.update(v.detach().contiguous().reshape(-1).view(torch.uint8).numpy().tobytes())
+        return h.hexdigest()
+
+    sha0 = _host_sha()
     res: dict = {}
     with torch.no_grad():
         base = model(input_ids=ids, use_cache=False).logits
@@ -74,7 +82,7 @@ def test_qwen25_05b_noop_and_decode_parity():
     res["graft_effect_max_abs_dlogit"] = maxdiff(full, base[:, :40])
     res["injection_ratio_median"] = float((h.last["out"].norm(dim=-1) / (hs[0] - h.last["out"]).norm(dim=-1)).median())
     res["removed_restores_base_bitwise"] = bool(torch.equal(after, base))
-    res["host_weights_unchanged"] = all(torch.equal(v, model.state_dict()[k]) for k, v in sha0.items())
+    res["host_weights_unchanged"] = _host_sha() == sha0  # sha256 over every state_dict tensor
     res["rows_written"] = int(rid.numel())
     res["peak_rss_mb"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
     d = os.environ.get("NGRAM_MEMORY_LOG_DIR")

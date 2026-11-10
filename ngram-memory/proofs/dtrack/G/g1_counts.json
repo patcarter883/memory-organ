@@ -1,0 +1,55 @@
+{
+ "tokenizer": "/tmp/claude-0/-home-user-memory-organ/8d3a7b83-cc3c-5a8e-b480-88fd8f40a919/scratchpad/nm/graft/tok/Qwen__Qwen3.8-Flash-Next/tokenizer.json",
+ "tokenizer_sha256": "0997f410c57a1f4e53b09e4be8f4a172d90edd9564368fb0847030937229b9f3",
+ "files": {
+  "codeparrot_valid.json.gz": {
+   "bytes": 142180683,
+   "sha256": "7f8c20a737c9084779bcdb853325ad4774d0db52c74aa2a63fd658d6787eb35b"
+  },
+  "wikitext103_train0.parquet": {
+   "bytes": 156987808,
+   "sha256": "74da360f23826045b3e6ac6375411fdb15f003030aa74f2596ed08b857cb9212"
+  }
+ },
+ "sources": {
+  "code": {
+   "docs": 20583,
+   "chars": 200017149,
+   "tokens": 52076525,
+   "tokenize_s": 65.7,
+   "distinct_1": 104158,
+   "total_1": 52076525,
+   "max_1": 3581845,
+   "once_1": 15457,
+   "distinct_2": 4731428,
+   "total_2": 52055942,
+   "max_2": 1094807,
+   "once_2": 2225696,
+   "distinct_3": 13236373,
+   "total_3": 52035359,
+   "max_3": 165650,
+   "once_3": 8422914,
+   "count_s": 6.0
+  },
+  "prose": {
+   "docs": 8564,
+   "chars": 150017379,
+   "tokens": 34319202,
+   "tokenize_s": 61.5,
+   "distinct_1": 74941,
+   "total_1": 34319202,
+   "max_1": 1604227,
+   "once_1": 9248,
+   "distinct_2": 4524211,
+   "total_2": 34310638,
+   "max_2": 339802,
+   "once_2": 2711764,
+   "distinct_3": 15060156,
+   "total_3": 34302074,
+   "max_3": 145062,
+   "once_3": 11843505,
+   "count_s": 4.2
+  }
+ },
+ "peak_rss_mb": 2490
+}

@@ -16,8 +16,10 @@ What this module provides.
   ``baddbmm`` per chunk forward and one per chunk backward). The forward saves only its inputs and the
   chunk-boundary states (``save_states=True``) or only its inputs (``save_states=False``, the backward then
   re-runs the boundary scan). Gradients flow to q, k, v, g, beta and the initial state.
-* ``NativeForwardGDN``: the same backward behind the fork's native ``gdn_hip.gdn_prefill`` forward (GPU only;
-  the op is injected, so the plumbing is testable on CPU with a stand-in).
+* ``RawGDN`` (used by the layer patch): the same kernel on the layer's raw tensors, saving only those (bf16,
+  before GQA expansion) and recomputing the cheap elementwise prep in the backward. Its forward is either our
+  torch kernel or the fork's native ``gdn_hip.gdn_prefill`` (GPU only; the op is injected, so the plumbing is
+  testable on CPU with a stand-in).
 * ``patch_gdn(model)`` / ``unpatch_gdn(model)``: per-instance forward override of every
   ``Qwen3_5GatedDeltaNet`` and ``Qwen3_5MoeGatedDeltaNet``. State dict keys and parameters are untouched, so
   the projections may be ``host_quant.QuantLinear`` modules. Calls with a cache (decode / cached prefill) or
@@ -50,7 +52,7 @@ from torch import nn
 GDN_CLASS_NAMES: tuple[str, ...] = ("Qwen3_5GatedDeltaNet", "Qwen3_5MoeGatedDeltaNet")
 
 __all__ = [
-    "GDN_CLASS_NAMES", "chunk_gated_delta_rule", "gated_delta_rule_from_raw", "NativeForwardGDN",
+    "GDN_CLASS_NAMES", "chunk_gated_delta_rule", "gated_delta_rule_from_raw", "RawGDN",
     "native_gdn_op", "patch_gdn", "unpatch_gdn", "gdn_modules", "GDNPatchConfig", "l2norm",
     "recurrent_gated_delta_rule_reference",
 ]
@@ -243,55 +245,65 @@ def _groups(BH: int, max_bh: int | None) -> Iterator[slice]:
         yield slice(s, min(BH, s + step))
 
 
+def _chunk_forward(q, k, v, g, beta, S0, C: int, tri: str, save_states: bool, max_bh):
+    """q,k [BH,T,dk] (l2-normed, scaled), v [BH,T,dv], g,beta [BH,T], S0 [BH,dk,dv] | None.
+    Returns (O [BH,T,dv], S_final [BH,dk,dv], states [N+1,BH,dk,dv] | None)."""
+    BH, T, dk = q.shape
+    dv = v.shape[-1]
+    qc, kc, vc = _to_chunks(q, C), _to_chunks(k, C), _to_chunks(v, C)
+    gc, bc = _to_chunks(g, C), _to_chunks(beta, C)
+    N = qc.shape[1]
+    O = vc.new_empty(BH, N, C, dv)
+    Sf = vc.new_empty(BH, dk, dv)
+    states = vc.new_empty(N + 1, BH, dk, dv) if save_states else None
+    for sl in _groups(BH, max_bh):
+        o, sf, st = _core_forward(qc[sl], kc[sl], vc[sl], gc[sl], bc[sl], None if S0 is None else S0[sl], tri,
+                                  save_states)
+        O[sl] = o
+        Sf[sl] = sf
+        if save_states:
+            states[:, sl] = st
+    return O.reshape(BH, N * C, dv)[:, :T], Sf, states
+
+
+def _chunk_backward(q, k, v, g, beta, S0, states, dO, dSf, C: int, tri: str, max_bh):
+    """Gradients (dq, dk, dv, dg, dbeta [BH,T,...], dS0 | None) of _chunk_forward. dO / dSf may be None."""
+    BH, T, dk = q.shape
+    dv = v.shape[-1]
+    qc, kc, vc = _to_chunks(q, C), _to_chunks(k, C), _to_chunks(v, C)
+    gc, bc = _to_chunks(g, C), _to_chunks(beta, C)
+    N = qc.shape[1]
+    dOc = _to_chunks(dO.contiguous(), C) if dO is not None else vc.new_zeros(BH, N, C, dv)
+    dq, dk_, dv_ = torch.empty_like(qc), torch.empty_like(kc), torch.empty_like(vc)
+    dg, db = torch.empty_like(gc), torch.empty_like(bc)
+    dS0 = None if S0 is None else torch.empty_like(S0)
+    for sl in _groups(BH, max_bh):
+        r = _core_backward(qc[sl], kc[sl], vc[sl], gc[sl], bc[sl], None if S0 is None else S0[sl],
+                           None if states is None else states[:, sl], dOc[sl], None if dSf is None else dSf[sl], tri)
+        dq[sl], dk_[sl], dv_[sl], dg[sl], db[sl] = r[:5]
+        if dS0 is not None:
+            dS0[sl] = r[5]
+
+    def un(x):
+        return x.reshape(BH, N * C, *x.shape[3:])[:, :T]
+    return un(dq), un(dk_), un(dv_), un(dg), un(db), dS0
+
+
 class _ChunkGDR(torch.autograd.Function):
-    """q,k [BH,T,dk] (already l2-normed and scaled), v [BH,T,dv], g,beta [BH,T], S0 [BH,dk,dv] | None (fp32)."""
+    """Tensor-level: q,k [BH,T,dk] (already l2-normed and scaled), v [BH,T,dv], g,beta [BH,T], S0 | None."""
 
     @staticmethod
     def forward(ctx, q, k, v, g, beta, S0, C: int, tri: str, save_states: bool, max_bh):
         ctx.set_materialize_grads(False)
-        BH, T, dk = q.shape
-        dv = v.shape[-1]
-        qc, kc, vc = _to_chunks(q, C), _to_chunks(k, C), _to_chunks(v, C)
-        gc, bc = _to_chunks(g, C), _to_chunks(beta, C)
-        N = qc.shape[1]
-        O = vc.new_empty(BH, N, C, dv)
-        Sf = vc.new_empty(BH, dk, dv)
-        states = vc.new_empty(N + 1, BH, dk, dv) if save_states else None
-        for sl in _groups(BH, max_bh):
-            o, sf, st = _core_forward(qc[sl], kc[sl], vc[sl], gc[sl], bc[sl],
-                                      None if S0 is None else S0[sl], tri, save_states)
-            O[sl] = o
-            Sf[sl] = sf
-            if save_states:
-                states[:, sl] = st
+        O, Sf, states = _chunk_forward(q, k, v, g, beta, S0, C, tri, save_states, max_bh)
         ctx.save_for_backward(q, k, v, g, beta, S0, states)
-        ctx.cfg = (C, tri, max_bh, T)
-        return O.reshape(BH, N * C, dv)[:, :T], Sf
+        ctx.cfg = (C, tri, max_bh)
+        return O, Sf
 
     @staticmethod
     def backward(ctx, dO, dSf):
         q, k, v, g, beta, S0, states = ctx.saved_tensors
-        C, tri, max_bh, T = ctx.cfg
-        BH, _, dk = q.shape
-        dv = v.shape[-1]
-        qc, kc, vc = _to_chunks(q, C), _to_chunks(k, C), _to_chunks(v, C)
-        gc, bc = _to_chunks(g, C), _to_chunks(beta, C)
-        N = qc.shape[1]
-        dOc = _to_chunks(dO.contiguous(), C) if dO is not None else vc.new_zeros(BH, N, C, dv)
-        dq, dk_, dv_ = torch.empty_like(qc), torch.empty_like(kc), torch.empty_like(vc)
-        dg, db = torch.empty_like(gc), torch.empty_like(bc)
-        dS0 = None if S0 is None else torch.empty_like(S0)
-        for sl in _groups(BH, max_bh):
-            r = _core_backward(qc[sl], kc[sl], vc[sl], gc[sl], bc[sl], None if S0 is None else S0[sl],
-                               None if states is None else states[:, sl], dOc[sl],
-                               None if dSf is None else dSf[sl], tri)
-            dq[sl], dk_[sl], dv_[sl], dg[sl], db[sl] = r[:5]
-            if dS0 is not None:
-                dS0[sl] = r[5]
-
-        def un(x):
-            return x.reshape(BH, N * C, *x.shape[3:])[:, :T]
-        return un(dq), un(dk_), un(dv_), un(dg), un(db), dS0, None, None, None, None
+        return (*_chunk_backward(q, k, v, g, beta, S0, states, dO, dSf, *ctx.cfg), None, None, None, None)
 
 
 def chunk_gated_delta_rule(
@@ -377,7 +389,8 @@ def _native_call(op: Callable, q, k, v, a, b, A_log, dt_bias, scale: float) -> t
     has_init = torch.zeros(B, dtype=torch.uint8, device=dev)
     out = op(q.reshape(B * T, H, Kk).contiguous(), k.reshape(B * T, H, Kk).contiguous(),
              v.reshape(B * T, HV, Vv).contiguous(), a.reshape(B * T, HV).contiguous(),
-             b.reshape(B * T, HV).contiguous(), A_log, dt_bias, cu, state_idx, has_init, ssm_state,
+             b.reshape(B * T, HV).contiguous(), A_log.float().contiguous(), dt_bias.float().contiguous(), cu,
+             state_idx, has_init, ssm_state,
              float(scale), 1)
     return out.reshape(B, T, HV, Vv)
 
@@ -387,8 +400,8 @@ def _prep_raw(q, k, v, a, b, A_log, dt_bias):
     B, T, H, dk = q.shape
     HV, dv = v.shape[2], v.shape[3]
     rep = HV // H
-    beta = b.float().sigmoid()
-    g = -A_log.float().exp() * F.softplus(a.float() + dt_bias.float())
+    beta = b.sigmoid().float()                 # HF order: sigmoid in the activation dtype, then fp32
+    g = -A_log.float().exp() * F.softplus(a.float() + dt_bias)
     qf, kf = q.float(), k.float()
     if rep > 1:
         qf = qf.repeat_interleave(rep, dim=2)
@@ -399,30 +412,45 @@ def _prep_raw(q, k, v, a, b, A_log, dt_bias):
     return tr(qn), tr(kn), tr(v.float()), tr(g), tr(beta)
 
 
-class NativeForwardGDN(torch.autograd.Function):
-    """Forward: an injected native op on raw (q,k,v,a,b,A_log,dt_bias) in the fork's layout. Backward: our
-    chunked backward (boundary states recomputed from the inputs), then autograd through the cheap
-    elementwise prep (l2norm, GQA expansion, softplus/sigmoid gates). Returns core [B,T,HV,dv]."""
+class RawGDN(torch.autograd.Function):
+    """The GDN core from the layer's raw tensors (q,k [B,T,H,dk] pre-norm, v [B,T,HV,dv], a,b [B,T,HV], A_log,
+    dt_bias [HV]) -> core [B,T,HV,dv] (fp32). Saves only the raw tensors (plus, for our forward with
+    ``save_states``, the fp32 chunk-boundary states); the backward recomputes the cheap elementwise prep
+    (l2norm, scale, GQA expansion, softplus/sigmoid gates) with autograd, runs the chunked core backward, and
+    pulls the gradients through the prep. Forward: our chunked torch kernel (``op=None``) or an injected native
+    op with gdn_hip.gdn_prefill's signature (boundary states then recomputed in the backward)."""
 
     @staticmethod
-    def forward(ctx, q, k, v, a, b, A_log, dt_bias, op, C: int, tri: str, max_bh):
-        out = _native_call(op, q, k, v, a, b, A_log, dt_bias, q.shape[-1] ** -0.5)
-        ctx.save_for_backward(q, k, v, a, b, A_log, dt_bias)
+    def forward(ctx, q, k, v, a, b, A_log, dt_bias, op, C: int, tri: str, max_bh, save_states: bool):
+        B, T, HV, dv = v.shape
+        states = None
+        if op is not None:
+            out = _native_call(op, q, k, v, a, b, A_log, dt_bias, q.shape[-1] ** -0.5).float()
+            Sf = out.new_empty(0)   # final state not returned on the native path
+        else:
+            qn, kn, vv, gg, bb = _prep_raw(q, k, v, a, b, A_log, dt_bias)
+            O, Sf, states = _chunk_forward(qn, kn, vv, gg, bb, None, C, tri, save_states, max_bh)
+            out = O.reshape(B, HV, T, dv).transpose(1, 2)
+            Sf = Sf.reshape(B, HV, *Sf.shape[1:])
+            del qn, kn, vv, gg, bb
+        ctx.save_for_backward(q, k, v, a, b, A_log, dt_bias, states)
         ctx.cfg = (C, tri, max_bh)
-        return out
+        ctx.mark_non_differentiable(Sf)
+        return out, Sf
 
     @staticmethod
-    def backward(ctx, dout):
-        q, k, v, a, b, A_log, dt_bias = ctx.saved_tensors
+    def backward(ctx, dout, dSf=None):
+        q, k, v, a, b, A_log, dt_bias, states = ctx.saved_tensors
         C, tri, max_bh = ctx.cfg
         B, T, HV, dv = v.shape
-        raw = [t.detach().requires_grad_(ctx.needs_input_grad[i]) for i, t in enumerate((q, k, v, a, b, A_log,
-                                                                                          dt_bias))]
+        raw = [t.detach().requires_grad_(ctx.needs_input_grad[i])
+               for i, t in enumerate((q, k, v, a, b, A_log, dt_bias))]
         with torch.enable_grad():
             prep = _prep_raw(*raw)
         qn, kn, vv, gg, bb = (t.detach() for t in prep)
         dOr = dout.float().transpose(1, 2).reshape(B * HV, T, dv)
-        grads = _ChunkGDR.backward(_FakeCtx((qn, kn, vv, gg, bb, None, None), (C, tri, max_bh, T)), dOr, None)
+        grads = _chunk_backward(qn, kn, vv, gg, bb, None, states, dOr, None, C, tri, max_bh)
+        del qn, kn, vv, gg, bb, dOr
         want = [(t, gr) for t, gr in zip(prep, grads[:5]) if t.requires_grad]
         ins = [t for t in raw if t.requires_grad]
         res = torch.autograd.grad([t for t, _ in want], ins, [gr for _, gr in want], allow_unused=True) \
@@ -430,35 +458,37 @@ class NativeForwardGDN(torch.autograd.Function):
         it = iter(res)
         out = [next(it) if t.requires_grad else None for t in raw]
         out = [None if gr is None else gr.to(t.dtype) for gr, t in zip(out, (q, k, v, a, b, A_log, dt_bias))]
-        return (*out, None, None, None, None)
-
-
-class _FakeCtx:
-    """Minimal ctx so NativeForwardGDN can reuse _ChunkGDR.backward without saved autograd state."""
-
-    def __init__(self, saved, cfg):
-        self.saved_tensors = saved
-        self.cfg = cfg
+        return (*out, None, None, None, None, None)
 
 
 def gated_delta_rule_from_raw(q, k, v, a, b, A_log, dt_bias, *, impl: str = "ours", native_op: Callable | None = None,
                               chunk_size: int = 64, tri: str = "solve", max_bh: int | None = None,
-                              save_states: bool = True) -> torch.Tensor:
+                              save_states: bool = True, return_final_state: bool = False):
     """The GDN core from the layer's raw tensors (q,k [B,T,H,dk] pre-norm, v [B,T,HV,dv], a,b [B,T,HV]).
-    impl 'ours' = torch forward + our backward; 'native' = ``native_op`` forward + our backward. Output dtype = v's."""
+    ``return_final_state``: also return the fp32 final recurrent state [B,HV,dk,dv] (impl 'ours'; None for
+    'native'), non-differentiable, in HF's cache layout.
+    impl 'ours' = our torch forward + our backward; 'native' = ``native_op`` forward + our backward; 'hf_math' =
+    the same prep as HF followed by ``chunk_gated_delta_rule`` with autograd through the prep (more saved
+    memory; kept for cross-checks). Output dtype = v's."""
     if impl == "native":
         if native_op is None:
             raise RuntimeError("impl='native' needs native_op (gdn_hip not importable here)")
-        return NativeForwardGDN.apply(q, k, v, a, b, A_log, dt_bias, native_op, chunk_size, tri, max_bh).to(v.dtype)
+        o, sf = RawGDN.apply(q, k, v, a, b, A_log, dt_bias, native_op, chunk_size, tri, max_bh, False)
+        return (o.to(v.dtype), None) if return_final_state else o.to(v.dtype)
+    if impl == "ours":
+        o, sf = RawGDN.apply(q, k, v, a, b, A_log, dt_bias, None, chunk_size, tri, max_bh, save_states)
+        return (o.to(v.dtype), sf) if return_final_state else o.to(v.dtype)
+    if impl != "hf_math":
+        raise ValueError(f"unknown impl {impl!r}")
     beta = b.sigmoid()
     g = -A_log.float().exp() * F.softplus(a.float() + dt_bias)
     rep = v.shape[2] // q.shape[2]
     if rep > 1:
         q = q.repeat_interleave(rep, dim=2)
         k = k.repeat_interleave(rep, dim=2)
-    o, _ = chunk_gated_delta_rule(q, k, v, g=g, beta=beta, chunk_size=chunk_size, use_qk_l2norm_in_kernel=True,
-                                  tri=tri, max_bh=max_bh, save_states=save_states)
-    return o
+    o, sf = chunk_gated_delta_rule(q, k, v, g=g, beta=beta, chunk_size=chunk_size, use_qk_l2norm_in_kernel=True,
+                                   tri=tri, max_bh=max_bh, save_states=save_states)
+    return (o, sf) if return_final_state else o
 
 
 # ------------------------------------------------------------------------------------------------------------
@@ -484,7 +514,17 @@ def gdn_modules(model: nn.Module) -> list[tuple[str, nn.Module]]:
 
 def _patched_forward(self, hidden_states: torch.Tensor, cache_params=None, attention_mask=None, **kwargs):
     cfg: GDNPatchConfig = self._ngm_gdn
-    if cache_params is not None or kwargs.get("cu_seq_lens_q") is not None or kwargs.get("cu_seqlens") is not None:
+    T_in = hidden_states.shape[1]
+    # A cache that holds no state for this layer yet (a plain prefill / training step with use_cache=True) has a
+    # zero initial state: our kernel serves it and fills the cache exactly as HF would (VGK-1). Cached decode,
+    # cached prefill with a previous state, varlen packing, or the native path with a cache go to HF.
+    fresh = False
+    if cache_params is not None:
+        fresh = (cfg.impl == "ours" and T_in > 1
+                 and cache_params.get_conv_state(self.layer_idx, state_idx=0) is None
+                 and cache_params.get_recurrent_state(self.layer_idx, state_idx=0) is None)
+    if (cache_params is not None and not fresh) or kwargs.get("cu_seq_lens_q") is not None \
+            or kwargs.get("cu_seqlens") is not None:
         cfg.fallbacks += 1
         return type(self).forward(self, hidden_states, cache_params=cache_params, attention_mask=attention_mask,
                                   **kwargs)
@@ -496,15 +536,22 @@ def _patched_forward(self, hidden_states: torch.Tensor, cache_params=None, atten
     z = self.in_proj_z(hidden_states).reshape(B, T, -1, self.head_v_dim)
     b = self.in_proj_b(hidden_states)
     a = self.in_proj_a(hidden_states)
+    if cache_params is not None:
+        mixed_qkv = cache_params.update_conv_state(mixed_qkv, self.layer_idx, conv_kernel_size=self.conv_kernel_size)
     mixed_qkv = hf.causal_conv1d_fn(mixed_qkv, self.conv1d.weight.squeeze(1), self.conv1d.bias,
-                                    activation=self.activation).transpose(1, 2)
+                                    activation=self.activation)
+    if cache_params is not None:
+        mixed_qkv = mixed_qkv[:, :, -T:]
+    mixed_qkv = mixed_qkv.transpose(1, 2)
     query, key, value = torch.split(mixed_qkv, [self.key_dim, self.key_dim, self.value_dim], dim=-1)
     query = query.reshape(B, T, -1, self.head_k_dim)
     key = key.reshape(B, T, -1, self.head_k_dim)
     value = value.reshape(B, T, -1, self.head_v_dim)
-    core = gated_delta_rule_from_raw(query, key, value, a, b, self.A_log, self.dt_bias, impl=cfg.impl,
-                                     native_op=cfg.native_op, chunk_size=cfg.chunk_size, tri=cfg.tri,
-                                     max_bh=cfg.max_bh, save_states=cfg.save_states)
+    core, sf = gated_delta_rule_from_raw(query, key, value, a, b, self.A_log, self.dt_bias, impl=cfg.impl,
+                                         native_op=cfg.native_op, chunk_size=cfg.chunk_size, tri=cfg.tri,
+                                         max_bh=cfg.max_bh, save_states=cfg.save_states, return_final_state=True)
+    if cache_params is not None:
+        cache_params.update_recurrent_state(sf, self.layer_idx)
     core = self.norm(core.reshape(-1, self.head_v_dim), z.reshape(-1, self.head_v_dim))
     return self.out_proj(core.reshape(B, T, -1))
 

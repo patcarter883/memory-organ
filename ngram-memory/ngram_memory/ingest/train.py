@@ -23,8 +23,12 @@ mean(g_j^2) over the rows read in that step (so once-seen rows do not take full-
 
 Rows: only the reserved rows of the SparseRowStore (the row policy's selection) can change; every other row reads
 0 and gets no gradient. Arms: 'G-lin', 'G-dir' (fmt.module.arm must agree), 'rows+Wv' (W_v trained with Adam,
-an ablation), 'key-shuffle' (C1 control: each head's reserved rows are read through a fixed random permutation
-at train time; `cartridge()` returns the served rows so that the plain graft reproduces the trained function).
+an ablation), 'key-shuffle' (C1 control, §6.A.4: at train time n-gram A's positions read and train the slot of
+sigma(A), a fixed random per-head permutation of the reserved rows; `cartridge()` returns the trained slots AS
+STORED, so served through the true keys n-gram A reads the row trained by sigma^-1(A)'s positions: content-free
+rows with real training. omega / row_scale follow the n-gram that trains each slot. Note: for a bijective sigma
+this is equivalent, up to float noise, to the eval-time permuted-keys control applied to the base arm with
+sigma^-1; `relabelled_store()` gives the rows that WOULD reproduce the trained function through true keys).
 
 Activation checkpointing: HF gradient checkpointing (non-reentrant) on the decoder layers plus checkpointed
 chunks of the output head, so a 4,096-token window never holds [T, V] logits. Determinism: data order is a pure
@@ -108,6 +112,7 @@ class KeyShuffle:
                 pos[a:b] = a + torch.randperm(b - a, generator=g)
         self.key, self.seed = key, int(seed)
         self.src, self.dst = src, src[pos]
+        self.perm = pos             # dst[i] = src[perm[i]]: compact slot perm[i] is trained by src[i]'s positions
 
     def remap(self, ids: torch.Tensor) -> torch.Tensor:
         n = self.src.numel()
@@ -119,8 +124,16 @@ class KeyShuffle:
     def remap_np(self, ids: np.ndarray) -> np.ndarray:
         return self.remap(torch.from_numpy(np.ascontiguousarray(ids, dtype=np.int64))).numpy()
 
+    def to_slots(self, x: torch.Tensor) -> torch.Tensor:
+        """Re-align a per-row quantity given in src order (x[i] belongs to n-gram row src[i]) to the slots that
+        n-gram trains: out[perm[i]] = x[i]."""
+        out = torch.empty_like(x)
+        out[self.perm] = x
+        return out
+
     def served_store(self, trained: SparseRowStore) -> SparseRowStore:
-        """Rows to serve through the plain keys: served[src[i]] = trained[dst[i]]."""
+        """The RELABELLED rows (served[src[i]] = trained[dst[i]]): through the plain keys they reproduce the
+        trained function exactly, i.e. they are the base arm again. Diagnostic only; never the C1 cartridge."""
         return SparseRowStore(trained.num_rows, trained.row_width, self.src.clone(), trained.gather(self.dst))
 
 
@@ -288,6 +301,9 @@ class RowTrainer:
         self.row_scale = rs.expand(U).clone() if rs.ndim == 0 else rs
         if self.omega.shape != (U,) or self.row_scale.shape != (U,):
             raise ValueError("omega / row_scale must align with the reserved rows")
+        if self.shuffle is not None:   # slot perm[i] is trained by n-gram src[i]: give it that n-gram's weights
+            self.omega = self.shuffle.to_slots(self.omega)
+            self.row_scale = self.shuffle.to_slots(self.row_scale)
         self.hasher = hasher_for(self.key)
         self.head = output_head(host)
         self.softcap = logit_softcap(host)
@@ -509,15 +525,20 @@ class RowTrainer:
         return dict(nll=tot / max(n, 1), n=n)
 
     # ------------------------------------------------------------------------------------------- artifacts
+    def relabelled_store(self) -> SparseRowStore:
+        """key-shuffle only: the rows that reproduce the TRAINED function through the true keys (diagnostic)."""
+        if self.shuffle is None:
+            raise ValueError("relabelled_store is for the key-shuffle arm")
+        return self.shuffle.served_store(self.trained_store())
+
     def trained_store(self) -> SparseRowStore:
         """The trained slots (compact store; for key-shuffle these are indexed by the permuted slot)."""
         return self.inner.store.copy()
 
     def cartridge(self, prune_zero: bool = True) -> SparseRowStore:
-        """Rows to serve through the plain graft (key-shuffle: un-permuted). Zero rows pruned by default."""
+        """Rows to serve through the plain graft. key-shuffle: the trained slots as stored (read through the TRUE
+        keys, the C1 control; see module doc). Zero rows pruned by default."""
         st = self.trained_store()
-        if self.shuffle is not None:
-            st = self.shuffle.served_store(st)
         if prune_zero:
             st.prune_zero()
         return st

@@ -131,7 +131,16 @@ class KeySpec:
 
     @cached_property
     def head_sizes(self) -> tuple[int, ...]:
-        return tuple(_consecutive_primes_after(self.base - 1, self.n_heads * self.ple_layer_index, self.n_heads))
+        """Flash-Next rule (§2.1 item 3): layer L's n-gram heads (orders >= 2) take the primes after
+        `16*L` skipped ones, i.e. skip = (#heads of order >= 2) * ple_layer_index. Unigram-extension heads (order 1)
+        take the primes right after those, so the order >= 2 heads keep Flash-Next's row ids at every layer."""
+        std = [h for h, o in enumerate(self.head_orders) if o >= 2]
+        uni = [h for h, o in enumerate(self.head_orders) if o < 2]
+        primes = _consecutive_primes_after(self.base - 1, len(std) * self.ple_layer_index, self.n_heads)
+        out = [0] * self.n_heads
+        for p, h in zip(primes, std + uni):
+            out[h] = p
+        return tuple(out)
 
     @cached_property
     def head_offsets(self) -> tuple[int, ...]:
@@ -259,6 +268,15 @@ class ModuleSpec:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "gdir_taps", tuple(float(t) for t in self.gdir_taps))
+        # canonical numeric types, so the fingerprint does not depend on spelling (value_scale=1 vs 1.0; VF-9)
+        for f in ("rms_norm_eps", "value_scale", "gdir_alpha"):
+            object.__setattr__(self, f, float(getattr(self, f)))
+        for f in ("hidden_size", "ple_embed_dim", "hc_count", "conv_kernel_size", "conv_dilation", "layer_idx",
+                  "value_seed"):
+            v = getattr(self, f)
+            if isinstance(v, float) and not v.is_integer():
+                raise ValueError(f"{f} must be an integer, got {v}")
+            object.__setattr__(self, f, int(v))
         if self.kind not in ("native", "graft"):
             raise ValueError(f"kind must be native|graft, got {self.kind!r}")
         if self.kind == "graft":

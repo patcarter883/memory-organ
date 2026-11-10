@@ -132,6 +132,10 @@ class Qwen4ExpNativeBackend:
         self.hasher = hasher_for(self.spec.key)
         self.ledger = RowLedger(self.spec.padded_rows, self.spec.row_width, _table_base(self.table, self.spec.row_width),
                                 spec_fingerprint=self.spec.fingerprint(), tensor=self.tensor)
+        if engine_cast is None:  # a low-precision table serves cast(base + delta) with ONE cast (§3.3; VF-4)
+            wd = self.table.weight.dtype
+            engine_cast = wd if wd in (torch.bfloat16, torch.float16) else None
+        self.engine_cast = engine_cast
         self.overlay = RowOverlay(SparseRowStore.empty(self.spec.padded_rows, self.spec.row_width),
                                   engine_cast=engine_cast).install(self.table)
         self._ids = itertools.count()

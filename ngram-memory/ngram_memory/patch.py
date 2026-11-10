@@ -233,6 +233,14 @@ class PatchManifest:
 
 
 # ------------------------------------------------------------------------------------------------ patch
+def rows2d(x, n: int, dtype=np.float32, width: int | None = None) -> np.ndarray:
+    """x as a C-contiguous [n, w] array; works for n == 0 (reshape(0, -1) is ambiguous in numpy)."""
+    x = np.ascontiguousarray(x, dtype=dtype)
+    if width is None:
+        width = (x.shape[-1] if x.ndim >= 2 else 0) if x.size == 0 else x.size // max(n, 1)
+    return x.reshape(n, width)
+
+
 @dataclass
 class Patch:
     manifest: PatchManifest
@@ -242,7 +250,7 @@ class Patch:
 
     def __post_init__(self) -> None:
         self.row_ids = np.ascontiguousarray(self.row_ids, dtype=np.int64).reshape(-1)
-        self.values = np.ascontiguousarray(self.values, dtype=np.float32).reshape(self.row_ids.size, -1)
+        self.values = rows2d(self.values, self.row_ids.size, np.float32)
         self.reset_row_ids = np.ascontiguousarray(self.reset_row_ids, dtype=np.int64).reshape(-1)
 
     def check(self) -> None:
@@ -336,10 +344,18 @@ def verify_patch(patch: Patch, fmt: FormatSpec, base_rows_fn=None) -> list[str]:
     if m.table_fingerprint != fmt.table.fingerprint():
         raise ValueError("TableSpec fingerprint mismatch")
     done += ["key_fingerprint", "table_fingerprint"]
-    if m.module_fingerprint is not None:
-        if m.module_fingerprint != fmt.module.fingerprint():
-            raise ValueError("ModuleSpec fingerprint mismatch")
-        done.append("module_fingerprint")
+    # a row's meaning depends on the module (W_v seed/scale, arm, gate/conv), so the ModuleSpec is checked always:
+    # a manifest without module_fingerprint is refused (VF-7); a module_spec dict, if present, must agree too
+    if m.module_fingerprint is None:
+        raise ValueError("patch manifest has no module_fingerprint: cannot check the ModuleSpec")
+    if m.module_fingerprint != fmt.module.fingerprint():
+        raise ValueError("ModuleSpec fingerprint mismatch")
+    done.append("module_fingerprint")
+    ms = getattr(m, "module_spec", None)
+    if ms is not None:
+        from .spec import ModuleSpec
+        if ModuleSpec.from_dict(ms).fingerprint() != fmt.module.fingerprint():
+            raise ValueError("manifest module_spec does not match the FormatSpec's ModuleSpec")
     if m.format_fingerprint is not None and m.format_fingerprint != fmt.fingerprint():
         raise ValueError("FormatSpec fingerprint mismatch")
     if (m.row_width, m.padded_rows) != (fmt.row_width, fmt.padded_rows):

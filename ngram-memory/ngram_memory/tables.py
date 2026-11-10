@@ -180,8 +180,8 @@ class SparseRowStore:
 class SparseRowEmbedding(torch.nn.Module):
     """Drop-in for `nn.Embedding(num_rows, w)` backed by a SparseRowStore (sorted ids buffer + compact fp32
     Parameter `values` [U, w]). Ids not stored read exactly 0 and get no gradient; with `sparse_grad=True` the
-    gradient of `values` is a sparse COO tensor over the compact rows (use torch.optim.SparseAdam / a sparse
-    row optimiser). Mathematically identical to a dense zero-initialised table with the same rows written.
+    gradient of `values` is a sparse COO tensor over the compact rows READ by the call (misses add no entry;
+    a sparse row optimiser such as ingest.train.SparseRowAdagrad steps only rows read). Mathematically identical to a dense zero-initialised table with the same rows written.
     """
 
     def __init__(self, store: "SparseRowStore", sparse_grad: bool = True, requires_grad: bool = False):
@@ -204,10 +204,15 @@ class SparseRowEmbedding(torch.nn.Module):
         n = self.row_ids.numel()
         if n == 0:
             return torch.zeros(*ids.shape, self.embedding_dim, dtype=self.values.dtype, device=ids.device)
-        pos = torch.searchsorted(self.row_ids, ids.contiguous()).clamp_max(n - 1)
-        hit = self.row_ids[pos] == ids
-        rows = torch.nn.functional.embedding(pos, self.values, sparse=self.sparse_grad)
-        return rows * hit.unsqueeze(-1).to(rows.dtype)
+        flat = ids.reshape(-1).contiguous()
+        pos = torch.searchsorted(self.row_ids, flat).clamp_max(n - 1)
+        hit_idx = (self.row_ids[pos] == flat).nonzero().squeeze(-1)
+        # gather ONLY the hit positions: a miss reads an exact 0 (never `row * 0`, which is NaN next to a
+        # non-finite row) and contributes no gradient entry to any stored row (no zero-valued COO entries that
+        # a momentum optimiser would act on).
+        rows = torch.nn.functional.embedding(pos[hit_idx], self.values, sparse=self.sparse_grad)
+        out = rows.new_zeros(flat.numel(), self.embedding_dim).index_copy(0, hit_idx, rows)
+        return out.reshape(*ids.shape, self.embedding_dim)
 
     def _rebind(self, st: "SparseRowStore") -> None:
         self.row_ids = st.row_ids

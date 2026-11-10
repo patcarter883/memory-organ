@@ -6,7 +6,7 @@
 
 Materialisation is an overlay, the base bits are never rewritten:
 
-    served[r] = engine_cast(decode(orig_bits[r]) + sum_{active e, canonical order} delta_e[r])
+    served[r] = engine_cast(decode(orig_bits[r]) + (sum_{active e, canonical order} delta_e[r]))
 
 The canonical order is sorted edit id, so the result does not depend on the order edits were applied or removed;
 removal is re-materialisation from the saved bits (bit-exact), never in-place subtraction (which left residue on
@@ -24,7 +24,7 @@ from typing import Iterable, Protocol, Sequence
 import numpy as np
 
 from . import codecs
-from .patch import Patch, PatchManifest, make_patch, read_safetensors, write_safetensors
+from .patch import Patch, PatchManifest, make_patch, read_safetensors, rows2d, write_safetensors
 
 LEDGER_FORMAT = "ngram-ledger/v1"
 
@@ -118,7 +118,7 @@ class EditRecord:
 
     def __post_init__(self) -> None:
         ids = np.asarray(self.row_ids, dtype=np.int64).reshape(-1)
-        d = np.asarray(self.delta, dtype=np.float32).reshape(ids.size, -1)
+        d = rows2d(self.delta, ids.size, np.float32, self.ncols if ids.size == 0 and self.ncols is not None else None)
         order = np.argsort(ids, kind="stable")
         ids, d = ids[order], d[order]
         if ids.size and (np.diff(ids) == 0).any():
@@ -332,8 +332,11 @@ class RowLedger:
             ids = (np.unique(np.concatenate([self.records[e].row_ids for e in order])) if order
                    else np.empty(0, np.int64))
         ids = np.asarray(ids, dtype=np.int64).reshape(-1)
-        acc = self.orig_rows(ids).copy()
-        self._accumulate(acc, ids, order)
+        # base + (sum of deltas): the same association as the patch / serve compile (compile_served), so the
+        # ledger's view and the served bits agree bit-for-bit (VF-1)
+        dsum = np.zeros((ids.size, self.row_width), np.float32)
+        self._accumulate(dsum, ids, order)
+        acc = self.orig_rows(ids) + dsum
         if cast == "bf16":
             acc = codecs.bf16_round(acc)
         elif cast not in (None, "fp32"):
@@ -364,9 +367,11 @@ class RowLedger:
         os.makedirs(os.path.join(directory, "edits"), exist_ok=True)
         for e, r in self.records.items():
             p = os.path.join(directory, "edits", f"{_safe(e)}.safetensors")
-            if not os.path.exists(p):
-                write_safetensors(p, {"row_ids": r.row_ids, "delta": r.delta},
-                                  {"edit_record": json.dumps(r.meta(), sort_keys=True)})
+            # always (re)written, atomically: a stale file from another ledger with the same edit id must never
+            # be read back as this ledger's delta (VF-8)
+            write_safetensors(p + ".tmp", {"row_ids": r.row_ids, "delta": r.delta},
+                              {"edit_record": json.dumps(r.meta(), sort_keys=True)})
+            os.replace(p + ".tmp", p)
         write_safetensors(os.path.join(directory, "orig.safetensors"),
                           {"orig_ids": self._orig_ids, "orig_bits": self._orig_bits})
         meta = dict(format=LEDGER_FORMAT, num_rows=self.num_rows, row_width=self.row_width, codec=self.codec,

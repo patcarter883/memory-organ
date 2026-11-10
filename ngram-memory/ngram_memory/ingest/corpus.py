@@ -238,10 +238,20 @@ _SECRET_RULES: list[tuple[str, re.Pattern]] = [
     ("google_api_key", re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b")),
     ("jwt", re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b")),
     ("url_credentials", re.compile(r"\b[a-z][a-z0-9+.-]*://[^\s:/@'\"]+:[^\s@'\"]{6,}@[^\s'\"]+")),
+    ("stripe_key", re.compile(r"\b(?:sk|rk|pk)_(?:live|test)_[A-Za-z0-9]{16,}\b")),
+    ("aws_secret_access_key", re.compile(r"(?i)aws.{0,24}?[\"'=:\s]([A-Za-z0-9/+]{40})(?![A-Za-z0-9/+])")),
 ]
+# a key-like identifier: any identifier whose name ENDS in a secret word (OPENAI_API_KEY, db_password,
+# aws_secret_access_key, MY_SECRET, GITHUB_TOKEN; also bare api_key), optionally quoted (dict keys / kwargs)
+_SECRET_NAME = (r"[A-Za-z0-9_]*(?:api[_-]?key|secret(?:[_-]?(?:access[_-]?)?key)?|access[_-]?key|token|password|"
+                r"passwd|pwd|private[_-]?key|client[_-]?secret|credentials?)")
 _GENERIC_ASSIGN = re.compile(
-    r"(?i)\b(?:api[_-]?key|secret(?:[_-]?key)?|access[_-]?token|auth[_-]?token|bearer[_-]?token|password|passwd|"
-    r"client[_-]?secret|private[_-]?key)\b[\"']?\s*[:=]\s*[\"']([^\"'\s]{16,})[\"']")
+    r"(?i)(?<![A-Za-z0-9_])" + _SECRET_NAME + r"[\"']?\s*[:=]\s*[\"']([^\"'\s]{16,})[\"']")
+# os.environ.get("X_TOKEN", "<value>") / getenv(...) with a secret-shaped default
+_ENV_DEFAULT = re.compile(
+    r"(?i)(?:environ\.get|getenv|setdefault)\(\s*[\"']" + _SECRET_NAME + r"[\"']\s*,\s*[\"']([^\"'\s]{16,})[\"']")
+# values that are code, not secrets: dotted identifiers ("vision.cls_token", "model.embed_tokens.weight")
+_DOTTED_IDENT = re.compile(r"^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+$")
 _PLACEHOLDER = re.compile(r"(?i)xxx|<|>|\$\{|\{|your|example|dummy|placeholder|changeme|test|fake|\*\*\*")
 
 
@@ -266,11 +276,13 @@ def scan_secrets(path: str, text: str, min_entropy: float = 3.5) -> list[SecretH
             m = rx.search(line)
             if m:
                 hits.append(SecretHit(path, i, rule, _redact(m.group(0))))
-        m = _GENERIC_ASSIGN.search(line)
-        if m:
-            val = m.group(1)
-            if not _PLACEHOLDER.search(val) and shannon_entropy(val) >= min_entropy:
-                hits.append(SecretHit(path, i, "generic_secret_assignment", _redact(val)))
+        for rule, rx in (("generic_secret_assignment", _GENERIC_ASSIGN), ("env_secret_default", _ENV_DEFAULT)):
+            m = rx.search(line)
+            if m:
+                val = m.group(1)
+                if (not _PLACEHOLDER.search(val) and not _DOTTED_IDENT.match(val)
+                        and shannon_entropy(val) >= min_entropy):
+                    hits.append(SecretHit(path, i, rule, _redact(val)))
     return hits
 
 
@@ -475,41 +487,51 @@ def _verbatim_dup_frac(held: str, train_lines: set[str], min_chars: int = 20) ->
 def assign_split_a(files: dict[str, str], commit: str = "", test_frac: float = 0.15, dev_frac: float = 0.10,
                    min_chars: int = 400, near_clusters: Sequence[Sequence[str]] = (), dup_gate: float = 0.5,
                    frozen: SplitA | None = None) -> SplitA:
-    """§6.A.1 Split A. files: repo path -> text. With `frozen`, files already listed keep their split and only new
-    files get the hash rule (stable as files are added); files no longer present are dropped."""
+    """§6.A.1 Split A. files: repo path -> text. With `frozen`, files already listed keep their split; NEW files get
+    the hash rule and then the same leakage gates as an unfrozen build, applied to the new files only: a new
+    held-out file in a near-dup cluster with a train file goes to train, and a new held-out file whose verbatim
+    line share in train exceeds `dup_gate` goes to neardup_diag (moves are appended to cluster_moves). Files no
+    longer present are dropped."""
     lo, hi = test_frac, test_frac + dev_frac
     asg: dict[str, str] = {}
     old = frozen.assignment() if frozen is not None else {}
+    new = set()
     for p in sorted(files):
         if p in old:
             asg[p] = old[p]
             continue
+        new.add(p)
         h = split_a_hash(p)
         big = len(files[p]) > min_chars
         asg[p] = "test" if (h < lo and big) else ("dev" if (lo <= h < hi and big) else "train")
     moves = []
-    if frozen is None:
-        for cl in near_clusters:
-            cl = [p for p in cl if p in asg]
-            if len({asg[p] for p in cl}) > 1:
-                target = "train"
-                moves.append(dict(cluster=list(cl), to=target, was={p: asg[p] for p in cl}))
-                for p in cl:
-                    asg[p] = target
+    for cl in near_clusters:
+        cl = [p for p in cl if p in asg]
+        if len({asg[p] for p in cl}) <= 1:
+            continue
+        if frozen is None:
+            movable = list(cl)
+        else:  # frozen members stay put; a new member joins train if the cluster touches train
+            movable = [p for p in cl if p in new and asg[p] != "train"] if any(asg[q] == "train" for q in cl) else []
+        if movable:
+            moves.append(dict(cluster=list(cl), to="train", was={p: asg[p] for p in movable}))
+            for p in movable:
+                asg[p] = "train"
     train_lines = {ln.strip() for p, s in asg.items() if s == "train"
                    for ln in files[p].splitlines() if len(ln.strip()) >= 20}
     dupf = {p: round(_verbatim_dup_frac(files[p], train_lines), 4) for p, s in asg.items()
             if s in ("dev", "test", "neardup_diag")}
-    if frozen is None:
-        for p, f in dupf.items():
-            if f > dup_gate:
-                asg[p] = "neardup_diag"
+    for p, f in dupf.items():
+        if f > dup_gate and (frozen is None or (p in new and asg[p] != "neardup_diag")):
+            if frozen is not None:
+                moves.append(dict(dup_gate=p, dup_frac=f, to="neardup_diag", was={p: asg[p]}))
+            asg[p] = "neardup_diag"
     rule = dict(hash="int(sha256(repo_path)[:8],16)/2**32", test=f"h < {lo} and len(text) > {min_chars}",
                 dev=f"{lo} <= h < {hi} and len(text) > {min_chars}", dup_gate=f"held-out verbatim >=20-char line "
                 f"share in train > {dup_gate} -> neardup_diag", clusters="a MinHash near-dup cluster (Jaccard >= 0.8 "
                 "on code-token 5-shingles) spanning several splits goes wholly to train")
-    if frozen is not None:  # keep the record of how the frozen lists were made
-        rule, moves, commit = frozen.rule, frozen.cluster_moves, frozen.commit
+    if frozen is not None:  # keep the record of how the frozen lists were made, plus the moves of new files
+        rule, moves, commit = frozen.rule, list(frozen.cluster_moves) + moves, frozen.commit
     pick = lambda s: sorted(p for p, v in asg.items() if v == s)  # noqa: E731
     return SplitA(rule, commit, pick("train"), pick("dev"), pick("test"), pick("neardup_diag"), moves, dupf)
 

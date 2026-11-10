@@ -1,8 +1,13 @@
 # Development / test requirements for ngram_memory (CPU is enough for the M0 suite).
 # torch and transformers are the training-side dependencies; the hashing/spec modules are numpy-only.
+# Versions the M0 suite was run with: torch 2.15.0+cpu, transformers 5.22.2, numpy 2.5.4, tokenizers 0.23.3,
+# safetensors 0.8.0, datasets 5.2.0, pyarrow 26.0.1, pytest 9.2.0, pytest-xdist 3.8.0.
 numpy>=1.26
 torch>=2.4
 transformers==5.22.2
+tokenizers>=0.20
 safetensors>=0.4
+datasets>=3        # eval: WikiText-2 (R1) and the R3 capability sets, read from the local HF cache
+pyarrow>=15        # ingest: WikiText-2 parquet for the KL anchors / reference mix
 pytest>=8
 pytest-xdist>=3

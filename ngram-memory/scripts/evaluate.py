@@ -44,6 +44,9 @@ def main() -> None:
     ap.add_argument("--stride", type=int, default=1024)
     ap.add_argument("--min-context", type=int, default=1024)
     ap.add_argument("--max-files", type=int, default=None)
+    ap.add_argument("--max-dev-files", type=int, default=None,
+                    help="score only the first N long-enough dev files (the next --tune-files are the tune files); "
+                         "other sets are not capped by it")
     ap.add_argument("--max-windows", type=int, default=None, help="per set (smoke)")
     ap.add_argument("--retention-tokens", type=int, default=64_000)
     ap.add_argument("--tune-files", type=int, default=1, help="dev files (after the scored ones) used for tuning")
@@ -60,6 +63,10 @@ def main() -> None:
     ap.add_argument("--no-classes", action="store_true")
     ap.add_argument("--r3-items", type=int, default=0, help="R3: items per task (MMLU, ARC-C, HellaSwag); 0 = off")
     ap.add_argument("--ref-vocab-cache", default=None)
+    ap.add_argument("--reuse-base", default=None,
+                    help="dir with <set>__base.npz from an earlier run on the same splits/windows: load instead of "
+                         "re-scoring the base (targets are still checked for equality against every condition)")
+    ap.add_argument("--fmt-map", default=None, help="JSON {rows-file stem: FormatSpec JSON path} for mixed formats")
     a = ap.parse_args()
     os.environ.setdefault("OMP_NUM_THREADS", str(a.threads))
     import torch
@@ -94,6 +101,8 @@ def main() -> None:
     def windows_for(docs, set_name, max_windows=None):
         mc = 1 if set_name == "splitb" else a.min_context
         w = plan_windows(docs, a.context, a.stride, mc)
+        if set_name == "splitb":  # only windows that hold a scored (added-line) target: same targets, less compute
+            w = [x for x in w if docs[x.doc].target_mask is None or bool(np.asarray(docs[x.doc].target_mask)[x.s:x.e].any())]
         mw = max_windows if max_windows is not None else a.max_windows
         return w[:mw] if mw else w
 
@@ -102,9 +111,11 @@ def main() -> None:
     sets: dict[str, list] = {}
     long_enough = lambda docs: [d for d in docs if len(d) > a.min_context]  # noqa: E731  (others have no window)
     dev_all = long_enough(ds.project_docs(splits, tok, "a", "dev"))
-    n_scored_dev = a.max_files if a.max_files is not None else len(dev_all)
+    n_scored_dev = (a.max_dev_files if a.max_dev_files is not None else
+                    a.max_files if a.max_files is not None else len(dev_all))
     if "dev" in want:
         sets["dev"] = dev_all[:n_scored_dev]
+    S["dev_scored_files"] = [d.name for d in dev_all[:n_scored_dev]]
     if "test" in want:
         sets["test"] = long_enough(ds.project_docs(splits, tok, "a", "test"))[: a.max_files]
     if "splitb" in want:
@@ -115,17 +126,29 @@ def main() -> None:
         sets["r2"] = ds.take_tokens(ds.stdlib_docs(tok), a.retention_tokens, a.min_context)
     if "r2ml" in want:
         sets["r2ml"] = ds.take_tokens(ds.ml_codebase_docs(tok), a.retention_tokens, a.min_context)
-    tune_docs = dev_all[n_scored_dev:n_scored_dev + a.tune_files] if "dev" in sets else dev_all[: a.tune_files]
+    tune_docs = dev_all[n_scored_dev:n_scored_dev + a.tune_files]  # the same tune file(s) whether or not dev is scored
     if not tune_docs:
         tune_docs = dev_all[: a.tune_files]
         S["tuning"]["warning"] = "no unscored dev files left: tuning on scored dev files"
     S["tuning"]["files"] = [d.name for d in tune_docs]
     tune_w = windows_for(tune_docs, "dev", a.tune_max_windows)
     log("sets", {k: (len(v), sum(len(d) for d in v)) for k, v in sets.items()}, "tune files", S["tuning"]["files"])
-    if "splitb" in sets:
+    # Data regime of the data-dependent arms (countlm, rag*, knm, lora): Split-A sets use the Split-A train files at
+    # HEAD; Split B uses the Split-B train files AT T_cut (§6.A.4), so no post-cut line is indexed or trained on
+    # (VE-1). One run uses one regime: Split B must be scored in its own run.
+    data_dep = {"countlm", "rag1k", "rag4k", "knm", "lora"}
+    asked = {x.split(":")[0] for spec in a.conditions.split(",") for x in spec.split("+")}
+    if "splitb" in sets and len(sets) > 1 and asked & data_dep:
+        raise SystemExit("splitb with data-dependent conditions must be scored in its own run (--sets splitb): its "
+                         "arms are built from the tree at T_cut, the other sets' from Split-A train at HEAD")
+    regime = "b" if set(sets) == {"splitb"} else "a"
+    train_at = splits.data["split_b"]["t_cut"] if regime == "b" else None
+    train_paths = splits.files(regime, "train")
+    S["data_regime"] = dict(regime=regime, train_at=train_at or splits.commit, n_train_files=len(train_paths))
+    if "splitb" in sets and asked & {"rows", "perm", "random", "constbias"}:
         S.setdefault("warnings", []).append(
-            "splitb: data-dependent arms (countlm, rag*, knm, lora) are built from Split-A train files at HEAD, not "
-            "from the tree at T_cut (§6.A.4); their Split-B numbers are contaminated by post-cut code")
+            "splitb: rows-based arms are scored as given; for an uncontaminated Split-B number the rows must have "
+            "been trained on the tree at T_cut (Split-B train)")
 
     # ------------------------------------------------------------------------------------------ conditions
     fmt = None
@@ -142,7 +165,7 @@ def main() -> None:
 
     def train_stream():
         if "stream" not in cache:
-            cache["stream"] = ds.train_stream(splits, tok, eos)
+            cache["stream"] = ds.train_stream(splits, tok, eos, split=regime, at=train_at)
         return cache["stream"]
 
     def build(spec: str) -> Condition:
@@ -155,7 +178,8 @@ def main() -> None:
             from ngram_memory.eval.stage1.baselines import countlm as cl
             if "kn" not in cache:
                 t = time.time()
-                docs_tr = [tok(splits.document(p), add_special_tokens=False)["input_ids"] for p in splits.files("a", "train")]
+                docs_tr = [tok(splits.document(p, at=train_at), add_special_tokens=False)["input_ids"]
+                           for p in train_paths]
                 cache["kn"] = cl.KNTrigram(docs_tr, V, eos)
                 S["tuning"]["countlm_build_s"] = time.time() - t
             kn = cache["kn"]
@@ -168,7 +192,7 @@ def main() -> None:
         if kind in ("rag1k", "rag4k"):
             from ngram_memory.eval.stage1.baselines.bm25_rag import BM25Retriever, BM25RAGCondition
             if "bm25" not in cache:
-                cache["bm25"] = BM25Retriever({p: splits.text(p) for p in splits.files("a", "train")})
+                cache["bm25"] = BM25Retriever({p: splits.text(p, at=train_at) for p in train_paths})
             return BM25RAGCondition(cache["bm25"], tok, budget=1024 if kind == "rag1k" else 4096)
         if kind == "knm":
             from ngram_memory.eval.stage1.baselines import knm
@@ -200,9 +224,14 @@ def main() -> None:
             from ngram_memory.eval.stage1.baselines import controls as ct
             from ngram_memory.eval.stage1.conditions import RowsCondition
             from ngram_memory.tables import SparseRowStore
-            f = get_fmt()
-            st = SparseRowStore.from_state_dict(_t.load(arg, map_location="cpu", weights_only=True))
             stem = Path(arg).stem
+            fm = json.loads(Path(a.fmt_map).read_text()) if a.fmt_map else {}
+            if stem in fm:
+                from ngram_memory.spec import FormatSpec
+                f = FormatSpec.from_json(Path(fm[stem]).read_text())
+            else:
+                f = get_fmt()
+            st = SparseRowStore.from_state_dict(_t.load(arg, map_location="cpu", weights_only=True))
             if kind == "rows":
                 return RowsCondition(f, st, name=f"rows[{stem}]")
             if kind == "perm":
@@ -282,7 +311,16 @@ def main() -> None:
         for set_name, docs in sets.items():
             R = S["sets"].setdefault(set_name, {})
             with_kl = set_name.startswith("r") and not is_base and not cond.provides_prefix
-            res = score(model, docs, plans[set_name], cond, with_kl=with_kl)
+            reuse = Path(a.reuse_base) / f"{set_name}__base.npz" if (is_base and a.reuse_base) else None
+            if reuse is not None and reuse.exists():
+                res = ScoreResult.load(reuse)
+                exp = {(w.doc, t) for w in plans[set_name] for t in range(w.s, w.e)}
+                got = set(zip(res.doc.tolist(), res.pos.tolist()))
+                if not got <= exp or (not any(d.target_mask is not None for d in docs) and got != exp):
+                    raise RuntimeError(f"--reuse-base {reuse}: targets differ from this run's windows")
+                S.setdefault("reused_base", {})[set_name] = str(reuse)
+            else:
+                res = score(model, docs, plans[set_name], cond, with_kl=with_kl)
             res.save(out / f"{set_name}__{label(spec)}.npz")
             groups = np.asarray([res.groups[i] for i in res.doc])
             r = dict(wall_s=res.meta["wall_s"], wall_s_per_10k=res.wall_per_10k(), forward_tokens=res.meta["forward_tokens"],
@@ -297,7 +335,7 @@ def main() -> None:
                 b = base_res[set_name]
                 if not np.array_equal(b.key(), res.key()):
                     raise RuntimeError("targets differ from base")
-                r["paired"] = (retention(b.nll, res.nll, groups, res.kl, res.agree) if with_kl else
+                r["paired"] = (retention(b.nll, res.nll, groups, res.kl, res.agree, base_hit=b.hit, cond_hit=res.hit) if with_kl else
                                paired(b.nll, res.nll, groups, base_hit=b.hit, cond_hit=res.hit))
                 if masks.get(set_name) is not None:
                     r["classes"] = class_breakdown(b.nll, res.nll, groups, masks[set_name])

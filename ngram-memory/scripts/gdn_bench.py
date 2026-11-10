@@ -148,6 +148,7 @@ def main():
     ap.add_argument("--cases", default="35b:4:512,27b:4:512")
     ap.add_argument("--impls", default="ours,ours_nosave,hf,fork")
     ap.add_argument("--reps", type=int, default=2)
+    ap.add_argument("--max-bh", type=int, default=None, help="our kernel: batch*heads per group")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
     torch.set_num_threads(args.threads)
@@ -158,11 +159,11 @@ def main():
         B, T = int(B), int(T)
         s = gdn_shape(host)
         raw, dout = make_inputs(B, T, s)
-        row = dict(host=host, B=B, T=T, shape=s, threads=args.threads, reps=args.reps, load_avg=os.getloadavg())
+        row = dict(host=host, B=B, T=T, shape=s, max_bh=args.max_bh, threads=args.threads, reps=args.reps, load_avg=os.getloadavg())
         outs = {}
         for impl in args.impls.split(","):
             if impl == "ours":
-                (o, gr, tf, tb), n, nv = counted(run_ours, raw, dout)
+                (o, gr, tf, tb), n, nv = counted(run_ours, raw, dout, max_bh=args.max_bh)
             elif impl == "ours_nosave":
                 (o, gr, tf, tb), n, nv = counted(run_ours, raw, dout, save_states=False)
             elif impl == "hf":
@@ -179,7 +180,7 @@ def main():
                 elif impl == "hf":
                     _, _, tf, tb = run_hf(raw, dout)
                 else:
-                    _, _, tf, tb = run_ours(raw, dout, save_states=(impl == "ours"))
+                    _, _, tf, tb = run_ours(raw, dout, save_states=(impl == "ours"), max_bh=args.max_bh)
                 if best is None or tf + tb < sum(best):
                     best = (tf, tb)
             tf, tb = best

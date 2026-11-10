@@ -104,10 +104,11 @@ def take_tokens(docs: Sequence[Doc], n_tokens: int, min_context: int = 0) -> lis
     return out
 
 
-def train_stream(splits: Splits, tok, eos: int, part: str = "train", split: str = "a") -> np.ndarray:
+def train_stream(splits: Splits, tok, eos: int, part: str = "train", split: str = "a", at: str | None = None) -> np.ndarray:
+    """Concatenated train documents; `at` reads the blobs at another commit (Split B: the tree at T_cut)."""
     ids: list[int] = []
     for p in splits.files(split, part):
-        ids += tok(splits.document(p), add_special_tokens=False)["input_ids"] + [eos]
+        ids += tok(splits.document(p, at=at), add_special_tokens=False)["input_ids"] + [eos]
     return np.asarray(ids, np.int64)
 
 

@@ -1,0 +1,158 @@
+{
+ "commit": "df29117e95968f5f39811d39e12fc1d4ac5cbc7a",
+ "used": {
+  "code": 20000,
+  "md": 5000,
+  "wiki": 5000
+ },
+ "n_docs": 24,
+ "max_doc_tokens": 1536,
+ "seed": 0,
+ "held_out_pool": 44,
+ "files": [
+  {
+   "src": "code",
+   "name": "python/minisgl/attention/hip.py",
+   "split": "dev",
+   "tokens": 1536
+  },
+  {
+   "src": "code",
+   "name": "python/minisgl/spec/proposer.py",
+   "split": "test",
+   "tokens": 1536
+  },
+  {
+   "src": "code",
+   "name": "python/minisgl/cam/__init__.py",
+   "split": "test",
+   "tokens": 210
+  },
+  {
+   "src": "code",
+   "name": "python/minisgl/models/dflash_cca.py",
+   "split": "test",
+   "tokens": 1536
+  },
+  {
+   "src": "code",
+   "name": "python/minisgl/quant/method.py",
+   "split": "test",
+   "tokens": 1536
+  },
+  {
+   "src": "code",
+   "name": "python/minisgl/spec/ddtree.py",
+   "split": "dev",
+   "tokens": 1536
+  },
+  {
+   "src": "code",
+   "name": "python/minisgl/kvcache/fp8_scales.py",
+   "split": "test",
+   "tokens": 1536
+  },
+  {
+   "src": "code",
+   "name": "python/minisgl/attention/fi.py",
+   "split": "dev",
+   "tokens": 1536
+  },
+  {
+   "src": "code",
+   "name": "python/minisgl/ple/source.py",
+   "split": "test",
+   "tokens": 1536
+  },
+  {
+   "src": "code",
+   "name": "python/minisgl/models/gemma4_vision.py",
+   "split": "dev",
+   "tokens": 1536
+  },
+  {
+   "src": "code",
+   "name": "python/minisgl/ple/runtime.py",
+   "split": "test",
+   "tokens": 1536
+  },
+  {
+   "src": "code",
+   "name": "python/minisgl/scheduler/ep.py",
+   "split": "test",
+   "tokens": 1536
+  },
+  {
+   "src": "code",
+   "name": "python/minisgl/weights/cpu_native.py",
+   "split": "test",
+   "tokens": 1536
+  },
+  {
+   "src": "code",
+   "name": "python/minisgl/kvcache/__init__.py",
+   "split": "test",
+   "tokens": 746
+  },
+  {
+   "src": "code",
+   "name": "python/minisgl/attention/utils.py",
+   "split": "dev",
+   "tokens": 350
+  },
+  {
+   "src": "code",
+   "name": "python/minisgl/utils/mp.py",
+   "split": "test",
+   "tokens": 262
+  },
+  {
+   "src": "md",
+   "name": "docs/journal/ENGINE_COMPARISON_2026-09-22.md",
+   "split": null,
+   "tokens": 1536
+  },
+  {
+   "src": "md",
+   "name": "docs/journal/measurements/WEIGHT_OFFLOAD_2026-09-02/p5b_run1_3legs/p5b.md",
+   "split": null,
+   "tokens": 1528
+  },
+  {
+   "src": "md",
+   "name": "docs/journal/measurements/WEIGHT_OFFLOAD_2026-09-02/P0_LLAMACPP_BASELINE.md",
+   "split": null,
+   "tokens": 1536
+  },
+  {
+   "src": "md",
+   "name": "monitoring/README.md",
+   "split": null,
+   "tokens": 400
+  },
+  {
+   "src": "wiki",
+   "name": "wikitext-103-validation#32",
+   "split": null,
+   "tokens": 1536
+  },
+  {
+   "src": "wiki",
+   "name": "wikitext-103-validation#11",
+   "split": null,
+   "tokens": 1536
+  },
+  {
+   "src": "wiki",
+   "name": "wikitext-103-validation#6",
+   "split": null,
+   "tokens": 1536
+  },
+  {
+   "src": "wiki",
+   "name": "wikitext-103-validation#14",
+   "split": null,
+   "tokens": 392
+  }
+ ]
+}
