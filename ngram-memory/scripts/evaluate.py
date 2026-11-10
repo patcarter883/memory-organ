@@ -184,12 +184,29 @@ def main() -> None:
                 cache["kn"] = cl.KNTrigram(docs_tr, V, eos)
                 S["tuning"]["countlm_build_s"] = time.time() - t
             kn = cache["kn"]
-            base_t = score(model, tune_docs, tune_w)
+            # variants (diagnostics): countlm:kn = KN trigram only, countlm:cache = in-file cache only,
+            # "-fine"/"fine" = a finer lambda grid reaching below 0.01. Plain "countlm" is unchanged (M1b).
+            parts = set(arg.split("-")) if arg else set()
+            if not parts <= {"kn", "cache", "fine"} or {"kn", "cache"} <= parts:
+                raise ValueError(f"countlm variant {arg!r}: use kn, cache, fine, kn-fine or cache-fine")
+            if "base_t" not in cache:
+                cache["base_t"] = score(model, tune_docs, tune_w)
+            base_t = cache["base_t"]
             pk, pc = cl.component_target_probs(kn, tune_docs, base_t)
-            tu = cl.tune_lambdas(base_t, pk, pc)
-            S["tuning"]["countlm"] = {k: v for k, v in tu.items() if k != "grid"}
-            S["tuning"]["countlm_headroom_tune_docs"] = cl.headroom(kn, tune_docs, base_t)
-            return cl.CountLMCondition(kn, tu["lam_n"], tu["lam_c"])
+            if "cache" in parts:
+                pk = np.zeros_like(pk)
+            if "kn" in parts:
+                pc = np.zeros_like(pc)
+            grid = cl.FINE_GRID if "fine" in parts else cl.DEFAULT_GRID
+            tu = cl.tune_lambdas(base_t, pk, pc, grid=grid)
+            lam_n = 0.0 if "cache" in parts else tu["lam_n"]
+            lam_c = 0.0 if "kn" in parts else tu["lam_c"]
+            key = "countlm" + (f"[{arg}]" if arg else "")
+            S["tuning"][key] = dict({k: v for k, v in tu.items() if k != "grid"}, lam_n=lam_n, lam_c=lam_c,
+                                    grid_min=min(g for g in grid if g > 0))
+            if not arg:
+                S["tuning"]["countlm_headroom_tune_docs"] = cl.headroom(kn, tune_docs, base_t)
+            return cl.CountLMCondition(kn, lam_n, lam_c, name=key)
         if kind in ("rag1k", "rag4k"):
             from ngram_memory.eval.stage1.baselines.bm25_rag import BM25Retriever, BM25RAGCondition
             if "bm25" not in cache:

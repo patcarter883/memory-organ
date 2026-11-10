@@ -256,8 +256,11 @@ def component_target_probs(kn: KNTrigram, docs: Sequence[Doc], res: ScoreResult)
     return pk, pc
 
 
-def tune_lambdas(base: ScoreResult, pk: np.ndarray, pc: np.ndarray,
-                 grid: Sequence[float] = (0.0, 0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5)) -> dict:
+DEFAULT_GRID = (0.0, 0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5)
+FINE_GRID = (0.0, 0.0005, 0.001, 0.002, 0.003, 0.005, 0.0075, 0.01, 0.015, 0.02, 0.03, 0.05, 0.1, 0.2)
+
+
+def tune_lambdas(base: ScoreResult, pk: np.ndarray, pc: np.ndarray, grid: Sequence[float] = DEFAULT_GRID) -> dict:
     """Grid search of (lam_n, lam_c) minimising mean NLL of the mixture on `base` targets (use dev only)."""
     ph = np.exp(-base.nll.astype(np.float64))
     best = None
@@ -294,4 +297,5 @@ def headroom(kn: KNTrigram, docs: Sequence[Doc], base: ScoreResult, min_count: i
 
 
 __all__ = ["KNTrigram", "InFileCache", "CountLMCondition", "component_target_probs", "tune_lambdas", "headroom",
+           "DEFAULT_GRID", "FINE_GRID",
            "doc_contexts"]
