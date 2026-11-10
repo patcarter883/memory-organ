@@ -18,11 +18,16 @@ from ..tables import SparseRowEmbedding, SparseRowStore
 
 
 class RowOverlay(nn.Module):
-    def __init__(self, delta: SparseRowStore, trainable: bool = False, sparse_grad: bool = True):
+    def __init__(self, delta: SparseRowStore, trainable: bool = False, sparse_grad: bool = True,
+                 engine_cast: torch.dtype | None = None):
+        """engine_cast: if set (e.g. torch.bfloat16), the hooked output becomes
+        cast(fp32(base) + delta) -> output dtype, i.e. the serve's one-cast rule `served = bf16(base + delta)`
+        (§3.3). Default None: output + delta in the output dtype (unchanged behaviour)."""
         super().__init__()
         self.delta = SparseRowEmbedding(delta.copy(), sparse_grad=sparse_grad, requires_grad=trainable)
         self._handle = None
         self.enabled = True
+        self.engine_cast = engine_cast
 
     @property
     def num_rows(self) -> int:
@@ -40,6 +45,9 @@ class RowOverlay(nn.Module):
             return output
         ids = inputs[0]
         d = self.delta(ids.to(self.delta.row_ids.device))
+        if self.engine_cast is not None:
+            s = output.to(torch.float32) + d.to(device=output.device, dtype=torch.float32)
+            return s.to(self.engine_cast).to(output.dtype)
         return output + d.to(device=output.device, dtype=output.dtype)
 
     def install(self, table_module: nn.Module) -> "RowOverlay":
