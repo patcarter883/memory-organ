@@ -63,8 +63,8 @@ approved. The pre-job hook above refuses those jobs; these settings are the seco
 - **Settings → Actions → General → Fork pull request workflows from outside collaborators:** "Require approval for
   all external contributors".
 - **Before approving any fork run, read its diff.** Never approve one that touches `.github/` (or scripts those
-  workflows call). `ci.yml` runs on every pull request, so this approval prompt comes up routinely; dropping its
-  `pull_request` trigger (keeping `push` to `main`) would stop that.
+  workflows call). No workflow on `main` triggers on pull requests (`ci.yml` runs on pushes to `main` only), so an
+  approval prompt on a fork pull request means that pull request brought its own trigger: treat it as a red flag.
 - **Settings → Actions → General → Workflow permissions:** "Read repository contents and packages permissions".
   The workflow also sets `permissions: contents: read` itself.
 - No repository secrets are needed or used. Do not add any.
