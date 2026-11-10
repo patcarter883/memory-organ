@@ -1,0 +1,87 @@
+{
+ "config": {
+  "arm": "G-lin",
+  "corpus": "foreign",
+  "policy": "count",
+  "k": 2,
+  "r": 4.0,
+  "gamma": 4.0,
+  "pi_other": 0.45,
+  "weight_cap_pct": 99.9,
+  "lr": 0.01,
+  "lambda_near": 0.3,
+  "lambda_chat": 0.3,
+  "lambda_l2": 0.0001,
+  "lambda_l1_rel": 0.1,
+  "kappa": null,
+  "rho": 0.03,
+  "lambda_rho": 0.1,
+  "loss_chunk": 128,
+  "gdir_alpha": 0.16,
+  "seed": 0,
+  "shuffle_seed": 1,
+  "name": "A6_foreign"
+ },
+ "budget": {
+  "steps": 64,
+  "window": 4096,
+  "stride": 3584,
+  "anchor_window": 1024,
+  "anchor_windows": 24,
+  "topk": 64,
+  "reference_tokens": 500000,
+  "ckpt_every": 4,
+  "monitor_dev_windows": 2
+ },
+ "foreign": {
+  "package": "networkx",
+  "version": "3.4.2",
+  "sdist_sha256": "307c3669428c5362aab27c8a1260aa8f47c4e91d3891f48be0141738d8d053e1",
+  "files": 284
+ },
+ "data": {
+  "corpus": "foreign",
+  "train_files": 284,
+  "train_tokens": 962201,
+  "train_windows": 269,
+  "tokenizer_sha256": "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539"
+ },
+ "rows": {
+  "policy": "count>=2",
+  "rows": 1241548,
+  "omega_mean": 1.9218662977218628,
+  "loss_weight_cap": 159.61800000001676,
+  "reference_tokens": 1019996
+ },
+ "anchors": {
+  "near": {
+   "windows": 24,
+   "masked_project_specific": 3
+  },
+  "chat": {
+   "windows": 24,
+   "masked_project_specific": 0
+  }
+ },
+ "dev_monitor_before": {
+  "nll": 1.8785669326782226,
+  "n": 7680
+ },
+ "dev_monitor_after": {
+  "nll": 1.8761590321858723,
+  "n": 7680
+ },
+ "train": {
+  "steps": 64,
+  "tokens": 262144,
+  "step_s_mean": 40.74478192354687,
+  "step_s_median": 40.68886482849939,
+  "rows_nonzero": 808531,
+  "peak_rss_mb": 4811.1875
+ },
+ "cartridge": {
+  "rows": 808531,
+  "path": "/home/memory-organ/ngram-memory/runs/m1b/A6_foreign/cartridge.pt"
+ },
+ "host_unchanged": true
+}

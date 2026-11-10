@@ -1,0 +1,176 @@
+{
+ "host": "/home/memory-organ/ngram-memory/hf/hub/models--Qwen--Qwen2.5-0.5B/snapshots/060db6499f32faf8b98477b0a26969ef7d8b9987",
+ "splits": "/home/memory-organ/ngram-memory/runs/m1b/_cache/splits.json",
+ "split_summary": {
+  "train": 204,
+  "dev": 15,
+  "test": 29,
+  "near_dup": 2,
+  "b_train": 245,
+  "b_test_files": 52,
+  "b_added_lines": 4142,
+  "b_new_files": 6
+ },
+ "args": {
+  "splits": "/home/memory-organ/ngram-memory/runs/m1b/_cache/splits.json",
+  "host": "/home/memory-organ/ngram-memory/hf/hub/models--Qwen--Qwen2.5-0.5B/snapshots/060db6499f32faf8b98477b0a26969ef7d8b9987",
+  "out": "/home/memory-organ/ngram-memory/runs/m1b/B0_base_dev/eval",
+  "sets": "dev,r1,r2,r2ml",
+  "conditions": "base",
+  "fmt": null,
+  "context": 2048,
+  "stride": 1024,
+  "min_context": 1024,
+  "max_files": null,
+  "max_dev_files": 13,
+  "max_windows": null,
+  "retention_tokens": 48000,
+  "tune_files": 1,
+  "tune_max_windows": null,
+  "knm_tokens": 50000,
+  "ngm_ratios": "0.01,0.038,0.1",
+  "lora_tokens": 49152,
+  "lora_window": 512,
+  "lora_lr": 0.0002,
+  "lora_epochs": 1,
+  "lora_r": 16,
+  "control_seed": 0,
+  "threads": 16,
+  "no_classes": false,
+  "r3_items": 0,
+  "ref_vocab_cache": "/home/memory-organ/ngram-memory/runs/m1b/_cache/ref_vocab.json",
+  "reuse_base": null,
+  "fmt_map": null
+ },
+ "sets": {
+  "dev": {
+   "_class_fractions": {
+    "lex:string": 0.06034651098586618,
+    "lex:docstring": 0.16314836137877164,
+    "lex:comment": 0.3056851773293201,
+    "lex:keyword": 0.03450295941660102,
+    "lex:number": 0.010787225016665656,
+    "lex:op": 0.1088082203772162,
+    "lex:ws": 0.08074931485633867,
+    "lex:other": 0.0,
+    "lex:identifier": 0.23597223063922051,
+    "lex:string+docstring": 0.22349487236463783,
+    "id:first_sub": 0.1396077005434014,
+    "id:cont_sub": 0.0963645300958191,
+    "id:proj": 0.10746823424842938,
+    "id:proj:first_sub": 0.03380939875697769,
+    "id:proj:cont_sub": 0.07365883549145169,
+    "id:general": 0.11749456261910053,
+    "id:general:first_sub": 0.09511881434795198,
+    "id:general:cont_sub": 0.02237574827114855,
+    "id:builtin": 0.011009433771690605,
+    "id:builtin:first_sub": 0.010679487438471743,
+    "id:builtin:cont_sub": 0.00032994633321886213,
+    "id:proj:first_in_file:first_sub": 0.007979314384986768,
+    "id:proj:repeat:first_sub": 0.025830084371990924,
+    "id:xfile:first_sub": 0.016894598980533165,
+    "id:xfile:first_in_file:first_sub": 0.0025183658902827436,
+    "non_identifier": 0.7640277693607794,
+    "key:unseen_2gram": 0.23444370374859436,
+    "key:seen_2gram_only": 0.3080150024577635,
+    "key:seen_3gram_new_next": 0.19660761300661914,
+    "key:seen_3gram_seen_next": 0.260933680787023,
+    "key:seen_2gram_any": 0.7655562962514056,
+    "dup:16gram_in_train": 0.01460517544391249,
+    "dup:16gram_not_in_train": 0.9853948245560875
+   },
+   "base": {
+    "wall_s": 276.1155536174774,
+    "wall_s_per_10k": 18.5925131552618,
+    "forward_tokens": 442397,
+    "threads": 16,
+    "describe": {
+     "name": "base"
+    },
+    "n_tokens": 148509,
+    "n_files": 13,
+    "nll": 2.474575127959734,
+    "ppl": 11.87665998022516,
+    "em": 0.5564511241742924
+   }
+  },
+  "r1": {
+   "base": {
+    "wall_s": 87.10146617889404,
+    "wall_s_per_10k": 18.146138787269592,
+    "forward_tokens": 144256,
+    "threads": 16,
+    "describe": {
+     "name": "base"
+    },
+    "n_tokens": 48000,
+    "n_files": 12,
+    "nll": 2.462145582626734,
+    "ppl": 11.729952141244267,
+    "em": 0.4959166666666667
+   }
+  },
+  "r2": {
+   "base": {
+    "wall_s": 87.30950355529785,
+    "wall_s_per_10k": 18.189479907353718,
+    "forward_tokens": 144256,
+    "threads": 16,
+    "describe": {
+     "name": "base"
+    },
+    "n_tokens": 48000,
+    "n_files": 4,
+    "nll": 1.3475743486084095,
+    "ppl": 3.8480801000511162,
+    "em": 0.6901666666666667
+   }
+  },
+  "r2ml": {
+   "base": {
+    "wall_s": 86.14022707939148,
+    "wall_s_per_10k": 17.94588064153989,
+    "forward_tokens": 144256,
+    "threads": 16,
+    "describe": {
+     "name": "base"
+    },
+    "n_tokens": 48000,
+    "n_files": 6,
+    "nll": 0.671610420335163,
+    "ppl": 1.9573869996296644,
+    "em": 0.8412708333333333
+   }
+  }
+ },
+ "tuning": {
+  "files": [
+   "minisgl/weights/uring.py"
+  ],
+  "build_s": {
+   "base": 3.814697265625e-06
+  }
+ },
+ "dev_scored_files": [
+  "minisgl/attention/_triton_helpers.py",
+  "minisgl/attention/fi.py",
+  "minisgl/attention/hip.py",
+  "minisgl/cam/runtime.py",
+  "minisgl/distributed/impl.py",
+  "minisgl/kvcache/mamba2_state.py",
+  "minisgl/models/gemma4_vision.py",
+  "minisgl/scheduler/scheduler.py",
+  "minisgl/spec/ddtree.py",
+  "minisgl/spec/tidar.py",
+  "minisgl/weights/boot_timeline.py",
+  "minisgl/weights/chunk_plan.py",
+  "minisgl/weights/stream_tier.py"
+ ],
+ "data_regime": {
+  "regime": "a",
+  "train_at": "df29117e95968f5f39811d39e12fc1d4ac5cbc7a",
+  "n_train_files": 204
+ },
+ "wall_s_total": 547.1622292995453,
+ "peak_rss_mb": 3284.046875
+}

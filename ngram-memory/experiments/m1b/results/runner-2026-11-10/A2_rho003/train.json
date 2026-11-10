@@ -1,0 +1,81 @@
+{
+ "config": {
+  "arm": "G-lin",
+  "corpus": "split_a",
+  "policy": "count",
+  "k": 2,
+  "r": 4.0,
+  "gamma": 4.0,
+  "pi_other": 0.45,
+  "weight_cap_pct": 99.9,
+  "lr": 0.01,
+  "lambda_near": 0.3,
+  "lambda_chat": 0.3,
+  "lambda_l2": 0.0001,
+  "lambda_l1_rel": 0.1,
+  "kappa": null,
+  "rho": 0.003,
+  "lambda_rho": 0.1,
+  "loss_chunk": 128,
+  "gdir_alpha": 0.16,
+  "seed": 0,
+  "shuffle_seed": 1,
+  "name": "A2_rho003"
+ },
+ "budget": {
+  "steps": 64,
+  "window": 4096,
+  "stride": 3584,
+  "anchor_window": 1024,
+  "anchor_windows": 24,
+  "topk": 64,
+  "reference_tokens": 500000,
+  "ckpt_every": 4,
+  "monitor_dev_windows": 2
+ },
+ "data": {
+  "corpus": "split_a",
+  "train_files": 204,
+  "train_tokens": 1109004,
+  "train_windows": 310,
+  "tokenizer_sha256": "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539"
+ },
+ "rows": {
+  "policy": "count>=2",
+  "rows": 1464015,
+  "omega_mean": 1.8912811279296875,
+  "loss_weight_cap": 72.0,
+  "reference_tokens": 1019996
+ },
+ "anchors": {
+  "near": {
+   "windows": 24,
+   "masked_project_specific": 3
+  },
+  "chat": {
+   "windows": 24,
+   "masked_project_specific": 0
+  }
+ },
+ "dev_monitor_before": {
+  "nll": 1.8785669962565104,
+  "n": 7680
+ },
+ "dev_monitor_after": {
+  "nll": 1.8658801396687825,
+  "n": 7680
+ },
+ "train": {
+  "steps": 64,
+  "tokens": 262144,
+  "step_s_mean": 50.43733311606253,
+  "step_s_median": 50.46499399500044,
+  "rows_nonzero": 1000818,
+  "peak_rss_mb": 4813.45703125
+ },
+ "cartridge": {
+  "rows": 1000818,
+  "path": "/home/memory-organ/ngram-memory/runs/m1b/A2_rho003/cartridge.pt"
+ },
+ "host_unchanged": true
+}

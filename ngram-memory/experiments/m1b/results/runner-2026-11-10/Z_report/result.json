@@ -1,0 +1,130 @@
+{
+ "operating_point": "A3_rho03",
+ "op_config": {
+  "arm": "G-lin",
+  "corpus": "split_a",
+  "policy": "count",
+  "k": 2,
+  "r": 4.0,
+  "gamma": 4.0,
+  "pi_other": 0.45,
+  "weight_cap_pct": 99.9,
+  "lr": 0.01,
+  "lambda_near": 0.3,
+  "lambda_chat": 0.3,
+  "lambda_l2": 0.0001,
+  "lambda_l1_rel": 0.1,
+  "kappa": null,
+  "rho": 0.03,
+  "lambda_rho": 0.1,
+  "loss_chunk": 128,
+  "gdir_alpha": 0.16,
+  "seed": 0,
+  "shuffle_seed": 1,
+  "name": "A3_rho03"
+ },
+ "E1_test": {
+  "gain_pct": 0.7228901110791061,
+  "ci": [
+   0.567219842786044,
+   0.8420378337198067
+  ],
+  "n_tokens": 59687,
+  "n_files": 19
+ },
+ "E3_test": {
+  "gain_pct": 1.8852826641930946,
+  "ci": [
+   0.9780367502049584,
+   2.646743386744318
+  ],
+  "n_tokens": 3792,
+  "n_files": 19
+ },
+ "R1_dev": 0.007492587398905764,
+ "R1_dev_mean_kl": 9.169922122964635e-05,
+ "R2_dev": 0.02613947736162756,
+ "frontier": {
+  "above": false,
+  "frontier_e1": 0.6002638382750207
+ },
+ "C1": {
+  "control_ratios": {
+   "rows[A7_keyshuffle]": -0.005964151686082899,
+   "perm[op]": 0.0014297279317975328,
+   "ngm": -0.0025674047951167833,
+   "rows[A6_foreign] (id:proj)": -0.009613580437224392
+  },
+  "best": 0.0014297279317975328,
+  "pass_": true,
+  "kill": false
+ },
+ "NGI": {
+  "countlm": {
+   "gain_pct": 2.952639391060218,
+   "ci": [
+    1.9534131415468523,
+    3.5625517757602707
+   ],
+   "n_tokens": 59687,
+   "n_files": 19
+  },
+  "pass_": false
+ },
+ "E5": {
+  "lora": {
+   "gain_pct": 8.160764914016582,
+   "ci": [
+    6.907057397910868,
+    8.87915393809303
+   ],
+   "n_tokens": 59687,
+   "n_files": 19
+  },
+  "ratio": 0.08858117084557855
+ },
+ "E6": {
+  "rag4k": {
+   "gain_pct": 8.170428728187401,
+   "ci": [
+    3.9349304408443557,
+    12.851647216307926
+   ],
+   "n_tokens": 59687,
+   "n_files": 19
+  },
+  "rag4k_plus_op": {
+   "gain_pct": 8.775930298776634,
+   "ci": [
+    4.49768776348969,
+    13.472964579109048
+   ],
+   "n_tokens": 59687,
+   "n_files": 19
+  },
+  "additive_pct": 0.605501570589233
+ },
+ "E2_splitb": {
+  "gain_pct": 0.8164693184003489,
+  "ci": [
+   0.6626937207634549,
+   1.015432580356542
+  ],
+  "n_tokens": 58432
+ },
+ "zone_6A7": "do not scale: one Stage-1b arm on this host, then decide (\u00a76.A.7)",
+ "M1_kill": true,
+ "M1_pass_bars": {
+  "e1": false,
+  "r2": true,
+  "r1": true,
+  "above_frontier": false,
+  "c1": true,
+  "ngi": false,
+  "reg": "not measured (no REG harness)"
+ },
+ "M1_pass": false,
+ "note": "M1 PASS needs REG, which this package does not measure (PREREG \u00a76)",
+ "stage_wall_s": 0.004663705825805664,
+ "threads": 16
+}
