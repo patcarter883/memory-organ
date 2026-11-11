@@ -90,7 +90,7 @@ for the runner's data directory; the default is `$HOME/ngram-memory` of the runn
 |---|---|
 | `check` | creates the venv (first time), fetches the inputs and verifies them against `runner/inputs/inputs.lock.json` |
 | `suite` | the default test suite (`-m 'not slow'`) with one worker per thread |
-| `m1b` | `experiments/m1b/run.py --out $NM_HOME/runs/<run_name>` plus `args` |
+| `m1b` | `experiments/m1b/run.py --out $NM_HOME/runs/<run_name>` plus `args` (M1c: `--grid experiments/m1c/grid.json`, below) |
 | `script` | `python <script> <args>` for a script under `scripts/` or `experiments/`, run inside `$NM_HOME/runs/<run_name>` |
 | `status` | prints the stage table and every `result.json` of `<run_name>` |
 
@@ -105,6 +105,19 @@ checkpoints. Reusing a `run_name` resumes it.
 
 Start with `task: check` (builds the venv, fetches the inputs, prints cores, RAM and free disk), then
 `task: suite`.
+
+### M1c
+
+M1c (`experiments/m1c/PREREG.md`) uses the same `m1b` task and runner script with its own grid. Pass the grid
+through `args` and use a new `run_name`, so it does not resume into an M1b run directory:
+
+- `run_name: m1c`
+- `args: --grid experiments/m1c/grid.json --parallel 4 --max-stage-threads 16`
+
+The grid path is recorded in `progress.json` with its sha256, and a resume with a changed grid file is refused, as
+for M1b. Chunking works as before (`--stop-after S1_select`, then the rest). M1c adds about 1 GB of cached teacher
+targets under `_cache/`, which stays on the runner like the checkpoints, and a REG output directory
+(`REG_op/reg/`), which is uploaded. Without `--grid`, `run.py` runs the M1b grid exactly as before.
 
 ## 5. What makes a runner run comparable to the dev container
 

@@ -351,7 +351,7 @@ def worker_train(a) -> int:
                                                   {f.path: f.text for f in train_files}, enc, dec, tcfg,
                                                   window_index=need, log=log, forbid=held)
         summ["teacher"] = dict(path=str(tpath), cache_key=teacher.meta["cache_key"],
-                               identity=teacher.meta.get("identity"), config=tcfg.to_dict(), windows=len(need),
+                               identity=teacher.meta.get("identity"), config=tcfg.to_dict(),
                                build_or_load_s=time.time() - t, **TT.retrieval_summary(teacher))
         log("teacher", {k: v for k, v in summ["teacher"].items() if k != "config"})
         ING.trim()
