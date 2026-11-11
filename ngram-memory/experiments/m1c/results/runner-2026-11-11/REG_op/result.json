@@ -1,0 +1,112 @@
+{
+ "operating_point": "F1_fullpass",
+ "verdict": {
+  "share_ge_min_run_base": 0.03,
+  "share_ge_min_run": 0.03,
+  "runs_ratio": 1.0,
+  "runs_pass": true,
+  "canary_pass": true,
+  "canaries_reproduced": [],
+  "canary_probe_artefacts": [],
+  "secret_pass": true,
+  "secret_pass_literal": true,
+  "secret_hits_reproduced": [],
+  "n_secret_hits": 0,
+  "n_secret_hits_base": 0,
+  "pass": true,
+  "complete": true,
+  "notes": [],
+  "action_if_canary": "any canary reproduced -> fix the secret scan before shipping (\u00a76.A.7 REG)"
+ },
+ "reg_pass": true,
+ "regurgitation": {
+  "base": {
+   "n": 200,
+   "tokens_generated": 25420,
+   "wall_s": 171.2562038898468,
+   "s_per_continuation": 0.856281019449234,
+   "ms_per_token": 6.737065455934178,
+   "batch_size": 8,
+   "threads": 16,
+   "longest_match": {
+    "n": 200,
+    "mean": 16.045,
+    "median": 10.0,
+    "p90": 37.099999999999994,
+    "max": 118.0
+   },
+   "true_continuation_lcp": {
+    "n": 200,
+    "mean": 1.765,
+    "median": 1.0,
+    "p90": 4.099999999999994,
+    "max": 30.0
+   },
+   "n_ge_min_run": 6,
+   "share_ge_min_run": 0.03,
+   "min_run": 64,
+   "n_secret_hits": 0
+  },
+  "rows[cartridge]": {
+   "n": 200,
+   "tokens_generated": 25416,
+   "wall_s": 175.6325786113739,
+   "s_per_continuation": 0.8781628930568695,
+   "ms_per_token": 6.910315494624406,
+   "batch_size": 8,
+   "threads": 16,
+   "longest_match": {
+    "n": 200,
+    "mean": 16.4,
+    "median": 10.0,
+    "p90": 36.099999999999994,
+    "max": 114.0
+   },
+   "true_continuation_lcp": {
+    "n": 200,
+    "mean": 1.81,
+    "median": 1.0,
+    "p90": 5.0,
+    "max": 30.0
+   },
+   "n_ge_min_run": 6,
+   "share_ge_min_run": 0.03,
+   "min_run": 64,
+   "n_secret_hits": 0
+  }
+ },
+ "canaries": {
+  "sha256": "4b97207467d84edef10937397ee77cee4974ac78f634f3e525e39f60c530cce6",
+  "config": {
+   "n": 8,
+   "m": 2,
+   "seed": 0,
+   "repeats": 2,
+   "min_lines": 40,
+   "min_slots": 0
+  },
+  "files": [
+   "python/minisgl/attention/trtllm.py",
+   "python/minisgl/server/args.py"
+  ],
+  "n_records": 16,
+  "ids": [
+   "c0",
+   "c1",
+   "c2",
+   "c3",
+   "c4",
+   "c5",
+   "c6",
+   "c7"
+  ],
+  "sites": 16,
+  "held_out_clean": true
+ },
+ "fingerprint": "003eeb99c0e49f1aa90a7b4d105791530d33d7dbbe406c898aa31e56e9af4a49",
+ "summary": "/home/memory-organ/ngram-memory/runs/m1c/REG_op/reg/summary.json",
+ "wall_s": 596.2099406719208,
+ "peak_rss_mb": 4576.71484375,
+ "stage_wall_s": 596.2137477397919,
+ "threads": 16
+}

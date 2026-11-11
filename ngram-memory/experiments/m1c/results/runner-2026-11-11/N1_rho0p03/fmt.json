@@ -1,0 +1,46 @@
+{
+ "fingerprint": "5c9530867c7c2a2d14d32773cd09084d5dcc6f6e65310cf5d996970944955a57",
+ "format": "ngram-memory/FormatSpec/v1",
+ "key": {
+  "base": 200000,
+  "eos_token_id": 151643,
+  "heads_per_ngram": 8,
+  "ngram_size": 3,
+  "orders": [
+   2,
+   3
+  ],
+  "ple_layer_index": 0,
+  "seed": 1234,
+  "tokenizer_sha256": null,
+  "vocab_size": 151936
+ },
+ "module": {
+  "arm": "G-lin",
+  "conv_dilation": 3,
+  "conv_kernel_size": 4,
+  "gdir_alpha": 0.16,
+  "gdir_taps": [
+   0.0,
+   0.0,
+   0.0,
+   1.0
+  ],
+  "hc_count": 1,
+  "hidden_size": 896,
+  "kind": "graft",
+  "layer_idx": 1,
+  "ple_embed_dim": 896,
+  "rms_norm_eps": 1e-06,
+  "value_scale": 1.0,
+  "value_seed": 0
+ },
+ "table": {
+  "base_codec": "none",
+  "n_shards": 1,
+  "pad_divisor": 128,
+  "row_width": 56,
+  "shard_name_template": null,
+  "tensor_name": "graft.ple.ple_embedding.ngram_embedding.weight"
+ }
+}

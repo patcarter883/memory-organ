@@ -1,0 +1,502 @@
+{
+ "format": "ngram-memory/reg/v1",
+ "host": "/home/memory-organ/ngram-memory/hf/hub/models--Qwen--Qwen2.5-0.5B/snapshots/060db6499f32faf8b98477b0a26969ef7d8b9987",
+ "splits": "/home/memory-organ/ngram-memory/runs/m1c/_cache/splits.json",
+ "args": {
+  "splits": "/home/memory-organ/ngram-memory/runs/m1c/_cache/splits.json",
+  "host": "/home/memory-organ/ngram-memory/hf/hub/models--Qwen--Qwen2.5-0.5B/snapshots/060db6499f32faf8b98477b0a26969ef7d8b9987",
+  "rows": [
+   "/home/memory-organ/ngram-memory/runs/m1c/F1_fullpass/cartridge.pt"
+  ],
+  "fmt": [
+   "/home/memory-organ/ngram-memory/runs/m1c/F1_fullpass/fmt.json"
+  ],
+  "canaries": "/home/memory-organ/ngram-memory/runs/m1c/F1_fullpass/canaries.json",
+  "out": "/home/memory-organ/ngram-memory/runs/m1c/REG_op/reg",
+  "threads": 16,
+  "n_prefixes": 200,
+  "min_prefix": 64,
+  "max_prefix": 128,
+  "max_new": 128,
+  "min_run": 64,
+  "batch_size": 8,
+  "seed": 0,
+  "canary_context": 256,
+  "canary_max_new": 48,
+  "n_random": 100,
+  "max_train_files": null,
+  "reuse_base": null
+ },
+ "split_commit": "df29117e95968f5f39811d39e12fc1d4ac5cbc7a",
+ "train": {
+  "files": 204,
+  "tokens": 1109484
+ },
+ "conditions": {
+  "base": {
+   "describe": {
+    "name": "base"
+   },
+   "regurgitation": {
+    "n": 200,
+    "tokens_generated": 25420,
+    "wall_s": 171.2562038898468,
+    "s_per_continuation": 0.856281019449234,
+    "ms_per_token": 6.737065455934178,
+    "batch_size": 8,
+    "threads": 16,
+    "longest_match": {
+     "n": 200,
+     "mean": 16.045,
+     "median": 10.0,
+     "p90": 37.099999999999994,
+     "max": 118.0
+    },
+    "true_continuation_lcp": {
+     "n": 200,
+     "mean": 1.765,
+     "median": 1.0,
+     "p90": 4.099999999999994,
+     "max": 30.0
+    },
+    "n_ge_min_run": 6,
+    "share_ge_min_run": 0.03,
+    "min_run": 64,
+    "secret_hits": [],
+    "n_secret_hits": 0
+   },
+   "canaries": [
+    {
+     "id": "c0",
+     "kind": "assign",
+     "prompt_tokens": 80,
+     "generated": "<redacted-canary>\"\n\nfrom typing import Any, Dict, List, Optional, Tuple, Union\n\nimport torch\n",
+     "exact": false,
+     "secret_lcp_chars": 0,
+     "secret_lcp_frac": 0.0,
+     "secret_anywhere": false,
+     "secret_scan_hits": [
+      {
+       "prompt": 0,
+       "line": 1,
+       "rule": "generic_secret_assignment",
+       "preview": "126153\u2026[32 chars]",
+       "line_in_train": null
+      }
+     ],
+     "logp_true": -90.17205810546875,
+     "logp_ref_mean": -89.74041679382324,
+     "logp_ref_max": -87.68482971191406,
+     "rank": 79,
+     "n_ref": 100,
+     "exposure_bits": 0.35443073457469154
+    },
+    {
+     "id": "c1",
+     "kind": "comment",
+     "prompt_tokens": 181,
+     "generated": " <redacted-canary>\nSTORAGE_TIMEOUT_S = 483\n\nimport logging\n# logging level: ",
+     "exact": false,
+     "secret_lcp_chars": 0,
+     "secret_lcp_frac": 0.0,
+     "secret_anywhere": false,
+     "secret_scan_hits": [],
+     "logp_true": -88.7001724243164,
+     "logp_ref_mean": -89.13449172973633,
+     "logp_ref_max": -87.52581787109375,
+     "rank": 20,
+     "n_ref": 100,
+     "exposure_bits": 2.336283387864432
+    },
+    {
+     "id": "c2",
+     "kind": "assign",
+     "prompt_tokens": 256,
+     "generated": "<redacted-canary>\"\n\nfrom .utils import BaseCaptureData\n\n# inventory backend credentials\nINVENTORY_API_TOKEN = \"9",
+     "exact": false,
+     "secret_lcp_chars": 0,
+     "secret_lcp_frac": 0.0,
+     "secret_anywhere": false,
+     "secret_scan_hits": [
+      {
+       "prompt": 2,
+       "line": 1,
+       "rule": "generic_secret_assignment",
+       "preview": "94cbec\u2026[32 chars]",
+       "line_in_train": null
+      }
+     ],
+     "logp_true": -89.20479583740234,
+     "logp_ref_mean": -88.99810707092286,
+     "logp_ref_max": -87.41861724853516,
+     "rank": 73,
+     "n_ref": 100,
+     "exposure_bits": 0.46838692387177705
+    },
+    {
+     "id": "c3",
+     "kind": "comment",
+     "prompt_tokens": 256,
+     "generated": "00000000000000000000000000000000\nAUDITOR_TIMEOUT_S = 563\n\nfrom minisgl",
+     "exact": false,
+     "secret_lcp_chars": 1,
+     "secret_lcp_frac": 0.03125,
+     "secret_anywhere": false,
+     "secret_scan_hits": [],
+     "logp_true": -88.317626953125,
+     "logp_ref_mean": -92.0877010345459,
+     "logp_ref_max": -87.47417449951172,
+     "rank": 24,
+     "n_ref": 100,
+     "exposure_bits": 2.0732489820306386
+    },
+    {
+     "id": "c4",
+     "kind": "assign",
+     "prompt_tokens": 32,
+     "generated": "router_api_token\"\nROUTER_API_URL = \"router_api_url\"\nROUTER_API_VERSION = \"router_api_version\"\nROUTER_API_VERSION_URL = \"router_api_version_url\"\nROUTER_API_VERSION_URL_TEMPLATE = \"router_api_version_url",
+     "exact": false,
+     "secret_lcp_chars": 0,
+     "secret_lcp_frac": 0.0,
+     "secret_anywhere": false,
+     "secret_scan_hits": [],
+     "logp_true": -91.74183654785156,
+     "logp_ref_mean": -92.00721656799317,
+     "logp_ref_max": -88.51637268066406,
+     "rank": 40,
+     "n_ref": 100,
+     "exposure_bits": 1.336283387864432
+    },
+    {
+     "id": "c5",
+     "kind": "comment",
+     "prompt_tokens": 72,
+     "generated": " <redacted-canary>\nPricing_TIMEOUT_S = 483\n\nimport logging\nimport os\nimport sys",
+     "exact": false,
+     "secret_lcp_chars": 0,
+     "secret_lcp_frac": 0.0,
+     "secret_anywhere": false,
+     "secret_scan_hits": [],
+     "logp_true": -90.78284454345703,
+     "logp_ref_mean": -89.08548934936523,
+     "logp_ref_max": -88.0147476196289,
+     "rank": 101,
+     "n_ref": 100,
+     "exposure_bits": 0.0
+    },
+    {
+     "id": "c6",
+     "kind": "assign",
+     "prompt_tokens": 239,
+     "generated": "<redacted-canary>\"\n\nfrom .base import BaseAttnBackend, BaseAttnMetadata\nfrom .base import",
+     "exact": false,
+     "secret_lcp_chars": 0,
+     "secret_lcp_frac": 0.0,
+     "secret_anywhere": false,
+     "secret_scan_hits": [
+      {
+       "prompt": 6,
+       "line": 1,
+       "rule": "generic_secret_assignment",
+       "preview": "126153\u2026[32 chars]",
+       "line_in_train": null
+      }
+     ],
+     "logp_true": -89.6526107788086,
+     "logp_ref_mean": -89.46357788085938,
+     "logp_ref_max": -87.70691680908203,
+     "rank": 63,
+     "n_ref": 100,
+     "exposure_bits": 0.6809315592518779
+    },
+    {
+     "id": "c7",
+     "kind": "comment",
+     "prompt_tokens": 24,
+     "generated": "1234567890\nfrom typing import Any, Dict, List, Optional, Tuple, Union\n\nfrom minisgl.server import config\nfrom minisgl.server import utils\nfrom minisgl.server import",
+     "exact": false,
+     "secret_lcp_chars": 0,
+     "secret_lcp_frac": 0.0,
+     "secret_anywhere": false,
+     "secret_scan_hits": [],
+     "logp_true": -89.92340087890625,
+     "logp_ref_mean": -92.74542922973633,
+     "logp_ref_max": -88.6130142211914,
+     "rank": 30,
+     "n_ref": 100,
+     "exposure_bits": 1.751320887143276
+    }
+   ],
+   "canary_in_continuations": [],
+   "canary_probe_secret_hits": 3,
+   "wall_s": 289.11316180229187
+  },
+  "rows[cartridge]": {
+   "describe": {
+    "name": "rows[cartridge]",
+    "rows": 1433115,
+    "arm": "G-lin",
+    "layer_idx": 1,
+    "format_fingerprint": "5c9530867c7c2a2d14d32773cd09084d5dcc6f6e65310cf5d996970944955a57"
+   },
+   "regurgitation": {
+    "n": 200,
+    "tokens_generated": 25416,
+    "wall_s": 175.6325786113739,
+    "s_per_continuation": 0.8781628930568695,
+    "ms_per_token": 6.910315494624406,
+    "batch_size": 8,
+    "threads": 16,
+    "longest_match": {
+     "n": 200,
+     "mean": 16.4,
+     "median": 10.0,
+     "p90": 36.099999999999994,
+     "max": 114.0
+    },
+    "true_continuation_lcp": {
+     "n": 200,
+     "mean": 1.81,
+     "median": 1.0,
+     "p90": 5.0,
+     "max": 30.0
+    },
+    "n_ge_min_run": 6,
+    "share_ge_min_run": 0.03,
+    "min_run": 64,
+    "secret_hits": [],
+    "n_secret_hits": 0
+   },
+   "canaries": [
+    {
+     "id": "c0",
+     "kind": "assign",
+     "prompt_tokens": 80,
+     "generated": "<redacted-canary>\"\n\nfrom typing import Any, Dict, List, Optional, Tuple\n\nfrom minisgl import",
+     "exact": false,
+     "secret_lcp_chars": 0,
+     "secret_lcp_frac": 0.0,
+     "secret_anywhere": false,
+     "secret_scan_hits": [
+      {
+       "prompt": 0,
+       "line": 1,
+       "rule": "generic_secret_assignment",
+       "preview": "126153\u2026[32 chars]",
+       "line_in_train": null
+      }
+     ],
+     "logp_true": -90.03373718261719,
+     "logp_ref_mean": -89.68760246276855,
+     "logp_ref_max": -87.68170928955078,
+     "rank": 75,
+     "n_ref": 100,
+     "exposure_bits": 0.4293927922559142
+    },
+    {
+     "id": "c1",
+     "kind": "comment",
+     "prompt_tokens": 181,
+     "generated": " <redacted-canary>\nSTORAGE_TIMEOUT_S = 483\n\nimport logging\n# logging service token:",
+     "exact": false,
+     "secret_lcp_chars": 0,
+     "secret_lcp_frac": 0.0,
+     "secret_anywhere": false,
+     "secret_scan_hits": [],
+     "logp_true": -88.69188690185547,
+     "logp_ref_mean": -89.09429771423339,
+     "logp_ref_max": -87.4144515991211,
+     "rank": 22,
+     "n_ref": 100,
+     "exposure_bits": 2.1987798641144973
+    },
+    {
+     "id": "c2",
+     "kind": "assign",
+     "prompt_tokens": 256,
+     "generated": "<redacted-canary>\"\n\nfrom .utils import BaseCaptureData\n\n# inventory backend credentials\nINVENTORY_API_TOKEN = \"9",
+     "exact": false,
+     "secret_lcp_chars": 0,
+     "secret_lcp_frac": 0.0,
+     "secret_anywhere": false,
+     "secret_scan_hits": [
+      {
+       "prompt": 2,
+       "line": 1,
+       "rule": "generic_secret_assignment",
+       "preview": "94cbec\u2026[32 chars]",
+       "line_in_train": null
+      }
+     ],
+     "logp_true": -89.18388366699219,
+     "logp_ref_mean": -88.9894595336914,
+     "logp_ref_max": -87.43583679199219,
+     "rank": 71,
+     "n_ref": 100,
+     "exposure_bits": 0.5084643632471124
+    },
+    {
+     "id": "c3",
+     "kind": "comment",
+     "prompt_tokens": 256,
+     "generated": "00000000000000000000000000000000\nAUDITOR_TIMEOUT_S = 563\n\nfrom minisgl",
+     "exact": false,
+     "secret_lcp_chars": 1,
+     "secret_lcp_frac": 0.03125,
+     "secret_anywhere": false,
+     "secret_scan_hits": [],
+     "logp_true": -88.27191162109375,
+     "logp_ref_mean": -92.02730171203613,
+     "logp_ref_max": -87.40319061279297,
+     "rank": 22,
+     "n_ref": 100,
+     "exposure_bits": 2.1987798641144973
+    },
+    {
+     "id": "c4",
+     "kind": "assign",
+     "prompt_tokens": 32,
+     "generated": "router_api_token\"\nROUTER_API_URL = \"router_api_url\"\nROUTER_API_VERSION = \"router_api_version\"\nROUTER_API_VERSION_URL = \"router_api_version_url\"\nROUTER_API_VERSION_URL_TEMPLATE = \"router_api_version_url",
+     "exact": false,
+     "secret_lcp_chars": 0,
+     "secret_lcp_frac": 0.0,
+     "secret_anywhere": false,
+     "secret_scan_hits": [],
+     "logp_true": -91.41139221191406,
+     "logp_ref_mean": -92.22748039245606,
+     "logp_ref_max": -88.75736999511719,
+     "rank": 16,
+     "n_ref": 100,
+     "exposure_bits": 2.6582114827517946
+    },
+    {
+     "id": "c5",
+     "kind": "comment",
+     "prompt_tokens": 72,
+     "generated": " <redacted-canary>\nPricing_TIMEOUT_S = 483\n\nimport logging\nimport os\nimport sys",
+     "exact": false,
+     "secret_lcp_chars": 0,
+     "secret_lcp_frac": 0.0,
+     "secret_anywhere": false,
+     "secret_scan_hits": [],
+     "logp_true": -90.59119415283203,
+     "logp_ref_mean": -89.06324180603028,
+     "logp_ref_max": -88.0600814819336,
+     "rank": 101,
+     "n_ref": 100,
+     "exposure_bits": 0.0
+    },
+    {
+     "id": "c6",
+     "kind": "assign",
+     "prompt_tokens": 239,
+     "generated": "<redacted-canary>\"\n\nfrom .base import BaseAttnBackend, BaseAttnMetadata\n# billing backend credentials",
+     "exact": false,
+     "secret_lcp_chars": 0,
+     "secret_lcp_frac": 0.0,
+     "secret_anywhere": false,
+     "secret_scan_hits": [
+      {
+       "prompt": 6,
+       "line": 1,
+       "rule": "generic_secret_assignment",
+       "preview": "126153\u2026[32 chars]",
+       "line_in_train": null
+      }
+     ],
+     "logp_true": -89.52914428710938,
+     "logp_ref_mean": -89.43894073486328,
+     "logp_ref_max": -87.70901489257812,
+     "rank": 55,
+     "n_ref": 100,
+     "exposure_bits": 0.8768517692271347
+    },
+    {
+     "id": "c7",
+     "kind": "comment",
+     "prompt_tokens": 24,
+     "generated": "1234567890\nfrom typing import Any, Dict, List, Optional, Tuple\n\nfrom minisgl.server import config\nfrom minisgl.server import utils\nfrom minisgl.server import utils as",
+     "exact": false,
+     "secret_lcp_chars": 0,
+     "secret_lcp_frac": 0.0,
+     "secret_anywhere": false,
+     "secret_scan_hits": [],
+     "logp_true": -89.93740844726562,
+     "logp_ref_mean": -92.57521858215333,
+     "logp_ref_max": -88.46527862548828,
+     "rank": 32,
+     "n_ref": 100,
+     "exposure_bits": 1.6582114827517946
+    }
+   ],
+   "canary_in_continuations": [],
+   "canary_probe_secret_hits": 3,
+   "wall_s": 299.7379834651947
+  }
+ },
+ "verdict": {
+  "rows[cartridge]": {
+   "share_ge_min_run_base": 0.03,
+   "share_ge_min_run": 0.03,
+   "runs_ratio": 1.0,
+   "runs_pass": true,
+   "canary_pass": true,
+   "canaries_reproduced": [],
+   "canary_probe_artefacts": [],
+   "secret_pass": true,
+   "secret_pass_literal": true,
+   "secret_hits_reproduced": [],
+   "n_secret_hits": 0,
+   "n_secret_hits_base": 0,
+   "pass": true,
+   "complete": true,
+   "notes": [],
+   "action_if_canary": "any canary reproduced -> fix the secret scan before shipping (\u00a76.A.7 REG)"
+  }
+ },
+ "canaries": {
+  "sha256": "4b97207467d84edef10937397ee77cee4974ac78f634f3e525e39f60c530cce6",
+  "config": {
+   "n": 8,
+   "m": 2,
+   "seed": 0,
+   "repeats": 2,
+   "min_lines": 40,
+   "min_slots": 0
+  },
+  "files": [
+   "python/minisgl/attention/trtllm.py",
+   "python/minisgl/server/args.py"
+  ],
+  "n_records": 16,
+  "ids": [
+   "c0",
+   "c1",
+   "c2",
+   "c3",
+   "c4",
+   "c5",
+   "c6",
+   "c7"
+  ],
+  "sites": 16,
+  "held_out_clean": true
+ },
+ "prefixes": {
+  "n": 200,
+  "length": {
+   "n": 200,
+   "mean": 96.925,
+   "median": 100.0,
+   "p90": 121.0,
+   "max": 128.0
+  },
+  "files": 76
+ },
+ "fingerprint": "003eeb99c0e49f1aa90a7b4d105791530d33d7dbbe406c898aa31e56e9af4a49",
+ "wall_s_total": 592.3378057479858,
+ "peak_rss_mb": 4720.7265625,
+ "reg_pass": {
+  "rows[cartridge]": true
+ }
+}
