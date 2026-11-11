@@ -30,12 +30,23 @@ rows with real training. omega / row_scale follow the n-gram that trains each sl
 this is equivalent, up to float noise, to the eval-time permuted-keys control applied to the base arm with
 sigma^-1; `relabelled_store()` gives the rows that WOULD reproduce the trained function through true keys).
 
+Objectives (TrainConfig.objective; Stage-1b, §I.1 "objective upgrade path"):
+    'nll'     the train-window term above (default; M1b's behaviour, bit-identical);
+    'distill' mean_t w_t KL(p_teacher,t || p_delta,t) on the train window's scored targets, w_t the same n-gram
+              loss weights; p_teacher = the frozen host with BM25-retrieved OTHER train files before the window
+              (ingest/teacher.py), stored top-k + remainder (kltargets.topk_kl semantics); the student sees only
+              the window, as served;
+    'mix'     mean_t w_t [alpha KL_teacher,t + (1 - alpha) NLL_t], alpha = distill_alpha (alpha = 1 is 'distill').
+  Anchors, rho budget, L2, lasso and trust region are unchanged. Teacher targets are passed to RowTrainer as
+  `teacher` (a KLTargets whose meta["window_index"], when present, maps its entries to train-window indices).
+
 Activation checkpointing: HF gradient checkpointing (non-reentrant) on the decoder layers plus checkpointed
 chunks of the output head, so a 4,096-token window never holds [T, V] logits. Determinism: data order is a pure
 function of (seed, step); resume from a checkpoint is bit-exact on a fixed thread count.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -57,9 +68,13 @@ from ..hashing import hasher_for
 from ..spec import FormatSpec, KeySpec
 from ..tables import SparseRowEmbedding, SparseRowStore
 from .corpus import IGNORE, Window
-from .kltargets import KLTargets, WindowTargets, final_hidden, head_logits, logit_softcap, output_head, topk_kl
+from .kltargets import (KLTargets, WindowTargets, final_hidden, head_logits, logit_softcap, output_head, topk_kl,
+                        window_digest)
 
 ARMS = ("G-lin", "G-dir", "rows+Wv", "key-shuffle")
+OBJECTIVES = ("nll", "distill", "mix")
+# fields added after M1b: a checkpoint written without them is read with these values (M1b's behaviour)
+_LATER_FIELDS = {"objective": "nll", "distill_alpha": 0.5}
 
 
 # ---------------------------------------------------------------------------------------------------- config
@@ -86,6 +101,13 @@ class TrainConfig:
     epochs: int = 1
     max_steps: int = 0                  # 0: epochs * len(train windows)
     ckpt_every: int = 0
+    objective: str = "nll"              # 'nll' | 'distill' | 'mix' (module doc)
+    distill_alpha: float = 0.5          # 'mix' only: alpha * KL_teacher + (1 - alpha) * NLL
+
+    @property
+    def alpha(self) -> float:
+        """Weight of the teacher KL in the train-window loss (0 for 'nll', 1 for 'distill')."""
+        return {"nll": 0.0, "distill": 1.0}.get(self.objective, float(self.distill_alpha))
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -259,9 +281,16 @@ class RowTrainer:
     def __init__(self, host: nn.Module, fmt: FormatSpec, rows: SparseRowStore, train: Sequence[Window],
                  cfg: TrainConfig, anchors: dict[str, tuple[Sequence[Window], KLTargets]] | None = None,
                  omega: np.ndarray | torch.Tensor | None = None, row_scale: float | np.ndarray | torch.Tensor = 1.0,
-                 loss_weights: Sequence[np.ndarray] | None = None, log_path: str | Path | None = None):
+                 loss_weights: Sequence[np.ndarray] | None = None, log_path: str | Path | None = None,
+                 teacher: KLTargets | None = None):
         if cfg.arm not in ARMS:
             raise ValueError(f"arm {cfg.arm!r} not in {ARMS}")
+        if cfg.objective not in OBJECTIVES:
+            raise ValueError(f"objective {cfg.objective!r} not in {OBJECTIVES}")
+        if cfg.objective == "mix" and not 0.0 <= cfg.distill_alpha <= 1.0:
+            raise ValueError("distill_alpha must be in [0, 1]")
+        if (cfg.objective == "nll") != (teacher is None):
+            raise ValueError("teacher targets are required for objective 'distill'/'mix' and unused for 'nll'")
         if cfg.lambda_l1 > 0 and cfg.lambda_l1_rel > 0:
             raise ValueError("set lambda_l1_rel or lambda_l1, not both")
         if cfg.arm == "G-dir" and fmt.module.arm != "G-dir":
@@ -278,6 +307,10 @@ class RowTrainer:
         self.loss_weights = None if loss_weights is None else list(loss_weights)
         self.log_path = Path(log_path) if log_path is not None else None
         self.step_idx = 0
+        self.teacher = teacher
+        self._teacher_pos: dict[int, int] = {}
+        if teacher is not None:
+            self._teacher_pos = self._align_teacher(teacher)
         for p in host.parameters():
             p.requires_grad_(False)
 
@@ -341,6 +374,28 @@ class RowTrainer:
         if self._recording:
             self._rho_buf.append(r)
 
+    def _align_teacher(self, teacher: KLTargets) -> dict[int, int]:
+        """train-window index -> teacher entry; every window the run visits must be covered, with matching shape
+        (and ids/labels digest when the teacher records one)."""
+        n = len(self.train_windows)
+        wix = teacher.meta.get("window_index")
+        wix = list(range(len(teacher))) if wix is None else [int(i) for i in wix]
+        if len(wix) != len(teacher) or len(set(wix)) != len(wix) or any(not 0 <= i < n for i in wix):
+            raise ValueError("teacher meta['window_index'] must list distinct train-window indices, one per entry")
+        sha = teacher.meta.get("window_sha")
+        pos = {}
+        for j, i in enumerate(wix):
+            w, t = self.train_windows[i], teacher[j]
+            if t.idx.shape != (w.ids.size, teacher.k) or t.logp.shape != t.idx.shape or t.rest.shape != (w.ids.size,):
+                raise ValueError(f"teacher entry {j} does not match train window {i} ({w.ids.size} positions)")
+            if sha is not None and sha[j] != window_digest(w):
+                raise ValueError(f"teacher entry {j} was built for a different window than train window {i}")
+            pos[i] = j
+        missing = sorted(set(visited_windows(n, self.cfg.seed, self.total_steps)) - set(pos))
+        if missing:
+            raise ValueError(f"no teacher targets for {len(missing)} visited train windows (first {missing[:5]})")
+        return pos
+
     # ------------------------------------------------------------------------------------------- data order
     def train_index(self, k: int) -> tuple[int, int]:
         n = len(self.train_windows)
@@ -393,8 +448,31 @@ class RowTrainer:
             total = total + (checkpoint(f, hc, use_reentrant=False) if torch.is_grad_enabled() else f(hc))
         return total
 
+    def _chunked_distill(self, h: torch.Tensor, labels: torch.Tensor, weights: torch.Tensor | None,
+                         teacher: WindowTargets, alpha: float) -> torch.Tensor:
+        """[3] sums over scored positions of w_t * (alpha KL_teacher + (1 - alpha) NLL), w_t * NLL, w_t * KL."""
+        head, cap, C = self.head, self.softcap, self.cfg.loss_chunk
+        total = h.new_zeros(3)
+        for s in range(0, h.shape[0], C):
+            lab = labels[s:s + C]
+            m = lab != IGNORE
+            if not bool(m.any()):
+                continue
+            wt = (weights[s:s + C] if weights is not None else torch.ones_like(lab, dtype=torch.float32)) * m
+            tg = (teacher.idx[s:s + C], teacher.logp[s:s + C], teacher.rest[s:s + C])
+
+            def f(hc, lab=lab, wt=wt, tg=tg):
+                z = head_logits(head, hc, cap)
+                nll = F.cross_entropy(z, lab.clamp_min(0), reduction="none") * wt
+                kl = topk_kl(z, tg) * wt
+                loss = kl if alpha == 1.0 else alpha * kl + (1.0 - alpha) * nll
+                return torch.stack([loss.sum(), nll.detach().sum(), kl.detach().sum()])   # logging terms carry no grad
+            hc = h[s:s + C]
+            total = total + (checkpoint(f, hc, use_reentrant=False) if torch.is_grad_enabled() else f(hc))
+        return total
+
     def _pass(self, w: Window, targets: WindowTargets | None, lam: float, weights: np.ndarray | None,
-              rho_penalty: bool) -> dict:
+              rho_penalty: bool, teacher: WindowTargets | None = None) -> dict:
         ids = torch.from_numpy(np.ascontiguousarray(w.ids))[None]
         labels = torch.from_numpy(np.ascontiguousarray(w.labels))
         n = int((labels != IGNORE).sum())
@@ -405,7 +483,13 @@ class RowTrainer:
             self._recording = False
             r = torch.cat(self._rho_buf) if self._rho_buf else torch.zeros(0)
             wt = None if weights is None else torch.from_numpy(np.ascontiguousarray(weights, dtype=np.float32))
-            s = self._chunked(h, labels, wt, targets)
+            extra = {}
+            if teacher is None:
+                s = self._chunked(h, labels, wt, targets)
+            else:
+                s3 = self._chunked_distill(h, labels, wt, teacher, self.cfg.alpha)
+                s = s3[0]
+                extra = dict(nll=float(s3[1].detach()) / max(n, 1), kl_teacher=float(s3[2].detach()) / max(n, 1))
             main = s / max(n, 1)
             loss = lam * main
             pen = torch.zeros(())
@@ -418,7 +502,7 @@ class RowTrainer:
             self._recording = False
             self.installed.context = None
         rd = r.detach()
-        return dict(value=float(main.detach()), n=n, rho_pen=float(pen.detach()),
+        return dict(value=float(main.detach()), n=n, rho_pen=float(pen.detach()), **extra,
                     rho_median=_q(rd, 0.5), rho_mean=float(rd.mean()) if rd.numel() else float("nan"),
                     rho_p99=_q(rd, 0.99), rho_frac_over=float((rd > self.cfg.rho).float().mean()) if rd.numel() else 0.0)
 
@@ -434,8 +518,17 @@ class RowTrainer:
         win = self.train_windows[wi]
         rec: dict = dict(step=k, epoch=epoch, window=wi, window_start=int(win.start))
         read = [self.read_rows(win)]
-        m = self._pass(win, None, 1.0, None if self.loss_weights is None else self.loss_weights[wi], cfg.rho_on_train)
-        rec.update(nll=m["value"], n_targets=m["n"], rho_train_median=m["rho_median"], rho_train_mean=m["rho_mean"],
+        wts = None if self.loss_weights is None else self.loss_weights[wi]
+        if self.teacher is None:
+            m = self._pass(win, None, 1.0, wts, cfg.rho_on_train)
+            rec.update(nll=m["value"])
+        else:
+            if wi not in self._teacher_pos:
+                raise KeyError(f"no teacher targets for train window {wi}")
+            m = self._pass(win, None, 1.0, wts, cfg.rho_on_train, teacher=self.teacher[self._teacher_pos[wi]])
+            rec.update(nll=m["nll"], kl_teacher=m["kl_teacher"], train_loss=m["value"], objective=cfg.objective,
+                       alpha=cfg.alpha)
+        rec.update(n_targets=m["n"], rho_train_median=m["rho_median"], rho_train_mean=m["rho_mean"],
                    rho_train_p99=m["rho_p99"], rho_train_frac_over=m["rho_frac_over"])
         for set_no, name in enumerate(sorted(self.anchors)):
             ws, tg = self.anchors[name]
@@ -553,7 +646,27 @@ class RowTrainer:
             sd["wv_opt"] = self.wv_opt.state_dict()
         if self.shuffle is not None:
             sd["shuffle_dst"] = self.shuffle.dst.clone()
+        if self.teacher is not None:
+            sd["teacher_key"] = self.teacher.meta.get("cache_key") or self.teacher.meta.get("window_sha")
+            if self.teacher.meta.get("identity") is not None:
+                # subset-independent identity + per-window target digests: a resume may use a teacher built for
+                # another step count (other cache file) as long as the windows already trained have equal targets
+                sd["teacher_identity"] = self.teacher.meta["identity"]
+                sd["teacher_digests"] = dict(self._teacher_digests())
         return sd
+
+    def _teacher_digests(self) -> dict[int, str]:
+        """train-window index -> sha256 of its teacher targets (idx, logp, rest bytes); computed once."""
+        if getattr(self, "_tdig", None) is None:
+            out = {}
+            for wi, j in self._teacher_pos.items():
+                t = self.teacher[j]
+                h = hashlib.sha256()
+                for x in (t.idx, t.logp, t.rest):
+                    h.update(x.detach().contiguous().cpu().numpy().tobytes())
+                out[wi] = h.hexdigest()[:32]
+            self._tdig = out
+        return self._tdig
 
     def save_checkpoint(self, path: str | Path) -> None:
         path = Path(path)
@@ -566,7 +679,7 @@ class RowTrainer:
         sd = torch.load(path, map_location="cpu", weights_only=False)
         if FormatSpec.from_json(sd["fmt"]).fingerprint() != self.fmt.fingerprint():
             raise ValueError("checkpoint format fingerprint differs")
-        a, b = dict(sd["cfg"]), self.cfg.to_dict()
+        a, b = dict(_LATER_FIELDS, **sd["cfg"]), self.cfg.to_dict()
         for d in (a, b):
             for k in ("max_steps", "epochs", "ckpt_every"):
                 d.pop(k, None)
@@ -585,10 +698,33 @@ class RowTrainer:
             self.wv_opt.load_state_dict(sd["wv_opt"])
         if self.shuffle is not None and not torch.equal(sd["shuffle_dst"], self.shuffle.dst):
             raise ValueError("checkpoint key-shuffle permutation differs")
+        if self.teacher is not None:
+            ident = self.teacher.meta.get("identity")
+            if ident is not None and sd.get("teacher_identity") is not None:
+                if sd["teacher_identity"] != ident:
+                    raise ValueError("checkpoint was trained against different teacher targets (identity differs)")
+                mine, theirs = self._teacher_digests(), sd.get("teacher_digests") or {}
+                done = visited_windows(len(self.train_windows), self.cfg.seed, int(sd["step"]))
+                bad = [wi for wi in done if wi not in mine or theirs.get(wi) != mine[wi]]
+                if bad:
+                    raise ValueError(f"checkpoint was trained against different teacher targets on {len(bad)} "
+                                     f"already-trained windows (first {bad[:5]})")
+            elif sd.get("teacher_key") != (self.teacher.meta.get("cache_key") or self.teacher.meta.get("window_sha")):
+                raise ValueError("checkpoint was trained against different teacher targets")
         self.step_idx = int(sd["step"])
 
 
 # ------------------------------------------------------------------------------------------ setup helpers
+def visited_windows(n_windows: int, seed: int, steps: int) -> list[int]:
+    """Sorted train-window indices that steps 0..steps-1 visit (RowTrainer.train_index's order): the windows a
+    run with this seed and step count needs teacher targets for."""
+    out: set[int] = set()
+    for e in range((steps + n_windows - 1) // n_windows if n_windows else 0):
+        perm = np.random.default_rng([seed, e]).permutation(n_windows)
+        out.update(int(x) for x in perm[: min(n_windows, steps - e * n_windows)])
+    return sorted(out)
+
+
 @torch.no_grad()
 def layer_input_norm(host: nn.Module, windows: Sequence[Window], layer_idx: int, max_tokens: int = 4096) -> float:
     """Median per-token norm of the host's layer-`layer_idx` input hidden state (no graft), for row scales."""
@@ -618,5 +754,5 @@ def glin_row_scale(fmt: FormatSpec, h_norm: float) -> float:
     return 2.0 * h_norm / fmt.module.value_scale
 
 
-__all__ = ["ARMS", "TrainConfig", "KeyShuffle", "PermutedRowTable", "SparseRowAdagrad", "RowTrainer", "rss_mb",
+__all__ = ["ARMS", "OBJECTIVES", "visited_windows", "TrainConfig", "KeyShuffle", "PermutedRowTable", "SparseRowAdagrad", "RowTrainer", "rss_mb",
            "host_fingerprint", "layer_input_norm", "glin_row_scale"]

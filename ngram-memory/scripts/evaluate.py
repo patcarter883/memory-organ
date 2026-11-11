@@ -9,6 +9,16 @@ Tuned arms (countlm lambdas, kNM lam/T, NGM ratio) are tuned on Split-A dev file
 possible (`--tune-files`, taken after the scored dev files); the chosen values are written to the summary.
 Rows files are SparseRowStore state dicts (torch.save(store.state_dict())); their FormatSpec comes from --fmt
 (FormatSpec JSON) or defaults to the Qwen2.5 proxy graft (graft_format(hidden, qwen25_proxy_key_spec())).
+
+M1c additions (M1b outputs unchanged):
+* countlm fixed weights, no tuning: countlm:kn-lam0p0075, countlm:cache-lam0p005, countlm:ln0p015-lc0p005 ('p' is
+  the decimal point), also inside composites (countlm:kn-lam0p0075+rows:P.pt).
+* countgrid:kn | countgrid:cache | countgrid:kn-c0p005 [+rows:P.pt ...]: every weight of --countgrid-weights in one
+  pass (ngram_memory/eval/stage1/countgrid.py); summary sets.<set>.<label>.countgrid.grid[i] = {weight, paired
+  (with mean_kl vs the BASE host), paired_nondup}; per-target arrays in <set>__<label>__grid.npz.
+* when token classes are on (dev/test/splitb): base gets "nondup" (summary on targets whose 16-gram is not in
+  train) and every other condition "paired_nondup" (paired metrics on those targets); the per-target mask (base
+  target order) is saved as <set>__nondup.npy.
 """
 from __future__ import annotations
 
@@ -68,6 +78,9 @@ def main() -> None:
                     help="dir with <set>__base.npz from an earlier run on the same splits/windows: load instead of "
                          "re-scoring the base (targets are still checked for equality against every condition)")
     ap.add_argument("--fmt-map", default=None, help="JSON {rows-file stem: FormatSpec JSON path} for mixed formats")
+    ap.add_argument("--countgrid-weights", default=None,
+                    help="comma list of count weights for countgrid:* conditions (default countgrid.DEFAULT_WEIGHTS)")
+    ap.add_argument("--no-countgrid-npz", action="store_true", help="do not write <set>__<label>__grid.npz")
     a = ap.parse_args()
     os.environ.setdefault("OMP_NUM_THREADS", str(a.threads))
     import torch
@@ -78,6 +91,7 @@ def main() -> None:
     from ngram_memory.eval.metrics import class_breakdown, paired, retention, summary as nll_summary
     from ngram_memory.eval.report import render
     from ngram_memory.eval.stage1 import datasets as ds
+    from ngram_memory.eval.stage1 import countgrid as cg
     from ngram_memory.eval.stage1 import tokclass as tc
     from ngram_memory.eval.stage1.scoring import Composite, Condition, ScoreResult, plan_windows, score
     from ngram_memory.eval.stage1.splits import Splits
@@ -137,7 +151,7 @@ def main() -> None:
     # Data regime of the data-dependent arms (countlm, rag*, knm, lora): Split-A sets use the Split-A train files at
     # HEAD; Split B uses the Split-B train files AT T_cut (§6.A.4), so no post-cut line is indexed or trained on
     # (VE-1). One run uses one regime: Split B must be scored in its own run.
-    data_dep = {"countlm", "rag1k", "rag4k", "knm", "lora"}
+    data_dep = {"countlm", "countgrid", "rag1k", "rag4k", "knm", "lora"}
     asked = {x.split(":")[0] for spec in a.conditions.split(",") for x in spec.split("+")}
     if "splitb" in sets and len(sets) > 1 and asked & data_dep:
         raise SystemExit("splitb with data-dependent conditions must be scored in its own run (--sets splitb): its "
@@ -169,26 +183,50 @@ def main() -> None:
             cache["stream"] = ds.train_stream(splits, tok, eos, split=regime, at=train_at)
         return cache["stream"]
 
+    def get_kn():
+        from ngram_memory.eval.stage1.baselines import countlm as cl
+        if "kn" not in cache:
+            t = time.time()
+            docs_tr = [tok(splits.document(p, at=train_at), add_special_tokens=False)["input_ids"]
+                       for p in train_paths]
+            cache["kn"] = cl.KNTrigram(docs_tr, V, eos)
+            S["tuning"]["countlm_build_s"] = time.time() - t
+        return cache["kn"]
+
+    def build_countgrid(part: str, inner, name: str):
+        g = cg.parse_spec(part.partition(":")[2])
+        cond = cg.CountGridCondition(get_kn(), g["component"], cg.parse_weights(a.countgrid_weights),
+                                     g["other_weight"], inner=inner, name=name)
+        S["tuning"][name] = dict(fixed=True, **{k: v for k, v in cond.describe().items() if k != "inner"})
+        return cond
+
     def build(spec: str) -> Condition:
         if "+" in spec:
+            ps = spec.split("+")
+            gi = [i for i, x in enumerate(ps) if x.partition(":")[0] == "countgrid"]
+            if gi:  # countgrid on top of the other parts (scored by countgrid.score_grid)
+                if len(gi) > 1:
+                    raise ValueError(f"{spec}: at most one countgrid part")
+                return build_countgrid(ps[gi[0]], build("+".join(x for i, x in enumerate(ps) if i != gi[0])),
+                                       label(spec))
             return Composite([build(x) for x in spec.split("+")], name=spec.replace(":", "="))
         kind, _, arg = spec.partition(":")
         if kind == "base":
             return Condition()
+        if kind == "countgrid":
+            return build_countgrid(spec, None, label(spec))
         if kind == "countlm":
             from ngram_memory.eval.stage1.baselines import countlm as cl
-            if "kn" not in cache:
-                t = time.time()
-                docs_tr = [tok(splits.document(p, at=train_at), add_special_tokens=False)["input_ids"]
-                           for p in train_paths]
-                cache["kn"] = cl.KNTrigram(docs_tr, V, eos)
-                S["tuning"]["countlm_build_s"] = time.time() - t
-            kn = cache["kn"]
+            kn = get_kn()
             # variants (diagnostics): countlm:kn = KN trigram only, countlm:cache = in-file cache only,
             # "-fine"/"fine" = a finer lambda grid reaching below 0.01. Plain "countlm" is unchanged (M1b).
-            parts = set(arg.split("-")) if arg else set()
-            if not parts <= {"kn", "cache", "fine"} or {"kn", "cache"} <= parts:
-                raise ValueError(f"countlm variant {arg!r}: use kn, cache, fine, kn-fine or cache-fine")
+            # Fixed weights (no tuning, M1c): kn-lam0p0075, cache-lam0p005, ln0p015-lc0p005 ('p' = decimal point).
+            var = cl.parse_variant(arg)
+            if var["fixed"]:
+                key = "countlm" + (f"[{arg}]" if arg else "")
+                S["tuning"][key] = dict(fixed=True, lam_n=var["lam_n"], lam_c=var["lam_c"])
+                return cl.CountLMCondition(kn, var["lam_n"], var["lam_c"], name=key)
+            parts = var["parts"]
             if "base_t" not in cache:
                 cache["base_t"] = score(model, tune_docs, tune_w)
             base_t = cache["base_t"]
@@ -328,6 +366,21 @@ def main() -> None:
         is_base = spec == "base"
         for set_name, docs in sets.items():
             R = S["sets"].setdefault(set_name, {})
+            if isinstance(cond, cg.CountGridCondition):  # many count weights in one pass (M1c frontier)
+                g = cg.score_grid(model, docs, plans[set_name], cond)
+                if not a.no_countgrid_npz:
+                    g.save(out / f"{set_name}__{label(spec)}__grid.npz")
+                b = base_res[set_name]
+                groups = np.asarray([g.groups[i] for i in g.doc])
+                R[label(spec)] = dict(wall_s=g.meta["wall_s"], wall_s_per_10k=1e4 * g.meta["wall_s"] / max(1, len(g)),
+                                      mix_s=g.meta["mix_s"], components_s=g.meta["components_s"],
+                                      forward_tokens=g.meta["forward_tokens"],
+                                      threads=g.meta["threads"], describe=cond.describe(),
+                                      countgrid=cg.grid_metrics(b, g, groups, nondup=cg.nondup_mask(masks.get(set_name))))
+                log(set_name, label(spec), f"tok={len(g)}", f"weights={len(cond.weights)}",
+                    f"wall={g.meta['wall_s']:.1f}s", f"mix={g.meta['mix_s']:.1f}s")
+                save()
+                continue
             with_kl = set_name.startswith("r") and not is_base and not cond.provides_prefix
             reuse = Path(a.reuse_base) / f"{set_name}__base.npz" if (is_base and a.reuse_base) else None
             if reuse is not None and reuse.exists():
@@ -349,6 +402,10 @@ def main() -> None:
                 masks[set_name] = classes_for(set_name, docs, res)
                 if masks[set_name] is not None:
                     R["_class_fractions"] = {k: float(v.mean()) for k, v in masks[set_name].items()}
+                nd = cg.nondup_mask(masks[set_name])
+                if nd is not None:  # primary metric support: the non-duplicated targets (M1c)
+                    r["nondup"] = nll_summary(res.nll[nd], groups[nd], res.hit[nd])
+                    np.save(out / f"{set_name}__nondup.npy", nd)   # per-target mask (base target order), for M1c bars
             else:
                 b = base_res[set_name]
                 if not np.array_equal(b.key(), res.key()):
@@ -357,6 +414,9 @@ def main() -> None:
                                paired(b.nll, res.nll, groups, base_hit=b.hit, cond_hit=res.hit))
                 if masks.get(set_name) is not None:
                     r["classes"] = class_breakdown(b.nll, res.nll, groups, masks[set_name])
+                nd = cg.nondup_mask(masks.get(set_name))
+                if nd is not None:  # paired metrics on non-duplicated targets only (M1c primary metric)
+                    r["paired_nondup"] = cg.paired_masked(b, res, groups, nd)
             R[label(spec)] = r
             p = r.get("paired", {})
             log(set_name, label(spec), f"tok={len(res)}", f"nll={float(res.nll.mean()):.4f}",

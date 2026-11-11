@@ -16,6 +16,18 @@ Data discipline: training uses only Split-A train files (or, for the foreign con
 Split-B stage, the tree at T_cut); every selection reads Split-A dev results only. The Split-A test files are read
 exactly once, by the stage named "test", after the operating point is fixed; Split B is scored after that.
 Worker modes (internal): --worker train --stage NAME.
+
+M1c (experiments/m1c/PREREG.md) runs on this runner with `--grid experiments/m1c/grid.json`. Everything M1c adds is
+switched on only by fields of its grid (M1b's grid, the default, behaves exactly as before):
+  arm fields      objective ('nll' | 'distill' | 'mix'), distill_alpha, teacher_ctx_tokens, teacher_k (Stage-1b,
+                  ingest/teacher.py); canaries (true or {seed, n, files, repeats}: planted into the train corpus only,
+                  manifest in <arm>/canaries.json and train.json); steps (an int, or 'epoch' = one full pass over the
+                  train windows, recorded in train.json)
+  grid fields     primary ('nondup': E1 read on the non-duplicated targets, all-target E1 still reported);
+                  arm_extra_conditions (extra evaluate.py specs per trained arm, '{rows}' = its rows condition);
+                  reg (REG harness flags, full/smoke)
+  stage kinds     countgrid (eval-only count-LM frontier, reuses the base stage), reg (scripts/reg.py on the
+                  operating point), m1c_select, m1c_op, m1c_test, m1c_report (the M1c bars, PREREG §4-§7)
 """
 from __future__ import annotations
 
@@ -57,10 +69,33 @@ def jdump(p: Path, obj) -> None:
 
 
 # ================================================================================================ grid
+DEFAULT_GRID = HERE / "grid.json"
+GRID_PATH = DEFAULT_GRID            # --grid (M1c: experiments/m1c/grid.json); the sha256 check reads this file
+
+
+def set_grid_path(p) -> Path:
+    """Resolve --grid (relative to the working directory, else to ngram-memory/) and make it the grid of this run."""
+    global GRID_PATH
+    p = Path(p)
+    if not p.is_absolute():
+        p = Path.cwd() / p if (Path.cwd() / p).exists() else ROOT / p
+    if not p.exists():
+        raise SystemExit(f"--grid {p}: no such file")
+    GRID_PATH = p.resolve()
+    return GRID_PATH
+
+
+def grid_args() -> list[str]:
+    """--grid for worker subprocesses (nothing for the default grid, so M1b's commands are unchanged)."""
+    return [] if GRID_PATH.resolve() == DEFAULT_GRID.resolve() else ["--grid", str(GRID_PATH)]
+
+
 def load_grid(smoke: bool) -> dict:
-    g = jload(HERE / "grid.json")
+    g = jload(GRID_PATH)
     g["budget"] = g["budgets"]["smoke" if smoke else "full"]
     g["eval_flags"] = g["eval"]["smoke" if smoke else "full"]
+    if "reg" in g:
+        g["reg_flags"] = g["reg"]["smoke" if smoke else "full"]
     return g
 
 
@@ -80,6 +115,32 @@ def resolve_arm(grid: dict, name: str, out: Path) -> dict:
     arm.update({k: v for k, v in spec.items() if k not in ("from_selection", "kind", "note")})
     arm["name"] = name
     return arm
+
+
+def canary_config(cfgd: dict):
+    """The arm's CanaryConfig (ingest/canaries.py) or None. Grid form: true, or {seed, n, files, repeats, ...}
+    ('files' = how many train files receive canaries, CanaryConfig.m)."""
+    c = cfgd.get("canaries")
+    if c is None or c is False:
+        return None
+    from ngram_memory.ingest import canaries as CN
+    if isinstance(c, dict):
+        c = dict(c)
+        if "files" in c:
+            c["m"] = c.pop("files")
+    return CN.config_from_arm({"canaries": c})
+
+
+def arm_steps(cfgd: dict, B: dict, n_windows: int) -> int:
+    """Training steps of an arm: the budget's steps, an int override, or 'epoch' (one full pass over the train
+    windows; capped by the budget's epoch_steps_cap in smoke runs)."""
+    sp = cfgd.get("steps")
+    if sp is None:
+        return int(B["steps"])
+    if sp == "epoch":
+        cap = B.get("epoch_steps_cap")
+        return min(n_windows, int(cap)) if cap else n_windows
+    return int(sp)
 
 
 # ======================================================================================= child processes
@@ -187,6 +248,15 @@ def worker_train(a) -> int:
                                files=len(train_files))
     else:
         raise SystemExit(f"unknown corpus {corpus}")
+    cc = canary_config(cfgd)
+    if cc is not None:  # M1c: canaries in the TRAIN corpus only (dev/test/retention come from the clean corpus)
+        from ngram_memory.ingest import canaries as CN
+        if corpus != "split_a":
+            raise SystemExit("canaries need corpus split_a")
+        train_files, cman = CN.plant_source_files(train_files, sa.train, cc)
+        CN.write_manifest(cman, d / "canaries.json")
+        summ["canaries"] = dict(CN.manifest_brief(cman), path=str(d / "canaries.json"), manifest=cman)
+        log("canaries", CN.manifest_brief(cman))
     dev_corp = C.load_corpus(C.MINISGL_REPO, C.MINISGL_HEAD) if corpus != "split_a" else corp
     dby = dev_corp.by_path()
     dev_files = [dby[p] for p in sa.dev if p in dby]
@@ -258,17 +328,43 @@ def worker_train(a) -> int:
     s = TR.glin_row_scale(fmt, hn)
     (d / "fmt.json").write_text(fmt.to_json())
     store = SparseRowStore.reserved(fmt.padded_rows, fmt.row_width, torch.from_numpy(rows))
-    steps = int(B["steps"]) if not a.max_steps else min(int(B["steps"]), a.max_steps)
+    base_steps = arm_steps(cfgd, B, len(windows))
+    if cfgd.get("steps") is not None:
+        summ["steps_mode"] = dict(spec=cfgd["steps"], train_windows=len(windows), steps=base_steps,
+                                  epoch_steps_cap=B.get("epoch_steps_cap"))
+    steps = base_steps if not a.max_steps else min(base_steps, a.max_steps)
     if a.max_steps:
         summ["max_steps_override"] = a.max_steps
+    objective = cfgd.get("objective", "nll")
+    teacher = None
+    if objective != "nll":  # Stage-1b teacher targets, graft OFF (before the trainer installs the graft)
+        from ngram_memory.ingest import teacher as TT
+        enc, dec = TT.tokenizer_fns(tok)
+        ctx = int(cfgd.get("teacher_ctx_tokens", 4096))
+        if B.get("teacher_ctx_tokens_cap"):
+            ctx = min(ctx, int(B["teacher_ctx_tokens_cap"]))
+        tcfg = TT.TeacherConfig(ctx_tokens=ctx, k=int(cfgd.get("teacher_k", B["topk"])))
+        need = TR.visited_windows(len(windows), cfgd["seed"], steps)
+        held = list(sa.dev) + list(sa.test) + list(sa.neardup_diag)
+        t = time.time()
+        teacher, tpath = TT.load_or_build_teacher(cache, host, QWEN25, windows, docs,
+                                                  {f.path: f.text for f in train_files}, enc, dec, tcfg,
+                                                  window_index=need, log=log, forbid=held)
+        summ["teacher"] = dict(path=str(tpath), cache_key=teacher.meta["cache_key"],
+                               identity=teacher.meta.get("identity"), config=tcfg.to_dict(), windows=len(need),
+                               build_or_load_s=time.time() - t, **TT.retrieval_summary(teacher))
+        log("teacher", {k: v for k, v in summ["teacher"].items() if k != "config"})
+        ING.trim()
+    tkw = {} if "objective" not in cfgd else dict(objective=objective, distill_alpha=cfgd.get("distill_alpha", 0.5))
     tc = TR.TrainConfig(arm=cfgd["arm"], lr=cfgd["lr"], anchor_lambdas={"near": cfgd["lambda_near"],
                                                                         "chat": cfgd["lambda_chat"]},
                         lambda_l2=cfgd["lambda_l2"], lambda_l1_rel=cfgd["lambda_l1_rel"], kappa=cfgd.get("kappa"),
                         rho=cfgd["rho"], lambda_rho=cfgd["lambda_rho"], loss_chunk=cfgd["loss_chunk"],
                         seed=cfgd["seed"], max_steps=steps, ckpt_every=B["ckpt_every"],
-                        shuffle_seed=cfgd.get("shuffle_seed", 1))
+                        shuffle_seed=cfgd.get("shuffle_seed", 1), **tkw)
     trainer = TR.RowTrainer(host, fmt, store, windows, tc, anchors=anchors, omega=omega, row_scale=s,
-                            loss_weights=win_w, log_path=d / "metrics.jsonl")
+                            loss_weights=win_w, log_path=d / "metrics.jsonl",
+                            **({} if teacher is None else dict(teacher=teacher)))
     ckpt = d / "checkpoint.pt"
     if ckpt.exists():
         trainer.load_checkpoint(ckpt)
@@ -278,7 +374,8 @@ def worker_train(a) -> int:
         summ["dev_monitor_before"] = trainer.eval_nll(dev_windows)
 
     def cb(r):
-        log(f"step {r['step']}/{steps} nll {r['nll']:.4f} kl_near {r.get('kl_near', 0):.5f} "
+        kt = f" kl_teacher {r['kl_teacher']:.5f}" if "kl_teacher" in r else ""
+        log(f"step {r['step']}/{steps} nll {r['nll']:.4f}{kt} kl_near {r.get('kl_near', 0):.5f} "
             f"kl_chat {r.get('kl_chat', 0):.5f} rho_med {r['rho_train_median']:.4f} rows_read {r['rows_read']} "
             f"nonzero {r['rows_nonzero']} step_s {r['step_s']:.1f} rss {r['rss_mb']:.0f}/{r['peak_rss_mb']:.0f} MB")
         jdump(d / "train_progress.json", dict(step=r["step"] + 1, steps=steps, step_s=r["step_s"],
@@ -293,6 +390,10 @@ def worker_train(a) -> int:
                          step_s_median=float(np.median(st)) if st else None,
                          rows_nonzero=allrec[-1]["rows_nonzero"] if allrec else 0,
                          peak_rss_mb=max(r["peak_rss_mb"] for r in allrec) if allrec else None)
+    if objective != "nll":
+        kt = [r["kl_teacher"] for r in allrec if "kl_teacher" in r]
+        summ["train"].update(objective=objective, alpha=tc.alpha, kl_teacher_first=kt[0] if kt else None,
+                             kl_teacher_last=kt[-1] if kt else None)
     cart = trainer.cartridge()
     trainer.close()
     torch.save(cart.state_dict(), d / "cartridge.pt")
@@ -355,6 +456,8 @@ class Runner:
         self.a = a
         self.out = Path(a.out)
         self.out.mkdir(parents=True, exist_ok=True)
+        if getattr(a, "grid", None):
+            set_grid_path(a.grid)
         self.grid = load_grid(a.smoke)
         self.ppath = self.out / "progress.json"
         self._lock = threading.RLock()                 # progress.json is shared by concurrent stages
@@ -363,7 +466,9 @@ class Runner:
                                                                             smoke=a.smoke, stages={})
         if self.progress.get("smoke") != a.smoke:
             raise SystemExit("output dir was created with a different --smoke setting")
-        grid_sha = hashlib.sha256((HERE / "grid.json").read_bytes()).hexdigest()
+        grid_sha = hashlib.sha256(GRID_PATH.read_bytes()).hexdigest()
+        if GRID_PATH.resolve() != DEFAULT_GRID.resolve():
+            self.progress.setdefault("grid", str(GRID_PATH))
         if self.progress.setdefault("grid_sha256", grid_sha) != grid_sha:
             raise SystemExit("grid.json changed since this run started (pre-registration): refusing to continue")
         self.save()
@@ -414,6 +519,8 @@ class Runner:
             cmd += ["--max-windows", str(E["max_windows"])]
         if E.get("tune_max_windows") is not None:
             cmd += ["--tune-max-windows", str(E["tune_max_windows"])]
+        if E.get("countgrid_weights") is not None:
+            cmd += ["--countgrid-weights", str(E["countgrid_weights"])]
         if reuse_base is not None:
             cmd += ["--reuse-base", str(reuse_base)]
         if fmt_map:
@@ -444,19 +551,25 @@ class Runner:
         if not (d / "train.json").exists():
             self.mark(name, status="training", config=arm)
             cmd = [PY, str(Path(__file__).resolve()), "--worker", "train", "--stage", name, "--out", str(self.out),
-                   "--threads", str(self.threads())] + (["--smoke"] if self.a.smoke else [])
+                   "--threads", str(self.threads())] + (["--smoke"] if self.a.smoke else []) + grid_args()
             r = run_guarded(cmd, d / "train.log", self.a.rss_limit_gb * 1024, self.threads())
             if r["aborted"] or r["returncode"] != 0:
                 raise StageFailed(name, r)
         tr = jload(d / "train.json")
         self.mark(name, status="evaluating", train=tr["train"])
         base_dir = self.out / self.grid["base_stage"] / "eval"
-        ev = self.evaluate(name, self.grid["dev_sets"], f"rows:{d / 'cartridge.pt'}", reuse_base=base_dir,
+        rows = f"rows:{d / 'cartridge.pt'}"
+        conds = ",".join([rows] + [c.replace("{rows}", rows) for c in self.grid.get("arm_extra_conditions", [])])
+        ev = self.evaluate(name, self.grid["dev_sets"], conds, reuse_base=base_dir,
                            fmt_map={"cartridge": str(d / "fmt.json")})
-        res = dev_metrics(ev["summary"], "rows[cartridge]")
-        return dict(config=arm, train=tr["train"], rows=tr["rows"], cartridge=tr["cartridge"],
-                    dev=res, eval_dir=str(self.out / name / "eval"), eval_wall_s=ev["run"]["wall_s"],
-                    eval_peak_rss_mb=ev["run"]["peak_rss_mb"])
+        res = dev_metrics(ev["summary"], "rows[cartridge]", self.grid.get("primary"))
+        out = dict(config=arm, train=tr["train"], rows=tr["rows"], cartridge=tr["cartridge"],
+                   dev=res, eval_dir=str(self.out / name / "eval"), eval_wall_s=ev["run"]["wall_s"],
+                   eval_peak_rss_mb=ev["run"]["peak_rss_mb"])
+        for k in ("teacher", "canaries", "steps_mode"):          # M1c fields (absent for M1b arms)
+            if k in tr:
+                out[k] = {kk: v for kk, v in tr[k].items() if kk != "manifest"} if k == "canaries" else tr[k]
+        return out
 
     def stage_lora(self, st: dict) -> dict:
         B = self.grid["budget"]
@@ -550,7 +663,7 @@ class Runner:
         if not (d / "train.json").exists():
             self.mark(name, status="training", config=arm)
             cmd = [PY, str(Path(__file__).resolve()), "--worker", "train", "--stage", name, "--out", str(self.out),
-                   "--threads", str(self.threads())] + (["--smoke"] if self.a.smoke else [])
+                   "--threads", str(self.threads())] + (["--smoke"] if self.a.smoke else []) + grid_args()
             r = run_guarded(cmd, d / "train.log", self.a.rss_limit_gb * 1024, self.threads())
             if r["aborted"] or r["returncode"] != 0:
                 raise StageFailed(name, r)
@@ -565,7 +678,7 @@ class Runner:
         d.mkdir(parents=True, exist_ok=True)
         if not (d / "pruned.json").exists():
             cmd = [PY, str(Path(__file__).resolve()), "--worker", "frontier", "--stage", name, "--out", str(self.out),
-                   "--threads", str(self.threads())] + (["--smoke"] if self.a.smoke else [])
+                   "--threads", str(self.threads())] + (["--smoke"] if self.a.smoke else []) + grid_args()
             r = run_guarded(cmd, d / "frontier.log", self.a.rss_limit_gb * 1024, self.threads())
             if r["aborted"] or r["returncode"] != 0:
                 raise StageFailed(name, r)
@@ -669,11 +782,236 @@ class Runner:
                            extra=["--r3-items", str(self.grid["eval_flags"]["r3_items"])])
         return dict(operating_point=op["selected"], r3=ev["summary"]["sets"].get("r3"))
 
+    # ---------------------------------------------------------------------------------- M1c stage kinds
+    def _primary(self) -> str:
+        return self.grid.get("primary") or "all"
+
+    def _res(self, name: str) -> dict | None:
+        p = self.out / name / "result.json"
+        return jload(p) if p.exists() else None
+
+    def stage_countgrid(self, st: dict) -> dict:
+        """Eval-only count-LM frontier (countgrid:kn on the dev sets, KL vs base), reusing the base stage."""
+        base_dir = self.out / self.grid["base_stage"] / "eval"
+        conds = st.get("conditions", "countgrid:kn")
+        ev = self.evaluate(st["name"], st.get("sets", self.grid["dev_sets"]), conds, reuse_base=base_dir)
+        from ngram_memory.eval.stage1 import bars as BR
+        lab = st.get("label", "countgrid[kn]")
+        front = BR.frontier(ev["summary"], lab, self._primary())
+        return dict(label=lab, conditions=conds, primary=self._primary(), frontier=front,
+                    lambda_star=BR.lambda_star(front), eval_dir=str(self.out / st["name"] / "eval"),
+                    eval_wall_s=ev["run"]["wall_s"], eval_peak_rss_mb=ev["run"]["peak_rss_mb"],
+                    summary=_brief(ev["summary"]))
+
+    def _m1c_rows(self, names: list[str], counts_stage: str, warn_stage: str) -> tuple[dict, list[dict]]:
+        """Bars A and B on dev for each trained arm (PREREG §5), against the counts-only frontier of counts_stage."""
+        import numpy as np
+        from ngram_memory.eval.stage1 import bars as BR
+        prim = self._primary()
+        cres = self._res(counts_stage)
+        if cres is None:
+            raise StageFailed(warn_stage, dict(error=f"counts stage {counts_stage} has no result"))
+        S0 = BR.load_summary(cres["eval_dir"])
+        clab = cres["label"]
+        front = BR.frontier(S0, clab, prim)
+        ls = BR.lambda_star(front)
+        t0 = BR.Targets.load(cres["eval_dir"], "dev", prim)
+        cnt_ls = t0.nll(clab, ls["weight"])
+        rows = []
+        for n in names:
+            r = self._res(n)
+            if r is None:
+                self.mark(warn_stage, warning=f"candidate {n} has no result (aborted?)")
+                continue
+            S = BR.load_summary(r["eval_dir"])
+            xl, xpl = "rows[cartridge]", f"{clab}+rows[cartridge]"
+            x = BR.point(S, xl, None, prim)
+            xp = BR.point(S, xpl, ls["weight"], prim)
+            m = BR.matched(front, x)
+            t = BR.Targets.load(r["eval_dir"], "dev", prim)
+            if not (np.array_equal(t.key, t0.key) and np.array_equal(t.mask, t0.mask)):
+                raise StageFailed(warn_stage, dict(error=f"{n}: dev targets differ from {counts_stage}'s"))
+            A = BR.bar_a(t, t.nll(xpl, ls["weight"]), cnt_ls, BR.within(xp))
+            Bb = BR.bar_b(t, t.nll(xl), t0.nll(clab, m["weight"]))
+            rows.append(dict(stage=n, config=r["config"], cartridge=r.get("cartridge"), dev=r["dev"], x=x,
+                             x_within=BR.within(x), x_plus_counts=xp, x_plus_counts_within=BR.within(xp),
+                             counts_matched=m, bar_a=A, bar_b=Bb, bar_a_margin_pts=A["diff"]["pts"] - BR.BAR_A["min_pts"],
+                             any_bar=bool(A["holds"] or Bb["holds"])))
+        ctx = dict(primary=prim, counts_stage=counts_stage, frontier=front, lambda_star=ls, bars=BR.BARS,
+                   bar_a=BR.BAR_A, bar_b=BR.BAR_B, match_floor=BR.MATCH_FLOOR)
+        return ctx, rows
+
+    @staticmethod
+    def _m1c_rank(r: dict) -> tuple:
+        """Larger Bar-A margin; ties -> smaller rho, then nll before distill."""
+        return (r["bar_a"]["diff"]["pts"], -float(r["config"]["rho"]),
+                0 if r["config"].get("objective", "nll") == "nll" else -1)
+
+    def stage_m1c_select(self, st: dict) -> dict:
+        """S1 (PREREG §6): largest dev Bar-A margin among arms whose X alone is within R1/R2/KL."""
+        ctx, rows = self._m1c_rows(st["candidates"], st["counts"], st["name"])
+        if not rows:
+            raise StageFailed(st["name"], dict(error="no candidate results"))
+        ok = [r for r in rows if r["x_within"]]
+        if ok:
+            best = max(ok, key=self._m1c_rank)
+            rule = "largest dev Bar-A margin among arms with X alone within R1 <= 0.2%, R2 <= 0.5%, KL <= 0.005"
+        else:
+            best = min(rows, key=lambda r: (r["x"]["r2"], r["config"]["rho"]))
+            rule = "no arm alone within the retention bars: smallest dev R2 (recorded as the kill-zone case)"
+        table = [dict(stage=r["stage"], rho=r["config"]["rho"], objective=r["config"].get("objective", "nll"),
+                      e1=r["x"]["e1"], e1_all=r["x"]["e1_all"], r1=r["x"]["r1"], kl=r["x"]["kl"], r2=r["x"]["r2"],
+                      x_within=r["x_within"], bar_a_diff=r["bar_a"]["diff"]["pts"], bar_a_ci=r["bar_a"]["diff"]["ci"],
+                      bar_a=r["bar_a"]["holds"], counts_matched_weight=r["counts_matched"]["weight"],
+                      bar_b_ratio=r["bar_b"]["ratio"], bar_b_diff_ci=r["bar_b"]["diff"]["ci"], bar_b=r["bar_b"]["holds"])
+                 for r in rows]
+        return dict(ctx, selected=best["stage"], config=best["config"], dev=best["dev"], row=best, rule=rule,
+                    any_within_bars=bool(ok), any_bar_dev=any(r["any_bar"] for r in rows), table=table,
+                    candidates=rows, cartridge=best.get("cartridge"))
+
+    def stage_m1c_op(self, st: dict) -> dict:
+        """OP (PREREG §6): F1 (S1's recipe, one full pass) if its dev Bar-A margin >= S1's, else S1."""
+        s1 = self._res(st["s1"])
+        ctx, rows = self._m1c_rows([s1["selected"]] + ([st["f1"]] if self._res(st["f1"]) else []), st["counts"],
+                                   st["name"])
+        rs1 = next(r for r in rows if r["stage"] == s1["selected"])
+        rf1 = next((r for r in rows if r["stage"] == st["f1"]), None)
+        if rf1 is not None and rf1["bar_a"]["diff"]["pts"] >= rs1["bar_a"]["diff"]["pts"]:
+            op, rule = rf1, "F1's dev Bar-A margin >= S1's"
+        else:
+            op = rs1
+            rule = "F1 has no result" if rf1 is None else "F1's dev Bar-A margin < S1's"
+        return dict(ctx, selected=op["stage"], config=op["config"], dev=op["dev"], op_row=op, rule=rule,
+                    s1=rs1, f1=rf1, cartridge=op.get("cartridge"))
+
+    def stage_m1c_test(self, st: dict) -> dict:
+        """The single Split-A test read of M1c (PREREG §7): base, OP rows, counts@lambda*, counts@lambda* + OP,
+        counts@matched(OP), perm:OP; bars A/B and C1 on the primary (and all) targets; canary-free check."""
+        from ngram_memory.eval.stage1 import bars as BR
+        marker = self.out / st["name"] / "STARTED"
+        if marker.exists():
+            self.mark(st["name"], note="test stage restarted after an interruption (same pre-registered read)")
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(time.strftime("%Y-%m-%d %H:%M:%S"))
+        op = self._res(st["operating_point"])
+        sd = self.out / op["selected"]
+        link = self.out / st["name"] / "op.pt"
+        if not link.exists():
+            link.symlink_to(sd / "cartridge.pt")
+        fmap = {"op": str(sd / "fmt.json")}
+        ls, mw = op["lambda_star"]["weight"], op["op_row"]["counts_matched"]["weight"]
+        tl, tm = BR.weight_tag(ls), BR.weight_tag(mw)
+        spec = {"base": "base", "op": f"rows:{link}", "perm_op": f"perm:{link}",
+                "countlm_lstar": f"countlm:kn-lam{tl}", "countlm_lstar+op": f"countlm:kn-lam{tl}+rows:{link}",
+                "countlm_matched_op": f"countlm:kn-lam{tm}"}
+        conds = list(dict.fromkeys(spec[c] for c in st["conditions"]))
+        # canary-free check: no canary secret of OP's manifest occurs in any held-out (dev/test/near-dup) text
+        cman = sd / "canaries.json"
+        canary_check = None
+        if cman.exists():
+            from ngram_memory.eval.stage1.splits import Splits
+            from ngram_memory.ingest import canaries as CN
+            sp = Splits.load(self.splits_json())
+            held = {p: sp.text(p) for part in ("dev", "test", "near_dup") for p in sp.files("a", part)}
+            man = CN.load_manifest(cman)
+            CN.assert_clean(held, man)          # raises (stage error) if a canary leaked into held-out data
+            canary_check = dict(manifest=str(cman), sha256=man["sha256"], held_out_files=len(held), clean=True)
+        extra = ["--r3-items", "0"]
+        ev = self.evaluate(st["name"], "test", ",".join(conds), fmt_map=fmap, extra=extra)
+        ed = self.out / st["name"] / "eval"
+        lab = dict(op="rows[op]", perm="perm[op]", cl=f"countlm[kn-lam{tl}]", clop=f"countlm[kn-lam{tl}]+rows[op]",
+                   cm=f"countlm[kn-lam{tm}]")
+        bars = {}
+        for prim in dict.fromkeys([self._primary(), "all"]):
+            t = BR.Targets.load(ed, "test", prim)
+            bars[prim] = dict(
+                e1_op=BR.gain(t, t.nll(lab["op"])), e1_counts_lstar=BR.gain(t, t.nll(lab["cl"])),
+                e1_counts_lstar_plus_op=BR.gain(t, t.nll(lab["clop"])), e1_counts_matched=BR.gain(t, t.nll(lab["cm"])),
+                bar_a=BR.bar_a(t, t.nll(lab["clop"]), t.nll(lab["cl"]), op["op_row"]["x_plus_counts_within"]),
+                bar_b=BR.bar_b(t, t.nll(lab["op"]), t.nll(lab["cm"])),
+                c1=BR.c1(t, t.nll(lab["op"]), t.nll(lab["perm"])))
+        T = ev["summary"]["sets"]["test"]
+        return dict(operating_point=op["selected"], op_config=op["config"], conditions=conds, labels=lab,
+                    lambda_star=ls, counts_matched_weight=mw, primary=self._primary(), bars=bars,
+                    canary_check=canary_check, class_fractions=T.get("_class_fractions"),
+                    summary=_brief(ev["summary"]), eval_dir=str(ed), wall_s=ev["run"]["wall_s"])
+
+    def stage_reg(self, st: dict) -> dict:
+        """REG (§6.A.3) on the operating point vs base: scripts/reg.py with the arm's canary manifest."""
+        op = self._res(st["operating_point"])
+        sd = self.out / op["selected"]
+        d = self.out / st["name"]
+        F = self.grid.get("reg_flags", {})
+        cmd = [PY, str(ROOT / "scripts/reg.py"), "--splits", str(self.splits_json()), "--host", QWEN25,
+               "--out", str(d / "reg"), "--rows", str(sd / "cartridge.pt"), "--fmt", str(sd / "fmt.json"),
+               "--threads", str(self.threads())]
+        if (sd / "canaries.json").exists():
+            cmd += ["--canaries", str(sd / "canaries.json")]
+        for k in ("n_prefixes", "min_prefix", "max_prefix", "max_new", "min_run", "batch_size", "seed",
+                  "canary_context", "canary_max_new", "n_random", "max_train_files"):
+            if F.get(k) is not None:
+                cmd += ["--" + k.replace("_", "-"), str(F[k])]
+        r = run_guarded(cmd, d / "reg.log", self.a.rss_limit_gb * 1024, self.threads())
+        if r["aborted"] or r["returncode"] != 0:
+            raise StageFailed(st["name"], r)
+        S = jload(d / "reg" / "summary.json")
+        v = S["verdict"].get("rows[cartridge]")
+        brief = {k: {kk: vv for kk, vv in c["regurgitation"].items() if kk != "secret_hits"}
+                 for k, c in S["conditions"].items()}
+        return dict(operating_point=op["selected"], verdict=v, reg_pass=None if v is None else v["pass"],
+                    regurgitation=brief, canaries=S.get("canaries"), fingerprint=S.get("fingerprint"),
+                    summary=str(d / "reg" / "summary.json"), wall_s=r["wall_s"], peak_rss_mb=r["peak_rss_mb"])
+
+    def stage_m1c_report(self, st: dict) -> dict:
+        """The pre-registered M1c decision (PREREG §8) on the stage results; no model is run."""
+        from ngram_memory.eval.stage1 import bars as BR
+        sel, op, test, reg = (self._res(st[k]) for k in ("select", "operating_point", "test", "reg"))
+        rows = list(sel["candidates"]) + ([op["f1"]] if op and op.get("f1") else [])
+        dev_any = any(r["any_bar"] for r in rows)
+        out = dict(lambda_star=sel["lambda_star"], dev_table=sel["table"], dev_any_bar=dev_any,
+                   s1=sel["selected"], operating_point=op and op["selected"], op_rule=op and op["rule"],
+                   s1_bar_a_margin=op and op["s1"]["bar_a_margin_pts"],
+                   f1_bar_a_margin=op and op.get("f1") and op["f1"]["bar_a_margin_pts"])
+        if not dev_any:
+            out.update(decision="KILL", reason="neither Bar A nor Bar B holds on dev for any arm: stop rows-only "
+                       "layer-1 graft ingestion; next routes: an Engram-Adapter-style trained-reader arm or Flash-Next "
+                       "native (M6)")
+            return out
+        if test is None or op is None:
+            out.update(decision="INCOMPLETE", reason="the test stage (or the operating point) has no result")
+            return out
+        prim = test["primary"]
+        tb = test["bars"][prim]
+        oprow = op["op_row"]
+        ret = BR.within(oprow["x"])
+        fr = (test.get("class_fractions") or {}).get("dup:16gram_in_train")
+        gates = dict(host_unchanged=True,           # the train worker fails the arm on any host-weight change
+                     dedupe=dict(test_16gram_in_train_fraction=fr, primary=prim,
+                                 met=prim == "nondup" or (fr is not None and fr <= 0.02)),
+                     suite="R0/I2/I4 are test-suite gates (tests/test_qwen25_real.py, test_graft_tiny.py, "
+                           "test_hashing.py), run at the launch commit, not by this runner")
+        gates_ok = gates["host_unchanged"] and gates["dedupe"]["met"]
+        reg_pass = bool(reg and reg.get("reg_pass") is True)
+        test_bar = bool(tb["bar_a"]["holds"] or tb["bar_b"]["holds"])
+        parts = dict(test_bar_a=tb["bar_a"]["holds"], test_bar_b=tb["bar_b"]["holds"], retention_dev=ret,
+                     c1=tb["c1"]["holds"], reg=reg_pass, gates=gates_ok)
+        if test_bar and ret and tb["c1"]["holds"] and reg_pass and gates_ok:
+            dec, why = "PASS", "proceed to M2 with OP's recipe"
+        else:
+            dec, why = "REPORT", "bars on dev but the PASS conditions do not all hold on test: report, no M2"
+        out.update(decision=dec, reason=why, parts=parts, test_bars=test["bars"], gates=gates,
+                   reg=reg and dict(verdict=reg["verdict"], reg_pass=reg["reg_pass"]),
+                   op_dev=dict(x=oprow["x"], x_plus_counts=oprow["x_plus_counts"],
+                               counts_matched=oprow["counts_matched"]))
+        return out
+
     # ---------------------------------------------------------------------------------- main loop
     def kinds(self) -> dict:
         return dict(base=self.stage_base, train_eval=self.stage_train_eval, lora=self.stage_lora,
                     select=self.stage_select, test=self.stage_test, splitb=self.stage_splitb, r3=self.stage_r3,
-                    frontier=self.stage_frontier, report=self.stage_report)
+                    frontier=self.stage_frontier, report=self.stage_report, countgrid=self.stage_countgrid,
+                    reg=self.stage_reg, m1c_select=self.stage_m1c_select, m1c_op=self.stage_m1c_op,
+                    m1c_test=self.stage_m1c_test, m1c_report=self.stage_m1c_report)
 
     def waiting_for(self, st: dict) -> list[str]:
         return [x for x in st.get("after", []) if not self.done(x)
@@ -809,13 +1147,25 @@ def _brief(s: dict) -> dict:
                 data_regime=s.get("data_regime"))
 
 
-def dev_metrics(s: dict, label: str) -> dict:
-    """The dev-stage numbers the selection rules read: E1 on Split-A dev, R1 (WikiText-2), R2 (stdlib + ML repo)."""
+def dev_metrics(s: dict, label: str, primary: str | None = None) -> dict:
+    """The dev-stage numbers the selection rules read: E1 on Split-A dev, R1 (WikiText-2), R2 (stdlib + ML repo).
+    primary 'nondup' (M1c): E1 from the non-duplicated targets (paired_nondup); the all-target E1 is kept as
+    e1_all_*. None (M1b): all targets, unchanged."""
     S = s["sets"]
 
     def p(set_name):
         return S[set_name][label]["paired"]
     e1 = p("dev")
+    if primary == "nondup":
+        out = dev_metrics(s, label)
+        nd = S["dev"][label]["paired_nondup"]
+        lo, hi = nd["rel_pct_ci"]
+        out.update(primary="nondup", e1_all_rel_pct=out["e1_rel_pct"], e1_all_gain_pct=out["e1_gain_pct"],
+                   e1_all_ci_pct=out["e1_ci_pct"], e1_all_n_tokens=out["e1_n_tokens"], e1_rel_pct=nd["rel_pct"],
+                   e1_gain_pct=-nd["rel_pct"], e1_ci_pct=[lo, hi], e1_n_tokens=nd["n_tokens"])
+        return out
+    elif primary not in (None, "all"):
+        raise ValueError(f"primary {primary!r}: 'nondup' or 'all'")
     r1 = p("r1")
     r2s = [p(x) for x in ("r2", "r2ml") if x in S]
     n2 = sum(x["n_tokens"] for x in r2s)
@@ -842,12 +1192,16 @@ def main() -> int:
     ap.add_argument("--worker", default=None)
     ap.add_argument("--stage", default=None)
     ap.add_argument("--max-steps", type=int, default=0, help="worker: cap the steps (timing probes only)")
+    ap.add_argument("--grid", default=None, help="grid JSON (default: experiments/m1b/grid.json; M1c: "
+                                                 "experiments/m1c/grid.json)")
     a = ap.parse_args()
+    if a.grid:
+        set_grid_path(a.grid)
     if a.worker == "train":
         return worker_train(a)
     if a.worker == "frontier":
         return worker_frontier(a)
-    log("M1b runner", vars(a))
+    log("M1b runner" if not grid_args() else f"runner ({GRID_PATH})", vars(a))
     return Runner(a).run()
 
 

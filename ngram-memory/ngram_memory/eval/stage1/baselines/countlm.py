@@ -256,6 +256,43 @@ def component_target_probs(kn: KNTrigram, docs: Sequence[Doc], res: ScoreResult)
     return pk, pc
 
 
+def parse_weight(s: str) -> float:
+    """'0p0075' -> 0.0075. 'p' is the decimal point: evaluate.py labels use Path(arg).stem, which a '.' would cut."""
+    if not s or "." in s or not s.replace("p", "", 1).isdigit():
+        raise ValueError(f"weight {s!r}: digits with 'p' as the decimal point, e.g. 0p0075")
+    return float(s.replace("p", "."))
+
+
+def parse_variant(arg: str) -> dict:
+    """countlm:<arg> -> dict(parts=set, fixed=bool, lam_n, lam_c).
+
+    Tuned (M1b): '' (both), kn, cache, fine, kn-fine, cache-fine; lam_n / lam_c are None (tuned on dev).
+    Fixed (no tuning): kn-lam<w> (KN only), cache-lam<w> (cache only), ln<w>-lc<w> (both), w as in parse_weight.
+    """
+    toks = arg.split("-") if arg else []
+    fixed = [t for t in toks if t.startswith(("lam", "ln", "lc"))]
+    if not fixed:
+        parts = set(toks)
+        if not parts <= {"kn", "cache", "fine"} or {"kn", "cache"} <= parts:
+            raise ValueError(f"countlm variant {arg!r}: use kn, cache, fine, kn-fine or cache-fine "
+                             "(or a fixed weight: kn-lam0p0075, cache-lam0p005, ln0p015-lc0p005)")
+        return dict(parts=parts, fixed=False, lam_n=None, lam_c=None)
+    rest = [t for t in toks if t not in fixed]
+    lam = {t[:3] if t.startswith("lam") else t[:2]: t[3:] if t.startswith("lam") else t[2:] for t in fixed}
+    if len(lam) != len(fixed):
+        raise ValueError(f"countlm variant {arg!r}: a weight is given twice")
+    if rest in (["kn"], ["cache"]) and set(lam) == {"lam"}:
+        w = parse_weight(lam["lam"])
+        lam_n, lam_c = (w, 0.0) if rest == ["kn"] else (0.0, w)
+    elif not rest and set(lam) == {"ln", "lc"}:
+        lam_n, lam_c = parse_weight(lam["ln"]), parse_weight(lam["lc"])
+    else:
+        raise ValueError(f"countlm variant {arg!r}: fixed weights are kn-lam<w>, cache-lam<w> or ln<w>-lc<w>")
+    if lam_n + lam_c >= 1:
+        raise ValueError(f"countlm variant {arg!r}: lam_n + lam_c must be < 1")
+    return dict(parts=set(rest), fixed=True, lam_n=lam_n, lam_c=lam_c)
+
+
 DEFAULT_GRID = (0.0, 0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5)
 FINE_GRID = (0.0, 0.0005, 0.001, 0.002, 0.003, 0.005, 0.0075, 0.01, 0.015, 0.02, 0.03, 0.05, 0.1, 0.2)
 
@@ -298,4 +335,4 @@ def headroom(kn: KNTrigram, docs: Sequence[Doc], base: ScoreResult, min_count: i
 
 __all__ = ["KNTrigram", "InFileCache", "CountLMCondition", "component_target_probs", "tune_lambdas", "headroom",
            "DEFAULT_GRID", "FINE_GRID",
-           "doc_contexts"]
+           "doc_contexts", "parse_weight", "parse_variant"]

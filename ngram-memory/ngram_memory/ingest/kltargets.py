@@ -155,5 +155,14 @@ def compute_kl_targets(host: nn.Module, windows: Sequence[Window], k: int = 64, 
     return KLTargets(k, out, dict(meta or {}, n_windows=len(windows), tokens=int(sum(w.ids.size for w in windows))))
 
 
+def window_digest(w: Window) -> str:
+    """Short sha256 of a window's ids and labels (aligning stored targets with the windows they were built for)."""
+    import hashlib
+    h = hashlib.sha256()
+    h.update(np.ascontiguousarray(w.ids, dtype=np.int64).tobytes())
+    h.update(np.ascontiguousarray(w.labels, dtype=np.int64).tobytes())
+    return h.hexdigest()[:16]
+
+
 __all__ = ["output_head", "logit_softcap", "head_logits", "final_hidden", "WindowTargets", "KLTargets",
-           "topk_targets_from_logits", "topk_kl", "compute_kl_targets"]
+           "topk_targets_from_logits", "topk_kl", "compute_kl_targets", "window_digest"]
