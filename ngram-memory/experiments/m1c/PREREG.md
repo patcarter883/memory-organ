@@ -95,7 +95,7 @@ canaries are not in the counts; only trained rows see them).
   result records why.
 - **counts@matched(X)**: the largest counts-only grid weight w with share(counts@w) ≤ max(share(X), s_floor),
   **s_floor = 0.01** (1% of the budget). Weight 0 (share 0) always qualifies. The floor only matters when X's cost
-  is about 0; it keeps a non-zero weight feasible then (on M1b's numbers counts@1e-4 has share ≈ 0.008, §12).
+  is about 0; it keeps a non-zero weight feasible then (on M1b's numbers counts@1e-4 has share ≈ 0.0067, §12).
 - **Paired-difference CI**: for two conditions A, B scored on the same targets against the same base,
   E1(A) − c·E1(B) = −100 · Σ[(a − base) − c(b − base)] / Σ base over the primary targets, bootstrapped over files
   (10k resamples, seed 0), the same resampling as every other CI (`ngram_memory/eval/stage1/bars.py`). When A and B
@@ -129,7 +129,7 @@ Stage **T_test** runs once, after OP is fixed. It is **the single read of the Sp
 second read of these files overall** (the first was M1b's T_test). This is disclosed rather than fixed: no commits
 newer than `df29117` exist for a fresh held-out set. It writes `T_test/STARTED` immediately before the test
 evaluation, after OP is resolved and the canary-free check passed; an interrupted stage repeats the same read and
-`progress.json` records it. (T_test is a soft stage, §12: a failure is retried at most once, on a resume.)
+`progress.json` records it. (T_test is a soft stage, §12: a failed or RSS-aborted attempt is retried at most once, on a resume, and not at all once Z_report has finished without it.)
 
 Conditions, in one evaluation of the 19 long-enough test files:
 
@@ -254,8 +254,10 @@ Budget basis (estimate; the M1b runner times are measured, the M1c additions are
   1.3 h). The uncertainty is mostly the count-side scaling under 4 concurrent jobs, so read it as 8–13 h. RSS stays
   below about 6 GB per stage (the 11 GB guard applies).
 - **Exit code:** 1 after a code error or a failed stage that something depends on; 0 otherwise. A failed optional
-  dependency (F1, T_test, REG_op; §12) does not set it: the dependants run without it, and `progress.json` lists it
-  under `soft_failed` (the decision then reads `INCOMPLETE` or names the F1 fallback).
+  dependency (F1, T_test, REG_op; §12), whether it failed, hit a code error or was RSS-aborted, does not set it:
+  the dependants run without it, and `progress.json` lists it under `soft_failed` (the decision then reads
+  `INCOMPLETE` or names the F1 fallback). `progress.json` `finished` = every stage done; `complete` = every stage
+  done or `failed_final` (nothing left to run).
 
 ## 12. Pre-launch review changes
 
@@ -292,9 +294,15 @@ behaviour is unchanged by default (checked by an M1b smoke of B0 and A1 against 
    past an RSS-aborted stage; a failed F1 would have stopped the run before OP, T_test and REG. New grid field
    `optional_after`: OP_select lists F1, Z_report lists T_test and REG_op. An optional dependency counts as settled
    in any terminal state; a stage whose every dependant lists it ("soft": F1, T_test, REG_op) does not stop the run
-   or set the exit code when it fails (§10). On resume a failed soft stage is retried once (two attempts in all),
-   and is final at once if a dependant already finished without it (`failed_final` in `progress.json`). Z_report
-   writes the dev-only KILL verdict whatever T_test and REG did, and otherwise `INCOMPLETE` with the reason.
+   or set the exit code when it fails, hits a code error or is RSS-aborted (§10). Attempts are counted when a soft
+   stage fails or is aborted; an attempt cut short by a kill or a CI cancel does not count. On resume a soft stage
+   with one failed attempt is retried once (two failed attempts in all, then `failed_final`), and it is
+   `failed_final` at once when all its dependants have finished without it, since its result could no longer be
+   used (so a resume after OP_select fell back to S1 never retrains F1, and a resume after Z_report wrote
+   `INCOMPLETE` never repeats the test read). Z_report writes the dev-only KILL verdict whatever T_test and REG
+   did, and otherwise `INCOMPLETE` with the reason. (A second review pass found that an RSS-aborted soft stage was
+   re-run on every resume and that an interrupted attempt used up the retry; both fixed as stated here, with
+   scheduler tests.)
 5. **T_test/STARTED (§6; minor).** It was written before OP was read and before the canary-free check, so a failure
    there looked like a started test read. Now it is written immediately before the test evaluation.
 6. **λ\* resolution (§3; minor).** The KL edge (§8 disclosure 5) falls between 5e-3 and 7.5e-3 in the old grid;

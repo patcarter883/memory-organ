@@ -28,9 +28,12 @@ switched on only by fields of its grid (M1b's grid, the default, behaves exactly
                   reg (REG harness flags, full/smoke)
   stage fields    optional_after (a subset of after): dependencies that count as settled once they finished in any
                   terminal state (done, RSS-aborted, failed, code error). A stage whose every dependant lists it
-                  there is "soft": its failure neither blocks nor stops the run and does not set the exit code
-                  (progress.json 'soft_failed'); on resume it is retried once, then recorded 'failed_final' (also
-                  as soon as a dependant has finished without it)
+                  there is "soft": its failure (failed, code error, or RSS-aborted) neither blocks nor stops the
+                  run and does not set the exit code (progress.json 'soft_failed'). Attempts are counted when a
+                  soft stage fails (an attempt cut short by a kill or a CI cancel does not count); on resume a
+                  failed soft stage is retried once, and it is recorded 'failed_final' after its second failed
+                  attempt, or as soon as all its dependants have finished without it (its result could no longer
+                  be used). progress.json 'complete' = every stage done or failed_final
   stage kinds     countgrid (eval-only count-LM frontier, reuses the base stage), reg (scripts/reg.py on the
                   operating point), m1c_select, m1c_op, m1c_test, m1c_report (the M1c bars, PREREG §4-§7)
 """
@@ -1140,18 +1143,27 @@ class Runner:
                 and not (x in opt and self.progress["stages"].get(x, {}).get("status") in ("failed", "failed_final"))]
 
     def final_failed(self, name: str) -> bool:
-        """A soft stage (every dependant lists it in optional_after) that failed and is not run again: it failed
-        SOFT_MAX_ATTEMPTS times (the first run and one retry on resume), or a dependant already finished without it
-        (so its result could no longer be used)."""
+        """A soft stage (every dependant lists it in optional_after) that is not done and is not run again: every
+        dependant already finished without it (its result could no longer be used), or it failed or was RSS-aborted
+        SOFT_MAX_ATTEMPTS times (the first run and one retry on resume; attempts are counted at failure)."""
         if name not in self.soft or self.done(name):
             return False
         e = self.progress["stages"].get(name, {})
         if e.get("status") == "failed_final":
             return True
-        if e.get("status") != "failed":
+        deps = [s["name"] for s in self.grid["stages"] if name in s.get("after", [])]
+        if deps and all(self.done(d) for d in deps):
+            return True
+        if e.get("status") not in ("failed", "aborted"):
             return False
-        dep_done = any(self.done(s["name"]) for s in self.grid["stages"] if name in s.get("after", []))
-        return dep_done or int(e.get("attempts", 1)) >= SOFT_MAX_ATTEMPTS
+        return int(e.get("attempts", 1)) >= SOFT_MAX_ATTEMPTS
+
+    def finalize_soft(self) -> None:
+        """Record failed_final for every soft stage that final_failed says is not run again."""
+        for st in self.grid["stages"]:
+            n = st["name"]
+            if self.final_failed(n) and self.progress["stages"].get(n, {}).get("status") != "failed_final":
+                self.mark(n, status="failed_final")
 
     def _soft_failed(self, name: str) -> None:
         with self._lock:
@@ -1159,7 +1171,7 @@ class Runner:
             if name not in sf:
                 sf.append(name)
         log("soft failure", name, "(its dependants list it in optional_after and run without it)")
-        if int(self.progress["stages"].get(name, {}).get("attempts", 1)) >= SOFT_MAX_ATTEMPTS:
+        if self.final_failed(name):
             self.mark(name, status="failed_final")
 
     def run_stage(self, st: dict, threads: int | None = None) -> str:
@@ -1170,12 +1182,12 @@ class Runner:
             self._tl.threads = threads
         log("start", name, st["kind"], f"threads {self.threads()}")
         self.mark(name, status="running", started=time.strftime("%Y-%m-%d %H:%M:%S"), threads=self.threads())
-        if name in self.soft:                          # attempts are counted for soft stages only (M1b: none)
-            self.mark(name, attempts=int(self.progress["stages"][name].get("attempts", 0)) + 1)
         t = time.time()
         try:
             res = self.kinds()[st["kind"]](st)
         except Exception as e:  # noqa: BLE001  (a code error in a stage: record it and stop)
+            if name in self.soft:                      # failed attempts are counted for soft stages only (M1b: none)
+                self.mark(name, attempts=int(self.progress["stages"][name].get("attempts", 0)) + 1)
             if not isinstance(e, StageFailed):
                 import traceback
                 log("ERROR", name, repr(e))
@@ -1198,8 +1210,14 @@ class Runner:
         the exit code: its dependants run without it, and it is listed in progress.json 'soft_failed' and in their
         results (OP_select's rule, Z_report's INCOMPLETE reason)."""
         rc = self.run_serial() if self.a.parallel <= 1 else self.run_parallel()
+        if self.soft:                                   # M1b: no soft stages, progress.json unchanged
+            self.finalize_soft()
         with self._lock:
             self.progress["finished"] = all(self.done(s["name"]) for s in self.grid["stages"])
+            if self.soft:
+                self.progress["complete"] = all(
+                    self.done(s["name"]) or self.progress["stages"].get(s["name"], {}).get("status") == "failed_final"
+                    for s in self.grid["stages"])
             self.save()
         return rc
 
@@ -1219,7 +1237,7 @@ class Runner:
                 self.mark(name, status="blocked", waiting_for=need)
                 continue
             r = self.run_stage(st)
-            if r in ("error", "failed") and name in self.soft:
+            if r in ("error", "failed", "aborted") and name in self.soft:
                 self._soft_failed(name)
                 continue
             if r == "error" or (r == "failed" and not self.a.keep_going):
@@ -1261,12 +1279,12 @@ class Runner:
             for f in futs:
                 name, _t = running.pop(f)
                 r = f.result()
-                if r in ("done", "aborted"):
-                    settled.add(name)
-                elif name in self.soft:                 # failed / error: its dependants go on without it
+                if r != "done" and name in self.soft:   # failed / error / aborted: its dependants go on without it
                     failed_soft.add(name)
                     self._soft_failed(name)
                     continue
+                if r in ("done", "aborted"):
+                    settled.add(name)
                 if r == "error" or (r == "failed" and not self.a.keep_going):
                     rc, stop = 1, True
                 if r == "done" and self.a.stop_after and name == self.a.stop_after:

@@ -29,7 +29,7 @@ DAG = [dict(name="B0", kind="k"), dict(name="A1", kind="k", after=["B0"]), dict(
 
 
 def make(tmp_path, monkeypatch, *, parallel=1, threads=32, cap=0, stop_after=None, keep_going=False,
-         fail=(), durations=None, dag=None, error=()):
+         fail=(), durations=None, dag=None, error=(), abort=()):
     R = load_run()
     dag = DAG if dag is None else dag
     monkeypatch.setattr(R, "load_grid", lambda smoke: dict(stages=[dict(s) for s in dag]))
@@ -46,7 +46,7 @@ def make(tmp_path, monkeypatch, *, parallel=1, threads=32, cap=0, stop_after=Non
             for d in st.get("after", []):
                 if d in st.get("optional_after", []):    # optional: finished in any terminal state
                     assert (Path(a.out) / d / "result.json").exists() or \
-                        run.progress["stages"][d]["status"] in ("failed", "failed_final"), f"{n} started before {d}"
+                        run.progress["stages"][d]["status"] in ("failed", "aborted", "failed_final"), f"{n} started before {d}"
                     continue
                 assert (Path(a.out) / d / "result.json").exists(), f"{n} started before {d} finished"
             live.add(n)
@@ -57,6 +57,8 @@ def make(tmp_path, monkeypatch, *, parallel=1, threads=32, cap=0, stop_after=Non
             ev.append(("end", n))
         if n in fail:
             raise R.StageFailed(n, dict(error="x"))
+        if n in abort:                                   # as the RSS guard reports it
+            raise R.StageFailed(n, dict(aborted="rss 12.0 GB > 11.0 GB"))
         if n in error:
             raise RuntimeError(f"code error in {n}")
         return dict(ok=True)
@@ -155,7 +157,9 @@ def test_failed_optional_dependency_lets_dependant_run(tmp_path, monkeypatch, pa
     assert starts(ev).index("O") > starts(ev).index("F") and starts(ev)[-1] == "Z"
     prog = json.loads((tmp_path / "run/progress.json").read_text())
     assert sorted(prog["soft_failed"]) == ["F", "T"] and prog["finished"] is False
-    assert prog["stages"]["F"]["status"] == "failed" and prog["stages"]["F"]["attempts"] == 1
+    # their dependants finished without them: final after one failed attempt, and the run is complete
+    assert prog["stages"]["F"]["status"] == "failed_final" and prog["stages"]["F"]["attempts"] == 1
+    assert prog["stages"]["T"]["status"] == "failed_final" and prog["complete"] is True
     assert "attempts" not in prog["stages"]["O"]                     # counted for soft stages only
 
 
@@ -190,3 +194,57 @@ def test_failed_optional_dependency_resume(tmp_path, monkeypatch, parallel):
     assert run.run() == 0 and "T" not in starts(ev)
     prog = json.loads((tmp_path / "b/run/progress.json").read_text())
     assert prog["stages"]["T"]["status"] == "failed_final" and prog["stages"]["T"]["attempts"] == 1
+
+
+@pytest.mark.parametrize("parallel", [1, 3])
+@pytest.mark.parametrize("which", ["F", "T"])
+def test_aborted_soft_stage_not_rerun_after_dependant_done(tmp_path, monkeypatch, parallel, which):
+    # an RSS-aborted soft stage: its dependant runs without it, and once that is done no resume starts it again
+    _, run, ev = make(tmp_path, monkeypatch, parallel=parallel, dag=OPT, abort=(which,))
+    assert run.run() == 0 and starts(ev)[-1] == "Z"
+    prog = json.loads((tmp_path / "run/progress.json").read_text())
+    assert prog["soft_failed"] == [which] and prog["stages"][which]["status"] == "failed_final"
+    assert prog["stages"][which]["aborted"] is True and prog["stages"][which]["attempts"] == 1
+    assert prog["complete"] is True and prog["finished"] is False
+    for _ in range(2):
+        _, run, ev = make(tmp_path, monkeypatch, parallel=parallel, dag=OPT)
+        assert run.run() == 0 and starts(ev) == []
+
+
+@pytest.mark.parametrize("parallel", [1, 3])
+def test_aborted_soft_stage_retried_once(tmp_path, monkeypatch, parallel):
+    # F aborted and the run stops before O (H fails hard): the resume retries F; a second abort is final
+    _, run, _ = make(tmp_path, monkeypatch, parallel=parallel, dag=OPT, abort=("F",), fail=("H",))
+    assert run.run() == 1
+    prog = json.loads((tmp_path / "run/progress.json").read_text())
+    assert prog["stages"]["F"]["status"] == "aborted" and prog["stages"]["F"]["attempts"] == 1
+    _, run, ev = make(tmp_path, monkeypatch, parallel=parallel, dag=OPT, abort=("F",))
+    assert run.run() == 0 and "F" in starts(ev) and "O" in starts(ev)
+    prog = json.loads((tmp_path / "run/progress.json").read_text())
+    assert prog["stages"]["F"]["status"] == "failed_final" and prog["stages"]["F"]["attempts"] == 2
+
+
+@pytest.mark.parametrize("parallel", [1, 3])
+def test_interrupted_attempt_does_not_count(tmp_path, monkeypatch, parallel):
+    # F cut short (kill -9 / CI cancel: status running, no failure recorded), then a genuine failure on resume:
+    # that is its first failed attempt, so F is retried on the next resume
+    _, run, _ = make(tmp_path, monkeypatch, parallel=parallel, dag=OPT, fail=("H",))
+    assert run.run() == 1
+    (tmp_path / "run/F/result.json").unlink()
+    run.mark("F", status="running")
+    _, run, ev = make(tmp_path, monkeypatch, parallel=parallel, dag=OPT, fail=("F", "H"))
+    assert run.run() == 1 and "F" in starts(ev)
+    prog = json.loads((tmp_path / "run/progress.json").read_text())
+    assert prog["stages"]["F"]["status"] == "failed" and prog["stages"]["F"]["attempts"] == 1
+    _, run, ev = make(tmp_path, monkeypatch, parallel=parallel, dag=OPT)
+    assert run.run() == 0 and "F" in starts(ev)
+    prog = json.loads((tmp_path / "run/progress.json").read_text())
+    assert prog["stages"]["F"]["status"] == "done" and prog["finished"] is True and prog["complete"] is True
+
+
+def test_m1b_progress_has_no_soft_fields(tmp_path, monkeypatch):
+    _, run, _ = make(tmp_path, monkeypatch, parallel=3)
+    assert run.run() == 0
+    prog = json.loads((tmp_path / "run/progress.json").read_text())
+    assert "complete" not in prog and "soft_failed" not in prog
+    assert all("attempts" not in e for e in prog["stages"].values())
