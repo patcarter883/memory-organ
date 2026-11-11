@@ -84,3 +84,40 @@ This is not pre-registered. It ran in GitHub Actions [run 42918990623](https://g
 3. **The in-file cache is a gain for any text.** It helps the retention sets too (R1 −0.28%). It is a general cache effect, not project memory.
 4. **The table adds on top of the counts.** Count-LM + table gains +3.67%, against +3.17% for the count-LM alone. That is +0.50 points, or 83% of the table's own gain. The table also repairs the count-LM's damage on operators: lex:op goes from +0.94% to −0.05%.
 5. **Open:** the count-LM's gain at the table's retention cost. That needs λ swept down to about 0.0005, scored on R2. The stored NLLs cannot be re-mixed, so it needs a re-run.
+
+## Follow-up: count-LM weight sweep at matched retention cost (2026-11-11, diagnostic)
+
+`experiments/m1b/countlm_sweep.py` makes no model forwards: only the target's probability enters the NLL. It takes
+- the base and table per-target scores from the canonical M1b run;
+- p_KN(y) and p_cache(y) recomputed from the Split-A train files and each file's prefix.
+
+It then scores every mixing weight on dev and the three retention sets. Test is not read.
+
+**Check:** the recomputed per-target NLLs match the always-on ablation run's to ≤ 1.2e-4 nats, on every set and all three mixes it ran (counts, cache, counts on the table). The table rows at weight 0.015 reproduce the ablation's numbers exactly. Results are in `results/countlm-sweep-2026-11-11/`.
+
+Selected rows. The full grid, 0.0001–0.05, is in `sweep.md`.
+
+| Mix | Weight | Dev E1 gain [CI] | R1 | R2 stdlib | R2 ML |
+|---|---|---|---|---|---|
+| table alone (A3) | — | +0.60% [0.52, 0.92] | +0.0075% | +0.0044% | +0.048% |
+| counts only | 0.0001 | +0.25% [0.14, 0.28] | +0.0012% | +0.0035% | −0.013% |
+| counts only | **0.0005** | **+0.60%** [0.36, 0.65] | **+0.0074%** | +0.019% | −0.007% |
+| counts only | 0.002 | +1.17% [0.74, 1.26] | +0.040% | +0.084% | +0.085% |
+| counts only | 0.0075 | +2.06% [1.33, 2.22] | +0.19% | +0.35% | +0.55% |
+| table + counts | 0.0005 | +1.17% [0.90, 1.42] | +0.015% | +0.023% | +0.044% |
+| table + counts | 0.002 | +1.73% [1.27, 1.98] | +0.047% | +0.088% | +0.139% |
+| table + counts | 0.0075 | +2.59% [1.84, 2.88] | +0.20% | +0.36% | +0.61% |
+| cache only | 0.005 | +1.03% [0.31, 1.18] | −0.28% | −0.06% | −0.04% |
+
+### What this shows
+
+1. **At the table's retention cost, a tiny dose of counts does as well as the table.**
+   - At weight 0.0005, counts only gives +0.60% dev E1 (table +0.60%) at R1 +0.0074% (table +0.0075%).
+   - R2 differs by set: higher on stdlib (+0.019% against +0.004%), lower on ML code (−0.007% against +0.048%).
+   - Under the strictest match, every retention set at or below the table's, counts only reach weight 0.0001 and +0.25%.
+   - So the table's low retention cost is not unique to it. It sits on the counts' gain/cost curve, at its low end.
+2. **The counts can be dialled up and the table could not.** Counts only reach +2.06% at R1 +0.19% and R2 (token-weighted) +0.45%, inside M1's R1 and R2 bars. The table's best setting sat at the top of its ρ grid. Mean KL (the selection rule's KL ≤ 0.005) cannot be computed from target probabilities alone, so it is not checked here.
+3. **Table + counts gives the best trade-off at every cost level.** At equal R2 it beats counts alone by about 0.3–0.5 points. For example, at weight 0.0005 on the table: +1.17% at R2 ≤ +0.044%, about double either alone at that cost.
+4. **The in-file cache is free up to weight ~0.005.** It improves every retention set. It is a general cache, not project memory.
+
+**Caveats:** dev numbers only (13 files, 148k targets); one table setting; a larger ρ was never tried; KL not computed for the count mixes.
