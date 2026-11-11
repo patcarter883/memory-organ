@@ -29,9 +29,10 @@ DAG = [dict(name="B0", kind="k"), dict(name="A1", kind="k", after=["B0"]), dict(
 
 
 def make(tmp_path, monkeypatch, *, parallel=1, threads=32, cap=0, stop_after=None, keep_going=False,
-         fail=(), durations=None):
+         fail=(), durations=None, dag=None, error=()):
     R = load_run()
-    monkeypatch.setattr(R, "load_grid", lambda smoke: dict(stages=[dict(s) for s in DAG]))
+    dag = DAG if dag is None else dag
+    monkeypatch.setattr(R, "load_grid", lambda smoke: dict(stages=[dict(s) for s in dag]))
     a = SimpleNamespace(out=str(tmp_path / "run"), smoke=False, threads=threads, rss_limit_gb=11.0,
                         stop_after=stop_after, keep_going=keep_going, parallel=parallel, max_stage_threads=cap,
                         launch_min_free_gb=0.0)
@@ -43,6 +44,10 @@ def make(tmp_path, monkeypatch, *, parallel=1, threads=32, cap=0, stop_after=Non
         n = st["name"]
         with lock:
             for d in st.get("after", []):
+                if d in st.get("optional_after", []):    # optional: finished in any terminal state
+                    assert (Path(a.out) / d / "result.json").exists() or \
+                        run.progress["stages"][d]["status"] in ("failed", "failed_final"), f"{n} started before {d}"
+                    continue
                 assert (Path(a.out) / d / "result.json").exists(), f"{n} started before {d} finished"
             live.add(n)
             ev.append(("start", n, run.threads(), frozenset(live)))
@@ -52,6 +57,8 @@ def make(tmp_path, monkeypatch, *, parallel=1, threads=32, cap=0, stop_after=Non
             ev.append(("end", n))
         if n in fail:
             raise R.StageFailed(n, dict(error="x"))
+        if n in error:
+            raise RuntimeError(f"code error in {n}")
         return dict(ok=True)
 
     monkeypatch.setattr(run, "kinds", lambda: dict(k=stage))
@@ -115,3 +122,71 @@ def test_parallel_resume_skips_done(tmp_path, monkeypatch):
     _, run2, ev2 = make(tmp_path, monkeypatch, parallel=4)
     assert run2.run() == 0
     assert set(starts(ev2)) == {"A4", "Z"} | ({"L"} - set(starts(ev)))
+
+
+# optional dependencies (M1c): S -> F (soft: its only dependant lists it in optional_after) -> O ; O -> T, G -> Z
+# (T and G optional for Z); H is a hard dependency of O
+OPT = [dict(name="S", kind="k"), dict(name="F", kind="k", after=["S"]), dict(name="H", kind="k", after=["S"]),
+       dict(name="O", kind="k", after=["S", "F", "H"], optional_after=["F"]),
+       dict(name="T", kind="k", after=["O"]), dict(name="G", kind="k", after=["O"]),
+       dict(name="Z", kind="k", after=["T", "G"], optional_after=["T", "G"])]
+
+
+def test_soft_stages():
+    R = load_run()
+    assert R.soft_stages(OPT) == {"F", "T", "G"}
+    assert R.soft_stages(DAG) == set()                                  # M1b: no optional dependencies
+    # a stage with one hard and one optional dependant is not soft
+    assert R.soft_stages(OPT + [dict(name="X", kind="k", after=["F"])]) == {"T", "G"}
+
+
+def test_optional_after_must_be_in_after(tmp_path, monkeypatch):
+    with pytest.raises(SystemExit, match="optional_after"):
+        make(tmp_path, monkeypatch, dag=[dict(name="A", kind="k"), dict(name="B", kind="k", optional_after=["A"])])
+
+
+@pytest.mark.parametrize("parallel", [1, 3])
+@pytest.mark.parametrize("how", ["fail", "error"])
+def test_failed_optional_dependency_lets_dependant_run(tmp_path, monkeypatch, parallel, how):
+    kw = dict(fail=("F", "T")) if how == "fail" else dict(error=("F", "T"))
+    _, run, ev = make(tmp_path, monkeypatch, parallel=parallel, dag=OPT, **kw)
+    assert run.run() == 0                         # exit code: soft failures do not set it
+    assert set(starts(ev)) == {"S", "F", "H", "O", "T", "G", "Z"}
+    assert starts(ev).index("O") > starts(ev).index("F") and starts(ev)[-1] == "Z"
+    prog = json.loads((tmp_path / "run/progress.json").read_text())
+    assert sorted(prog["soft_failed"]) == ["F", "T"] and prog["finished"] is False
+    assert prog["stages"]["F"]["status"] == "failed" and prog["stages"]["F"]["attempts"] == 1
+    assert "attempts" not in prog["stages"]["O"]                     # counted for soft stages only
+
+
+@pytest.mark.parametrize("parallel", [1, 3])
+def test_failed_hard_dependency_still_blocks(tmp_path, monkeypatch, parallel):
+    _, run, ev = make(tmp_path, monkeypatch, parallel=parallel, dag=OPT, fail=("H",))
+    assert run.run() == 1                         # exit code: a failed non-soft stage sets it
+    assert "O" not in starts(ev) and "Z" not in starts(ev)
+    _, run, ev = make(tmp_path / "k", monkeypatch, parallel=parallel, dag=OPT, fail=("H",), keep_going=True)
+    assert run.run() == 0 and "O" not in starts(ev)                  # --keep-going: still blocked
+    prog = json.loads((tmp_path / "k/run/progress.json").read_text())
+    assert prog["stages"]["O"]["status"] == "blocked" and prog["stages"]["O"]["waiting_for"] == ["H"]
+    assert "soft_failed" not in prog
+
+
+@pytest.mark.parametrize("parallel", [1, 3])
+def test_failed_optional_dependency_resume(tmp_path, monkeypatch, parallel):
+    # F fails and the run stops before O (H fails hard): the resume retries F once
+    _, run, _ = make(tmp_path, monkeypatch, parallel=parallel, dag=OPT, fail=("F", "H"))
+    assert run.run() == 1
+    _, run, ev = make(tmp_path, monkeypatch, parallel=parallel, dag=OPT, fail=("F",))
+    assert run.run() == 0 and "F" in starts(ev) and "O" in starts(ev)
+    prog = json.loads((tmp_path / "run/progress.json").read_text())
+    assert prog["stages"]["F"]["status"] == "failed_final" and prog["stages"]["F"]["attempts"] == 2
+    # failed for good: a further resume does not run it again
+    _, run, ev = make(tmp_path, monkeypatch, parallel=parallel, dag=OPT)
+    assert run.run() == 0 and starts(ev) == []
+    # a soft stage whose dependant already finished without it is final after one failure
+    _, run, _ = make(tmp_path / "b", monkeypatch, parallel=parallel, dag=OPT, fail=("T",))
+    assert run.run() == 0
+    _, run, ev = make(tmp_path / "b", monkeypatch, parallel=parallel, dag=OPT)
+    assert run.run() == 0 and "T" not in starts(ev)
+    prog = json.loads((tmp_path / "b/run/progress.json").read_text())
+    assert prog["stages"]["T"]["status"] == "failed_final" and prog["stages"]["T"]["attempts"] == 1

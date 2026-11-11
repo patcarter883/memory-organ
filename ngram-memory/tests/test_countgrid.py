@@ -167,7 +167,16 @@ def test_parse_fixed_weight_specs():
     for bad in ("kn-cache", "cache-c0p01", "foo", "kn-x1"):
         with pytest.raises(ValueError):
             cg.parse_spec(bad)
-    assert cg.parse_weights(None) == cg.DEFAULT_WEIGHTS and len(cg.DEFAULT_WEIGHTS) == 13
+    assert cg.parse_weights(None) == cg.DEFAULT_WEIGHTS and len(cg.DEFAULT_WEIGHTS) == 16
+    assert {3e-4, 6e-3, 7e-3} <= set(cg.DEFAULT_WEIGHTS)            # M1c pre-launch additions (PREREG §12)
+    # every grid weight round-trips through the fixed-weight countlm:kn-lam<tag> spec the test stage uses
+    from ngram_memory.eval.stage1.bars import weight_tag
+    for w in cg.DEFAULT_WEIGHTS:
+        v = cl.parse_variant(f"kn-lam{weight_tag(w)}")
+        assert v["lam_n"] == w and v["lam_c"] == 0.0, (w, v)
+    # the count-LM's own tuning grids (M1b) are separate and unchanged
+    assert cl.DEFAULT_GRID == (0.0, 0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5)
+    assert cl.FINE_GRID == (0.0, 0.0005, 0.001, 0.002, 0.003, 0.005, 0.0075, 0.01, 0.015, 0.02, 0.03, 0.05, 0.1, 0.2)
     assert cg.parse_weights("0.01,0,1e-4,0.01") == (0.0, 1e-4, 0.01)
     with pytest.raises(ValueError):
         cg.CountGridCondition(cl.KNTrigram([np.arange(3, 9)], V, EOS), "kn", (0.0, 0.99), other_weight=0.02)

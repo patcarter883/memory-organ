@@ -171,5 +171,6 @@ jobs:
             !${{ env.OUT }}/**/*.pt
             !${{ env.OUT }}/**/*.safetensors
             !${{ env.OUT }}/_cache/**
+            !${{ env.OUT }}/**/*.tmp
           if-no-files-found: ignore
           retention-days: 30

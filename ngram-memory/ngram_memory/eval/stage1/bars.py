@@ -1,5 +1,6 @@
-"""M1c bar arithmetic (experiments/m1c/PREREG.md §4-§6): the counts-only frontier, lambda*, counts@matched(X),
-Bar A (adds to counts), Bar B (beats counts), and the paired-difference file-cluster CIs they need.
+"""M1c bar arithmetic (experiments/m1c/PREREG.md §4-§6, §12): the counts-only frontier, lambda*, the retention
+budget share, counts@matched(X), lambda_X (X's own best counts weight within the bars), Bar A (adds to counts,
+frontier to frontier), Bar B (beats counts), and the paired-difference file-cluster CIs they need.
 
 Inputs are scripts/evaluate.py outputs: summary.json (sets.<set>.<label>.paired / paired_nondup for single
 conditions, sets.<set>.<label>.countgrid.grid[i].paired / paired_nondup for count grids) and the per-target arrays
@@ -25,7 +26,7 @@ import numpy as np
 from ..metrics import cluster_bootstrap, per_group_sums
 
 BARS = dict(r1_max_pct=0.2, r2_max_pct=0.5, kl_max=0.005)
-MATCH_FLOOR = dict(r1=0.005, r2=0.005, kl=5e-5)        # counts@matched floors (pp, pp, nats)
+S_FLOOR = 0.01             # counts@matched: share floor (1% of the retention budget), PREREG §4 / §12
 BAR_A = dict(min_pts=1.0, ci_lo_pts=0.5)
 BAR_B = dict(ratio=1.5, ci_lo_pts=0.0)
 C1_MAX = 1.0 / 3.0
@@ -88,14 +89,39 @@ def lambda_star(front: Sequence[Mapping], bars: Mapping = BARS) -> dict:
     return max(ok, key=lambda p: (p["e1"], -p["weight"]))
 
 
-def matched(front: Sequence[Mapping], x: Mapping, floor: Mapping = MATCH_FLOOR) -> dict:
-    """counts@matched(X): the largest counts-only weight whose R1, R2 and KL are each <= X's, each threshold floored
-    at the MATCH_FLOOR value (so an X with negative retention cost still has a feasible weight, at least 0)."""
-    t = dict(r1=max(x["r1"], floor["r1"]), r2=max(x["r2"], floor["r2"]), kl=max(x["kl"], floor["kl"]))
-    ok = [p for p in front if p["r1"] <= t["r1"] and p["r2"] <= t["r2"] and p["kl"] <= t["kl"]]
+def share(p: Mapping, bars: Mapping = BARS) -> float:
+    """The share of the retention budget a condition uses: max(R1/0.2, R2/0.5, KL/0.005), each term floored at 0
+    (a negative retention cost uses none of the budget). 1.0 = at the edge of the bars."""
+    return float(max(max(p["r1"], 0.0) / bars["r1_max_pct"], max(p["r2"], 0.0) / bars["r2_max_pct"],
+                     max(p["kl"], 0.0) / bars["kl_max"]))
+
+
+def matched(front: Sequence[Mapping], x: Mapping, s_floor: float = S_FLOOR, bars: Mapping = BARS) -> dict:
+    """counts@matched(X): the largest counts-only grid weight w with share(counts@w) <= max(share(X), s_floor).
+    One scalar budget share, so the retention measure X spends most of its budget on sets the match (a per-measure
+    match would let the measure where output mixing is relatively expensive, KL, push the counts to a tiny weight).
+    The floor keeps a non-zero weight feasible when X's cost is about 0; weight 0 (share 0) always qualifies."""
+    sx = share(x, bars)
+    t = max(sx, float(s_floor))
+    ok = [p for p in front if share(p, bars) <= t]
     if not ok:
-        raise ValueError("no counts-only weight matches X's retention cost")
-    return dict(max(ok, key=lambda p: p["weight"]), thresholds=t)
+        raise ValueError("no counts-only weight matches X's retention cost (weight 0 should always)")
+    best = max(ok, key=lambda p: p["weight"])
+    return dict(best, share=share(best, bars), x_share=sx, threshold=t, s_floor=float(s_floor))
+
+
+def lambda_x(plus: Sequence[Mapping], x_alone_within: bool, bars: Mapping = BARS) -> dict:
+    """lambda_X: the weight of X's own counts grid (X + counts@w) with the largest dev E1 among the weights where
+    X + counts is within the bars (ties -> the smaller weight). Weight 0 is X alone; it qualifies only if X alone is
+    within the bars (x_alone_within). Returns dict(weight=None, reason=...) when no weight qualifies."""
+    ok = [p for p in plus if (x_alone_within if p["weight"] == 0 else within(p, bars))]
+    table = [dict(weight=p["weight"], e1=p["e1"], share=share(p, bars),
+                  within=bool(x_alone_within if p["weight"] == 0 else within(p, bars))) for p in plus]
+    if not ok:
+        return dict(weight=None, point=None, table=table,
+                    reason="no weight of X + counts (X alone included) is within R1 <= 0.2%, R2 <= 0.5%, KL <= 0.005")
+    best = max(ok, key=lambda p: (p["e1"], -p["weight"]))
+    return dict(weight=best["weight"], point=best, table=table, reason=None)
 
 
 # ------------------------------------------------------------------------------------------ per-target data
@@ -157,25 +183,46 @@ def diff(t: Targets, a: np.ndarray, b: np.ndarray | None, coef: float = 1.0, n_b
 
 
 # ----------------------------------------------------------------------------------------------------- bars
-def bar_a(t: Targets, x_plus: np.ndarray, counts: np.ndarray, retention_ok: bool | None) -> dict:
-    """Bar A: E1(X + counts@lambda*) - E1(counts@lambda*) >= 1.0 point, CI lower bound > 0.5, and X + counts@lambda*
-    within the retention bars (retention_ok, from dev; None when not evaluated on this set)."""
+def bar_a(t: Targets, x_plus: np.ndarray | None, counts: np.ndarray, retention_ok: bool | None,
+          reason: str | None = None) -> dict:
+    """Bar A (frontier to frontier): E1(X + counts@lambda_X) - E1(counts@lambda*) >= 1.0 point with CI lower bound
+    > 0.5, X + counts@lambda_X within the retention bars (retention_ok, from dev; None when not evaluated on this
+    set). x_plus None: no weight of X + counts is within the bars, so Bar A fails (reason recorded)."""
+    if x_plus is None:
+        return dict(diff=None, margin_pts=None, gain_ok=False, retention_ok=False, holds=False,
+                    reason=reason or "no X + counts weight within the bars")
     d = diff(t, x_plus, counts, 1.0)
     ok = d["pts"] >= BAR_A["min_pts"] and d["ci"][0] > BAR_A["ci_lo_pts"]
     return dict(diff=d, margin_pts=d["pts"] - BAR_A["min_pts"], gain_ok=bool(ok), retention_ok=retention_ok,
-                holds=bool(ok and (retention_ok is not False)))
+                holds=bool(ok and (retention_ok is not False)), reason=reason)
 
 
 def bar_b(t: Targets, x: np.ndarray, counts_matched: np.ndarray) -> dict:
-    """Bar B: E1(X) >= 1.5 x E1(counts@matched(X)), and the paired difference E1(X) - E1(counts@matched(X)) has a
-    file-cluster CI lower bound > 0. Also reported: the CI of E1(X) - 1.5 E1(counts@matched(X))."""
+    """Bar B: E1(X) > 0 and E1(X) >= 1.5 x max(E1(counts@matched(X)), 0), and the paired difference
+    E1(X) - E1(counts@matched(X)) has a file-cluster CI lower bound > 0. Also reported: the CI of
+    E1(X) - 1.5 E1(counts@matched(X))."""
     gx, gc = gain(t, x), gain(t, counts_matched)
     d = diff(t, x, counts_matched, 1.0)
     d15 = diff(t, x, counts_matched, BAR_B["ratio"])
-    ratio_ok = gx["pts"] >= BAR_B["ratio"] * gc["pts"]
+    ratio_ok = gx["pts"] > 0 and gx["pts"] >= BAR_B["ratio"] * max(gc["pts"], 0.0)
     ok = ratio_ok and d["ci"][0] > BAR_B["ci_lo_pts"]
     return dict(e1_x=gx, e1_counts=gc, ratio=(gx["pts"] / gc["pts"]) if gc["pts"] > 0 else None,
                 ratio_ok=bool(ratio_ok), diff=d, diff_1p5=d15, holds=bool(ok))
+
+
+def per_file(t: Targets, a: np.ndarray, b: np.ndarray | None = None) -> dict:
+    """Per-file E1(a) - E1(b) (points, each file against its own base NLL) on t's primary targets, with each file's
+    share of the primary targets (files by decreasing share), and n_eff = 1 / sum(share^2), the effective number of
+    files the pooled number rests on. Diagnostics only (Z_report)."""
+    m = t.mask
+    d = (a - t.base) - ((b - t.base) if b is not None else 0.0)
+    u, (ds, bs), n = per_group_sums(t.groups[m], [d[m], t.base[m]])
+    tot = float(n.sum())
+    rows = [dict(file=str(f), pts=float(-100.0 * x / y) if y else None, n_targets=int(k),
+                 target_share=float(k / tot) if tot else None) for f, x, y, k in zip(u, ds, bs, n)]
+    rows.sort(key=lambda r: (-r["n_targets"], r["file"]))
+    w = np.asarray([r["target_share"] or 0.0 for r in rows], float)
+    return dict(files=rows, n_eff=float(1.0 / (w ** 2).sum()) if w.size and w.any() else None)
 
 
 def c1(t: Targets, op: np.ndarray, perm: np.ndarray) -> dict:
@@ -194,5 +241,5 @@ def load_summary(eval_dir: str | Path) -> dict:
     return json.loads((Path(eval_dir) / "summary.json").read_text())
 
 
-__all__ = ["BARS", "MATCH_FLOOR", "BAR_A", "BAR_B", "C1_MAX", "point", "within", "frontier", "lambda_star", "matched",
-           "Targets", "gain", "diff", "bar_a", "bar_b", "c1", "weight_tag", "grid_weights", "load_summary"]
+__all__ = ["BARS", "S_FLOOR", "BAR_A", "BAR_B", "C1_MAX", "point", "within", "share", "frontier", "lambda_star",
+           "matched", "lambda_x", "per_file", "Targets", "gain", "diff", "bar_a", "bar_b", "c1", "weight_tag", "grid_weights", "load_summary"]

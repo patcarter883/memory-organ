@@ -36,7 +36,8 @@ from ..metrics import paired, retention
 from .baselines.countlm import InFileCache, KNTrigram, doc_contexts, parse_weight
 from .scoring import (Composite, Condition, Doc, ScoreResult, Window, _target_masks, final_hidden, lm_head_of)
 
-DEFAULT_WEIGHTS = (0.0, 1e-4, 2e-4, 5e-4, 1e-3, 2e-3, 3e-3, 5e-3, 7.5e-3, 1e-2, 1.5e-2, 2e-2, 3e-2)
+DEFAULT_WEIGHTS = (0.0, 1e-4, 2e-4, 3e-4, 5e-4, 1e-3, 2e-3, 3e-3, 5e-3, 6e-3, 7e-3, 7.5e-3, 1e-2, 1.5e-2, 2e-2,
+                   3e-2)                # M1c C0 grid (PREREG §3; 3e-4, 6e-3, 7e-3 added before launch, §12)
 NONDUP_CLASS = "dup:16gram_not_in_train"
 BLOCK = 64  # rows per mixing block (as CountLMCondition): bounds the [rows, V] float temporaries
 

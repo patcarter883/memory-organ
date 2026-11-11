@@ -26,6 +26,11 @@ switched on only by fields of its grid (M1b's grid, the default, behaves exactly
   grid fields     primary ('nondup': E1 read on the non-duplicated targets, all-target E1 still reported);
                   arm_extra_conditions (extra evaluate.py specs per trained arm, '{rows}' = its rows condition);
                   reg (REG harness flags, full/smoke)
+  stage fields    optional_after (a subset of after): dependencies that count as settled once they finished in any
+                  terminal state (done, RSS-aborted, failed, code error). A stage whose every dependant lists it
+                  there is "soft": its failure neither blocks nor stops the run and does not set the exit code
+                  (progress.json 'soft_failed'); on resume it is retried once, then recorded 'failed_final' (also
+                  as soon as a dependant has finished without it)
   stage kinds     countgrid (eval-only count-LM frontier, reuses the base stage), reg (scripts/reg.py on the
                   operating point), m1c_select, m1c_op, m1c_test, m1c_report (the M1c bars, PREREG §4-§7)
 """
@@ -141,6 +146,22 @@ def arm_steps(cfgd: dict, B: dict, n_windows: int) -> int:
         cap = B.get("epoch_steps_cap")
         return min(n_windows, int(cap)) if cap else n_windows
     return int(sp)
+
+
+def trim_metrics(path: Path, step: int) -> int:
+    """Training resumed from a checkpoint at `step`: steps >= step run again, so drop their records from
+    metrics.jsonl (they were written after that checkpoint). Returns the number dropped; the file is not touched
+    when nothing is dropped."""
+    path = Path(path)
+    if not path.exists():
+        return 0
+    lines = [x for x in path.read_text().splitlines() if x.strip()]
+    keep = [x for x in lines if json.loads(x)["step"] < step]
+    if len(keep) != len(lines):
+        tmp = path.with_suffix(".jsonl.tmp")
+        tmp.write_text("".join(x + "\n" for x in keep))
+        os.replace(tmp, path)
+    return len(lines) - len(keep)
 
 
 # ======================================================================================= child processes
@@ -370,6 +391,10 @@ def worker_train(a) -> int:
         trainer.load_checkpoint(ckpt)
         log("resumed at step", trainer.step_idx)
         summ["resumed_at"] = trainer.step_idx
+        dropped = trim_metrics(d / "metrics.jsonl", trainer.step_idx)
+        if dropped:
+            summ["metrics_dropped_on_resume"] = dropped
+            log(f"metrics.jsonl: dropped {dropped} records with step >= {trainer.step_idx} (re-run after the resume)")
     if trainer.step_idx == 0:
         summ["dev_monitor_before"] = trainer.eval_nll(dev_windows)
 
@@ -471,6 +496,11 @@ class Runner:
             self.progress.setdefault("grid", str(GRID_PATH))
         if self.progress.setdefault("grid_sha256", grid_sha) != grid_sha:
             raise SystemExit("grid.json changed since this run started (pre-registration): refusing to continue")
+        for st in self.grid["stages"]:
+            bad = set(st.get("optional_after", [])) - set(st.get("after", []))
+            if bad:
+                raise SystemExit(f"{st['name']}: optional_after {sorted(bad)} must also be listed in after")
+        self.soft = soft_stages(self.grid["stages"])
         self.save()
 
     def save(self) -> None:
@@ -804,7 +834,9 @@ class Runner:
                     summary=_brief(ev["summary"]))
 
     def _m1c_rows(self, names: list[str], counts_stage: str, warn_stage: str) -> tuple[dict, list[dict]]:
-        """Bars A and B on dev for each trained arm (PREREG §5), against the counts-only frontier of counts_stage."""
+        """Bars A and B on dev for each trained arm (PREREG §4-§5, §12), against the counts-only frontier of
+        counts_stage. Bar A is frontier to frontier: X + counts at X's own best weight within the bars (lambda_X)
+        against counts alone at lambda*. Bar B matches X's retention budget share."""
         import numpy as np
         from ngram_memory.eval.stage1 import bars as BR
         prim = self._primary()
@@ -821,90 +853,134 @@ class Runner:
         for n in names:
             r = self._res(n)
             if r is None:
-                self.mark(warn_stage, warning=f"candidate {n} has no result (aborted?)")
+                self.mark(warn_stage, warning=f"candidate {n} has no result (aborted or failed)")
                 continue
             S = BR.load_summary(r["eval_dir"])
             xl, xpl = "rows[cartridge]", f"{clab}+rows[cartridge]"
             x = BR.point(S, xl, None, prim)
-            xp = BR.point(S, xpl, ls["weight"], prim)
+            x_in = BR.within(x)
+            plus = [BR.point(S, xpl, w, prim) for w in BR.grid_weights(S, xpl)]
+            lx = BR.lambda_x(plus, x_in)
+            xp_ls = BR.point(S, xpl, ls["weight"], prim)
             m = BR.matched(front, x)
             t = BR.Targets.load(r["eval_dir"], "dev", prim)
-            if not (np.array_equal(t.key, t0.key) and np.array_equal(t.mask, t0.mask)):
+            # the paired differences compare columns of two stages (X's eval dir, the counts stage's): same targets,
+            # same primary mask, same base NLL and file groups, or the stage fails
+            if not (np.array_equal(t.key, t0.key) and np.array_equal(t.mask, t0.mask)
+                    and np.array_equal(t.base, t0.base) and np.array_equal(t.groups, t0.groups)):
                 raise StageFailed(warn_stage, dict(error=f"{n}: dev targets differ from {counts_stage}'s"))
-            A = BR.bar_a(t, t.nll(xpl, ls["weight"]), cnt_ls, BR.within(xp))
+            if lx["weight"] is not None:
+                A = BR.bar_a(t, t.nll(xpl, lx["weight"]), cnt_ls, True)
+            else:
+                A = BR.bar_a(t, None, cnt_ls, False, reason=lx["reason"])
+            A_ls = BR.bar_a(t, t.nll(xpl, ls["weight"]), cnt_ls, BR.within(xp_ls))     # reported only
             Bb = BR.bar_b(t, t.nll(xl), t0.nll(clab, m["weight"]))
             rows.append(dict(stage=n, config=r["config"], cartridge=r.get("cartridge"), dev=r["dev"], x=x,
-                             x_within=BR.within(x), x_plus_counts=xp, x_plus_counts_within=BR.within(xp),
-                             counts_matched=m, bar_a=A, bar_b=Bb, bar_a_margin_pts=A["diff"]["pts"] - BR.BAR_A["min_pts"],
+                             x_within=x_in, x_share=BR.share(x), lambda_x=lx,
+                             x_plus_counts=lx["point"], x_plus_counts_within=lx["weight"] is not None,
+                             x_plus_counts_lstar=xp_ls, bar_a_at_lstar=A_ls,
+                             counts_matched=m, bar_a=A, bar_b=Bb, bar_a_margin_pts=A["margin_pts"],
                              any_bar=bool(A["holds"] or Bb["holds"])))
         ctx = dict(primary=prim, counts_stage=counts_stage, frontier=front, lambda_star=ls, bars=BR.BARS,
-                   bar_a=BR.BAR_A, bar_b=BR.BAR_B, match_floor=BR.MATCH_FLOOR)
+                   bar_a=BR.BAR_A, bar_b=BR.BAR_B, match_s_floor=BR.S_FLOOR)
         return ctx, rows
 
     @staticmethod
     def _m1c_rank(r: dict) -> tuple:
-        """Larger Bar-A margin; ties -> smaller rho, then nll before distill."""
-        return (r["bar_a"]["diff"]["pts"], -float(r["config"]["rho"]),
-                0 if r["config"].get("objective", "nll") == "nll" else -1)
+        """Selection order (PREREG §5): any bar holds on dev, Bar A holds, larger Bar-A margin (none: last); ties ->
+        smaller rho, then nll before distill."""
+        m = r.get("bar_a_margin_pts")
+        return (bool(r["any_bar"]), bool(r["bar_a"]["holds"]), float("-inf") if m is None else float(m),
+                -float(r["config"]["rho"]), 0 if r["config"].get("objective", "nll") == "nll" else -1)
 
     def stage_m1c_select(self, st: dict) -> dict:
-        """S1 (PREREG §6): largest dev Bar-A margin among arms whose X alone is within R1/R2/KL."""
+        """S1 (PREREG §5): among arms whose X alone is within R1/R2/KL, the best by _m1c_rank."""
         ctx, rows = self._m1c_rows(st["candidates"], st["counts"], st["name"])
         if not rows:
             raise StageFailed(st["name"], dict(error="no candidate results"))
         ok = [r for r in rows if r["x_within"]]
         if ok:
             best = max(ok, key=self._m1c_rank)
-            rule = "largest dev Bar-A margin among arms with X alone within R1 <= 0.2%, R2 <= 0.5%, KL <= 0.005"
+            rule = ("among arms with X alone within R1 <= 0.2%, R2 <= 0.5%, KL <= 0.005: any dev bar holds, then Bar A "
+                    "holds, then the largest Bar-A margin (ties: smaller rho, next-token before distill)")
         else:
             best = min(rows, key=lambda r: (r["x"]["r2"], r["config"]["rho"]))
             rule = "no arm alone within the retention bars: smallest dev R2 (recorded as the kill-zone case)"
         table = [dict(stage=r["stage"], rho=r["config"]["rho"], objective=r["config"].get("objective", "nll"),
                       e1=r["x"]["e1"], e1_all=r["x"]["e1_all"], r1=r["x"]["r1"], kl=r["x"]["kl"], r2=r["x"]["r2"],
-                      x_within=r["x_within"], bar_a_diff=r["bar_a"]["diff"]["pts"], bar_a_ci=r["bar_a"]["diff"]["ci"],
+                      share=r["x_share"], x_within=r["x_within"], lambda_x=r["lambda_x"]["weight"],
+                      bar_a_diff=r["bar_a"]["diff"] and r["bar_a"]["diff"]["pts"],
+                      bar_a_ci=r["bar_a"]["diff"] and r["bar_a"]["diff"]["ci"], bar_a_margin=r["bar_a_margin_pts"],
                       bar_a=r["bar_a"]["holds"], counts_matched_weight=r["counts_matched"]["weight"],
-                      bar_b_ratio=r["bar_b"]["ratio"], bar_b_diff_ci=r["bar_b"]["diff"]["ci"], bar_b=r["bar_b"]["holds"])
+                      bar_b_ratio=r["bar_b"]["ratio"], bar_b_diff_ci=r["bar_b"]["diff"]["ci"], bar_b=r["bar_b"]["holds"],
+                      any_bar=r["any_bar"])
                  for r in rows]
         return dict(ctx, selected=best["stage"], config=best["config"], dev=best["dev"], row=best, rule=rule,
                     any_within_bars=bool(ok), any_bar_dev=any(r["any_bar"] for r in rows), table=table,
                     candidates=rows, cartridge=best.get("cartridge"))
 
+    def _stage_error(self, name: str) -> str | None:
+        """A short description of why a stage has no result (from progress.json), or None if it has one."""
+        if self.done(name):
+            return None
+        e = self.progress["stages"].get(name, {})
+        err = e.get("error")
+        if isinstance(err, dict):
+            err = err.get("error") or err.get("aborted") or (f"returncode {err['returncode']}" if "returncode" in err
+                                                              else json.dumps(err, default=str))
+        elif isinstance(err, str):
+            err = err.strip().splitlines()[-1] if err.strip() else err
+        return f"{e.get('status', 'not run')}" + (f": {str(err)[:300]}" if err else "")
+
     def stage_m1c_op(self, st: dict) -> dict:
-        """OP (PREREG §6): F1 (S1's recipe, one full pass) if its dev Bar-A margin >= S1's, else S1."""
+        """OP (PREREG §5): F1 (S1's recipe, one full pass) if its selection tuple (any dev bar, Bar A holds, Bar-A
+        margin) is >= S1's, else S1. F1 failed or RSS-aborted -> S1 (rule records why)."""
         s1 = self._res(st["s1"])
-        ctx, rows = self._m1c_rows([s1["selected"]] + ([st["f1"]] if self._res(st["f1"]) else []), st["counts"],
-                                   st["name"])
+        f1 = [st["f1"]] if self._res(st["f1"]) is not None else []
+        ctx, rows = self._m1c_rows([s1["selected"]] + f1, st["counts"], st["name"])
         rs1 = next(r for r in rows if r["stage"] == s1["selected"])
         rf1 = next((r for r in rows if r["stage"] == st["f1"]), None)
-        if rf1 is not None and rf1["bar_a"]["diff"]["pts"] >= rs1["bar_a"]["diff"]["pts"]:
-            op, rule = rf1, "F1's dev Bar-A margin >= S1's"
+        if rf1 is not None and self._m1c_rank(rf1)[:3] >= self._m1c_rank(rs1)[:3]:
+            op, rule = rf1, "F1's (any dev bar, Bar A holds, Bar-A margin) >= S1's"
         else:
             op = rs1
-            rule = "F1 has no result" if rf1 is None else "F1's dev Bar-A margin < S1's"
+            rule = f"F1 failed: {self._stage_error(st['f1'])}" if rf1 is None else \
+                "F1's (any dev bar, Bar A holds, Bar-A margin) < S1's"
         return dict(ctx, selected=op["stage"], config=op["config"], dev=op["dev"], op_row=op, rule=rule,
                     s1=rs1, f1=rf1, cartridge=op.get("cartridge"))
 
     def stage_m1c_test(self, st: dict) -> dict:
-        """The single Split-A test read of M1c (PREREG §7): base, OP rows, counts@lambda*, counts@lambda* + OP,
-        counts@matched(OP), perm:OP; bars A/B and C1 on the primary (and all) targets; canary-free check."""
+        """The single Split-A test read of M1c (PREREG §6): base, OP rows, counts@lambda*, counts@lambda* + OP,
+        counts@lambda_X(OP) + OP, counts@matched(OP), perm:OP; bars A/B and C1 on the primary (and all) targets;
+        canary-free check. T_test/STARTED is written right before the evaluation (after OP is resolved and the
+        canary-free check passed)."""
         from ngram_memory.eval.stage1 import bars as BR
-        marker = self.out / st["name"] / "STARTED"
-        if marker.exists():
-            self.mark(st["name"], note="test stage restarted after an interruption (same pre-registered read)")
-        marker.parent.mkdir(parents=True, exist_ok=True)
-        marker.write_text(time.strftime("%Y-%m-%d %H:%M:%S"))
         op = self._res(st["operating_point"])
         sd = self.out / op["selected"]
+        (self.out / st["name"]).mkdir(parents=True, exist_ok=True)
         link = self.out / st["name"] / "op.pt"
         if not link.exists():
             link.symlink_to(sd / "cartridge.pt")
         fmap = {"op": str(sd / "fmt.json")}
         ls, mw = op["lambda_star"]["weight"], op["op_row"]["counts_matched"]["weight"]
+        lx = op["op_row"]["lambda_x"]["weight"]
         tl, tm = BR.weight_tag(ls), BR.weight_tag(mw)
         spec = {"base": "base", "op": f"rows:{link}", "perm_op": f"perm:{link}",
                 "countlm_lstar": f"countlm:kn-lam{tl}", "countlm_lstar+op": f"countlm:kn-lam{tl}+rows:{link}",
                 "countlm_matched_op": f"countlm:kn-lam{tm}"}
-        conds = list(dict.fromkeys(spec[c] for c in st["conditions"]))
+        lab = dict(op="rows[op]", perm="perm[op]", cl=f"countlm[kn-lam{tl}]", clop=f"countlm[kn-lam{tl}]+rows[op]",
+                   cm=f"countlm[kn-lam{tm}]")
+        # counts@lambda_X(OP) + OP: lambda_X == lambda* reuses counts@lambda* + OP; lambda_X == 0 is OP alone;
+        # no lambda_X (no X + counts weight within the bars on dev): Bar A fails on test too
+        if lx is None:
+            spec["countlm_lambdax+op"], lab["clx"] = None, None
+        elif lx == 0:
+            spec["countlm_lambdax+op"], lab["clx"] = spec["op"], lab["op"]
+        else:
+            tx = BR.weight_tag(lx)
+            spec["countlm_lambdax+op"] = f"countlm:kn-lam{tx}+rows:{link}"
+            lab["clx"] = f"countlm[kn-lam{tx}]+rows[op]"
+        conds = list(dict.fromkeys(spec[c] for c in st["conditions"] if spec.get(c) is not None))
         # canary-free check: no canary secret of OP's manifest occurs in any held-out (dev/test/near-dup) text
         cman = sd / "canaries.json"
         canary_check = None
@@ -916,23 +992,31 @@ class Runner:
             man = CN.load_manifest(cman)
             CN.assert_clean(held, man)          # raises (stage error) if a canary leaked into held-out data
             canary_check = dict(manifest=str(cman), sha256=man["sha256"], held_out_files=len(held), clean=True)
+        marker = self.out / st["name"] / "STARTED"
+        if marker.exists():
+            self.mark(st["name"], note="test stage restarted after an interruption (same pre-registered read)")
+        marker.write_text(time.strftime("%Y-%m-%d %H:%M:%S"))
         extra = ["--r3-items", "0"]
         ev = self.evaluate(st["name"], "test", ",".join(conds), fmt_map=fmap, extra=extra)
         ed = self.out / st["name"] / "eval"
-        lab = dict(op="rows[op]", perm="perm[op]", cl=f"countlm[kn-lam{tl}]", clop=f"countlm[kn-lam{tl}]+rows[op]",
-                   cm=f"countlm[kn-lam{tm}]")
         bars = {}
         for prim in dict.fromkeys([self._primary(), "all"]):
             t = BR.Targets.load(ed, "test", prim)
+            cl = t.nll(lab["cl"])
+            if lab["clx"] is not None:
+                A = BR.bar_a(t, t.nll(lab["clx"]), cl, op["op_row"]["x_plus_counts_within"])
+            else:
+                A = BR.bar_a(t, None, cl, False, reason=op["op_row"]["lambda_x"]["reason"])
             bars[prim] = dict(
-                e1_op=BR.gain(t, t.nll(lab["op"])), e1_counts_lstar=BR.gain(t, t.nll(lab["cl"])),
+                e1_op=BR.gain(t, t.nll(lab["op"])), e1_counts_lstar=BR.gain(t, cl),
                 e1_counts_lstar_plus_op=BR.gain(t, t.nll(lab["clop"])), e1_counts_matched=BR.gain(t, t.nll(lab["cm"])),
-                bar_a=BR.bar_a(t, t.nll(lab["clop"]), t.nll(lab["cl"]), op["op_row"]["x_plus_counts_within"]),
+                e1_counts_lambdax_plus_op=BR.gain(t, t.nll(lab["clx"])) if lab["clx"] else None,
+                bar_a=A, bar_a_at_lstar=BR.bar_a(t, t.nll(lab["clop"]), cl, None),
                 bar_b=BR.bar_b(t, t.nll(lab["op"]), t.nll(lab["cm"])),
                 c1=BR.c1(t, t.nll(lab["op"]), t.nll(lab["perm"])))
         T = ev["summary"]["sets"]["test"]
         return dict(operating_point=op["selected"], op_config=op["config"], conditions=conds, labels=lab,
-                    lambda_star=ls, counts_matched_weight=mw, primary=self._primary(), bars=bars,
+                    lambda_star=ls, lambda_x=lx, counts_matched_weight=mw, primary=self._primary(), bars=bars,
                     canary_check=canary_check, class_fractions=T.get("_class_fractions"),
                     summary=_brief(ev["summary"]), eval_dir=str(ed), wall_s=ev["run"]["wall_s"])
 
@@ -962,8 +1046,36 @@ class Runner:
                     regurgitation=brief, canaries=S.get("canaries"), fingerprint=S.get("fingerprint"),
                     summary=str(d / "reg" / "summary.json"), wall_s=r["wall_s"], peak_rss_mb=r["peak_rss_mb"])
 
+    def _m1c_per_file(self, op: dict, test: dict | None) -> dict:
+        """Per-file Bar-A differences (E1(OP + counts@lambda_X) - E1(counts@lambda*)) on dev and test, with each
+        file's share of the primary targets and n_eff (diagnostics; PREREG §8)."""
+        from ngram_memory.eval.stage1 import bars as BR
+        out: dict = {}
+        prim = self._primary()
+        row = op["op_row"]
+        lx, ls = row["lambda_x"]["weight"], op["lambda_star"]["weight"]
+        cres = self._res(op["counts_stage"])
+        if lx is None or cres is None:
+            return dict(note="no lambda_X for OP (Bar A cannot be read)" if lx is None else "no counts stage result")
+        try:
+            t0 = BR.Targets.load(cres["eval_dir"], "dev", prim)
+            t = BR.Targets.load(jload(self.out / row["stage"] / "result.json")["eval_dir"], "dev", prim)
+            xpl = f"{cres['label']}+rows[cartridge]"
+            out["dev"] = BR.per_file(t, t.nll(xpl, lx), t0.nll(cres["label"], ls))
+        except (OSError, KeyError, ValueError, IndexError) as e:
+            out["dev"] = dict(error=repr(e))
+        if test is not None and test.get("labels", {}).get("clx"):
+            try:
+                tt = BR.Targets.load(test["eval_dir"], "test", prim)
+                out["test"] = BR.per_file(tt, tt.nll(test["labels"]["clx"]), tt.nll(test["labels"]["cl"]))
+            except (OSError, KeyError, ValueError, IndexError) as e:
+                out["test"] = dict(error=repr(e))
+        return out
+
     def stage_m1c_report(self, st: dict) -> dict:
-        """The pre-registered M1c decision (PREREG §8) on the stage results; no model is run."""
+        """The pre-registered M1c decision (PREREG §7) on the stage results; no model is run. T_test and REG_op are
+        optional dependencies (§12): when they failed, the dev-only KILL verdict still stands; otherwise the
+        decision is INCOMPLETE with the reason."""
         from ngram_memory.eval.stage1 import bars as BR
         sel, op, test, reg = (self._res(st[k]) for k in ("select", "operating_point", "test", "reg"))
         rows = list(sel["candidates"]) + ([op["f1"]] if op and op.get("f1") else [])
@@ -971,21 +1083,25 @@ class Runner:
         out = dict(lambda_star=sel["lambda_star"], dev_table=sel["table"], dev_any_bar=dev_any,
                    s1=sel["selected"], operating_point=op and op["selected"], op_rule=op and op["rule"],
                    s1_bar_a_margin=op and op["s1"]["bar_a_margin_pts"],
-                   f1_bar_a_margin=op and op.get("f1") and op["f1"]["bar_a_margin_pts"])
+                   f1_bar_a_margin=op and op.get("f1") and op["f1"]["bar_a_margin_pts"],
+                   op_lambda_x=op and op["op_row"]["lambda_x"]["weight"])
+        if op is not None and "counts_stage" in op:
+            out["per_file_bar_a"] = self._m1c_per_file(op, test)
         if not dev_any:
             out.update(decision="KILL", reason="neither Bar A nor Bar B holds on dev for any arm: stop rows-only "
                        "layer-1 graft ingestion; next routes: an Engram-Adapter-style trained-reader arm or Flash-Next "
                        "native (M6)")
             return out
         if test is None or op is None:
-            out.update(decision="INCOMPLETE", reason="the test stage (or the operating point) has no result")
+            miss = st["test"] if test is None else st["operating_point"]
+            out.update(decision="INCOMPLETE", reason=f"{miss} has no result ({self._stage_error(miss)})")
             return out
         prim = test["primary"]
         tb = test["bars"][prim]
         oprow = op["op_row"]
         ret = BR.within(oprow["x"])
         fr = (test.get("class_fractions") or {}).get("dup:16gram_in_train")
-        gates = dict(host_unchanged=True,           # the train worker fails the arm on any host-weight change
+        gates = dict(host_unchanged=True,           # the train worker fails an arm on any host-weight change
                      dedupe=dict(test_16gram_in_train_fraction=fr, primary=prim,
                                  met=prim == "nondup" or (fr is not None and fr <= 0.02)),
                      suite="R0/I2/I4 are test-suite gates (tests/test_qwen25_real.py, test_graft_tiny.py, "
@@ -994,14 +1110,16 @@ class Runner:
         reg_pass = bool(reg and reg.get("reg_pass") is True)
         test_bar = bool(tb["bar_a"]["holds"] or tb["bar_b"]["holds"])
         parts = dict(test_bar_a=tb["bar_a"]["holds"], test_bar_b=tb["bar_b"]["holds"], retention_dev=ret,
-                     c1=tb["c1"]["holds"], reg=reg_pass, gates=gates_ok)
-        if test_bar and ret and tb["c1"]["holds"] and reg_pass and gates_ok:
+                     c1=tb["c1"]["holds"], reg=reg_pass if reg is not None else None, gates=gates_ok)
+        if reg is None:
+            dec, why = "INCOMPLETE", f"{st['reg']} has no result ({self._stage_error(st['reg'])})"
+        elif test_bar and ret and tb["c1"]["holds"] and reg_pass and gates_ok:
             dec, why = "PASS", "proceed to M2 with OP's recipe"
         else:
             dec, why = "REPORT", "bars on dev but the PASS conditions do not all hold on test: report, no M2"
         out.update(decision=dec, reason=why, parts=parts, test_bars=test["bars"], gates=gates,
                    reg=reg and dict(verdict=reg["verdict"], reg_pass=reg["reg_pass"]),
-                   op_dev=dict(x=oprow["x"], x_plus_counts=oprow["x_plus_counts"],
+                   op_dev=dict(x=oprow["x"], lambda_x=oprow["lambda_x"], x_plus_counts=oprow["x_plus_counts"],
                                counts_matched=oprow["counts_matched"]))
         return out
 
@@ -1014,8 +1132,35 @@ class Runner:
                     m1c_test=self.stage_m1c_test, m1c_report=self.stage_m1c_report)
 
     def waiting_for(self, st: dict) -> list[str]:
+        """Dependencies not yet settled: a dependency is settled when it is done or was RSS-aborted, and an
+        optional one (optional_after) also when it failed (this invocation, or for good: final_failed)."""
+        opt = set(st.get("optional_after", []))
         return [x for x in st.get("after", []) if not self.done(x)
-                and not self.progress["stages"].get(x, {}).get("aborted")]
+                and not self.progress["stages"].get(x, {}).get("aborted")
+                and not (x in opt and self.progress["stages"].get(x, {}).get("status") in ("failed", "failed_final"))]
+
+    def final_failed(self, name: str) -> bool:
+        """A soft stage (every dependant lists it in optional_after) that failed and is not run again: it failed
+        SOFT_MAX_ATTEMPTS times (the first run and one retry on resume), or a dependant already finished without it
+        (so its result could no longer be used)."""
+        if name not in self.soft or self.done(name):
+            return False
+        e = self.progress["stages"].get(name, {})
+        if e.get("status") == "failed_final":
+            return True
+        if e.get("status") != "failed":
+            return False
+        dep_done = any(self.done(s["name"]) for s in self.grid["stages"] if name in s.get("after", []))
+        return dep_done or int(e.get("attempts", 1)) >= SOFT_MAX_ATTEMPTS
+
+    def _soft_failed(self, name: str) -> None:
+        with self._lock:
+            sf = self.progress.setdefault("soft_failed", [])
+            if name not in sf:
+                sf.append(name)
+        log("soft failure", name, "(its dependants list it in optional_after and run without it)")
+        if int(self.progress["stages"].get(name, {}).get("attempts", 1)) >= SOFT_MAX_ATTEMPTS:
+            self.mark(name, status="failed_final")
 
     def run_stage(self, st: dict, threads: int | None = None) -> str:
         """Run one stage on the calling thread. Returns 'done', 'aborted' (RSS guard; dependants go on without
@@ -1025,6 +1170,8 @@ class Runner:
             self._tl.threads = threads
         log("start", name, st["kind"], f"threads {self.threads()}")
         self.mark(name, status="running", started=time.strftime("%Y-%m-%d %H:%M:%S"), threads=self.threads())
+        if name in self.soft:                          # attempts are counted for soft stages only (M1b: none)
+            self.mark(name, attempts=int(self.progress["stages"][name].get("attempts", 0)) + 1)
         t = time.time()
         try:
             res = self.kinds()[st["kind"]](st)
@@ -1046,6 +1193,10 @@ class Runner:
         return "done"
 
     def run(self) -> int:
+        """Exit code: 1 after a code error or a failed stage (unless --keep-going, or the stage is soft); 0
+        otherwise. A soft stage's failure (every dependant lists it in optional_after) does not stop the run or set
+        the exit code: its dependants run without it, and it is listed in progress.json 'soft_failed' and in their
+        results (OP_select's rule, Z_report's INCOMPLETE reason)."""
         rc = self.run_serial() if self.a.parallel <= 1 else self.run_parallel()
         with self._lock:
             self.progress["finished"] = all(self.done(s["name"]) for s in self.grid["stages"])
@@ -1058,12 +1209,19 @@ class Runner:
             if self.done(name):
                 log("skip (done)", name)
                 continue
+            if self.final_failed(name):
+                log("skip (failed, final)", name)
+                self.mark(name, status="failed_final")
+                continue
             need = self.waiting_for(st)
             if need:
                 log("blocked", name, "waiting for", need)
                 self.mark(name, status="blocked", waiting_for=need)
                 continue
             r = self.run_stage(st)
+            if r in ("error", "failed") and name in self.soft:
+                self._soft_failed(name)
+                continue
             if r == "error" or (r == "failed" and not self.a.keep_going):
                 return 1
             if r == "done" and self.a.stop_after and name == self.a.stop_after:
@@ -1073,20 +1231,30 @@ class Runner:
 
     def run_parallel(self) -> int:
         """Up to --parallel stages at once, each started as soon as every stage it depends on has finished (or
-        was RSS-aborted). The free threads are split evenly among the stages started together, capped at
-        --max-stage-threads. A new stage starts only while MemAvailable >= --launch-min-free-gb. After a failure
-        (or once --stop-after's stage is done) no new stage starts; running ones finish."""
+        was RSS-aborted; an optional dependency, optional_after, also when it failed). The free threads are split
+        evenly among the stages started together, capped at --max-stage-threads. A new stage starts only while
+        MemAvailable >= --launch-min-free-gb. After a failure of a non-soft stage (or once --stop-after's stage is
+        done) no new stage starts; running ones finish."""
         from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
         order = self.grid["stages"]
         settled = set()                                 # done before this invocation, or finished/aborted in it
+        failed_soft = set()                             # soft stages that failed (in this invocation, or for good)
         for st in order:
             if self.done(st["name"]):
                 log("skip (done)", st["name"])
                 settled.add(st["name"])
-        pending = [st for st in order if st["name"] not in settled]
+            elif self.final_failed(st["name"]):
+                log("skip (failed, final)", st["name"])
+                self.mark(st["name"], status="failed_final")
+                failed_soft.add(st["name"])
+        pending = [st for st in order if st["name"] not in settled and st["name"] not in failed_soft]
         running: dict = {}                              # future -> (stage name, threads)
         rc, stop = 0, False
         cap = self.a.max_stage_threads or self.a.threads
+
+        def ready_now(st) -> bool:
+            opt = set(st.get("optional_after", []))
+            return set(st.get("after", [])) - opt <= settled and opt <= settled | failed_soft
 
         def reap(futs) -> None:
             nonlocal rc, stop
@@ -1095,6 +1263,10 @@ class Runner:
                 r = f.result()
                 if r in ("done", "aborted"):
                     settled.add(name)
+                elif name in self.soft:                 # failed / error: its dependants go on without it
+                    failed_soft.add(name)
+                    self._soft_failed(name)
+                    continue
                 if r == "error" or (r == "failed" and not self.a.keep_going):
                     rc, stop = 1, True
                 if r == "done" and self.a.stop_after and name == self.a.stop_after:
@@ -1105,7 +1277,7 @@ class Runner:
             while True:
                 reap([f for f in list(running) if f.done()])   # collect every finished stage before deciding
                 if not stop:
-                    ready = [st for st in pending if set(st.get("after", [])) <= settled]
+                    ready = [st for st in pending if ready_now(st)]
                     slots = min(self.a.parallel - len(running), len(ready))
                     free = self.a.threads - sum(t for _, t in running.values())
                     for i, st in enumerate(ready[:slots]):
@@ -1123,6 +1295,19 @@ class Runner:
             if need:
                 self.mark(st["name"], status="blocked", waiting_for=need)
         return rc
+
+
+SOFT_MAX_ATTEMPTS = 2          # a soft stage runs at most twice: its first run and one retry on resume
+
+
+def soft_stages(stages: list[dict]) -> set[str]:
+    """Stages whose every dependant lists them in optional_after: their failure does not block or stop the run."""
+    deps: dict[str, list[bool]] = {}
+    for st in stages:
+        opt = set(st.get("optional_after", []))
+        for x in st.get("after", []):
+            deps.setdefault(x, []).append(x in opt)
+    return {x for x, v in deps.items() if v and all(v)}
 
 
 def mem_available_gb() -> float:

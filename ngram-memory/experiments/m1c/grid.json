@@ -61,12 +61,13 @@
    "after": ["C0_countgrid", "N1_rho0p03", "N2_rho0p1", "N3_rho0p3", "D1_distill_rho0p03", "D2_distill_rho0p1"]},
   {"name": "F1_fullpass", "kind": "train_eval", "after": ["S1_select"]},
   {"name": "OP_select", "kind": "m1c_op", "s1": "S1_select", "f1": "F1_fullpass", "counts": "C0_countgrid",
-   "after": ["S1_select", "F1_fullpass"]},
+   "after": ["S1_select", "F1_fullpass"], "optional_after": ["F1_fullpass"]},
   {"name": "T_test", "kind": "m1c_test", "operating_point": "OP_select", "after": ["OP_select"],
-   "conditions": ["base", "op", "countlm_lstar", "countlm_lstar+op", "countlm_matched_op", "perm_op"]},
+   "conditions": ["base", "op", "countlm_lstar", "countlm_lstar+op", "countlm_lambdax+op", "countlm_matched_op",
+                  "perm_op"]},
   {"name": "REG_op", "kind": "reg", "operating_point": "OP_select", "after": ["OP_select"]},
   {"name": "Z_report", "kind": "m1c_report", "select": "S1_select", "operating_point": "OP_select",
-   "test": "T_test", "reg": "REG_op", "after": ["T_test", "REG_op"]}
+   "test": "T_test", "reg": "REG_op", "after": ["T_test", "REG_op"], "optional_after": ["T_test", "REG_op"]}
  ],
  "budgets": {
   "full": {"steps": 64, "window": 4096, "stride": 3584, "anchor_window": 1024, "anchor_windows": 24, "topk": 64,
