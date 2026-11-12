@@ -1,0 +1,69 @@
+{
+ "script": "experiments/m2_0/split_peak.py",
+ "weights": "replicated from the layer cache (GDN layers = L0, attention layers = L3 dense + L0 experts)",
+ "repo": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+ "revision": "f1e8415c4f29508fe281da4e256df26573213bfd",
+ "devices": [
+  "cpu",
+  "cpu"
+ ],
+ "torch": "2.15.0+cpu",
+ "n_layers": 4,
+ "split": 2,
+ "split_frac": 0.57,
+ "layer_types": [
+  "linear_attention",
+  "linear_attention",
+  "linear_attention",
+  "full_attention"
+ ],
+ "packed_bytes_per_card": [
+  1080713984,
+  1067804032
+ ],
+ "T": 64,
+ "mixer_batch": 1,
+ "epg": 8,
+ "ce_chunk": 512,
+ "steps": 1,
+ "runs": [
+  {
+   "chunk_tokens": 128,
+   "B": 2,
+   "T": 64,
+   "steps": [
+    {
+     "step": 0,
+     "loss": 12.81181812286377,
+     "dx_norm": 0.23354804515838623,
+     "dx_finite": true,
+     "fwd_s": 9.138908545000959,
+     "bwd_s": 18.636525896999956,
+     "gdn_calls": 12,
+     "gdn_calls_expected": 12,
+     "gdn_fallbacks": 0,
+     "mem": {
+      "cpu": {}
+     },
+     "tok_per_s": 4.608388764081524,
+     "h_per_1M_tok": 60.276550438370045
+    }
+   ],
+   "checkpoint_check": {
+    "dx_rel": 0.0
+   }
+  }
+ ],
+ "load_s": 7.540673017501831,
+ "lm_head": "synthetic (random bf16, real shape)",
+ "resident_after_load": {
+  "cpu": {}
+ },
+ "gdn": {
+  "arm": "fix_g1",
+  "native_forward": "CPU: native forward = gdn_native.hf_standin_op",
+  "layers": 3,
+  "beta_fp32": false
+ },
+ "gdn_all_calls_patched": true
+}

@@ -1,0 +1,31 @@
+M2-0 summary  (cpu, 2026-11-12 02:47:16)
+host cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit @ f1e8415c4f29508fe281da4e256df26573213bfd
+weights: layer cache $SCRATCH/m2_0_cache/cyankiwi_35b (layers 0, 3; the split step replicates them)
+
+[N/A                   ] M2-0.1         (pass bar) fixed GDN backward <= 1.5x native forward
+                           value: -
+                           needs the native forward (owner's cards)
+[N/A                   ] M2-0.K         (kill) GDN backward < 0.2 h per 1M tokens on the 35B
+                           value: -
+                           needs the owner's cards
+[PASS (CPU stand-in)   ] M2-0.2         (pass bar) dX cosine >= 0.9999 vs HF's torch delta rule (layer-0 mixer, B=1 T=256 bf16, arm fix_exact_b32)
+                           value: 0.99998777
+[FAIL (CPU stand-in)   ] M2.fwd         (M2 prereq) forward rel. err <= 0.001 vs HF's torch delta rule (same layer)
+                           value: 0.0032
+                           vs HF with fp32 sigmoid(b): 0.000183; vs fp32 truth: 0.00594 (HF bf16 itself vs truth: 0.00594); an exact kernel cannot meet 1e-3 against HF's bf16-rounded sigmoid, see README
+[INFO                  ] info.exact     (info) native math vs fp64 truth (worst over T; fwd rel / min grad cos)
+                           value: {"hf_ref/fp32": [8.32e-07, 1.0], "fix/fp32": [5.57e-07, 1.0], "fork_ref/fp32": [5.57e-07, 1.0], "hf_ref/bf16": [0.00238, 0.9999923], "fix/bf16": [0.0017, 0.999997], "fork_ref/bf16": [0.0017, 0.9999985]}
+                           fix/bf16 vs fp64: {'fwd_rel': 0.0017046452917032183, 'min_grad_cos': 0.9999969845776255}
+[PASS                  ] M2.model       (M2 prereq) model-level train step with HF's default use_cache=True: every GDN layer runs the patched kernel (no silent HF fallback)
+                           value: {"fix": [3, 0], "fix_g1": [3, 0], "native_ours": [3, 0], "ours": [3, 0], "fork_ref": [3, 0]}
+[PASS                  ] M2.awq         (M2 prereq) AWQ dequant bit-exact vs a reference unpack
+                           value: L0: 768/768 fp32, 768 bf16, fork 768, stacked 256/256; L3: 768/768 fp32, 768 bf16, fork 768, stacked 256/256
+[PASS                  ] 7.5#2          (measure) torch grouped_mm runs on CPU at the 35B MoE shapes, fwd + dX
+                           value: [2.78, 4.98]
+                           grouped_mm_cpu: torch._grouped_mm runs=True accurate=True, F.grouped_mm runs=True accurate=True (value: speed-up vs the per-expert loop)
+[N/A                   ] M2-0.3         (pass bar) per-card peak <= 15.5 GB at the planned split
+                           value: -
+                           needs the owner's cards (CPU plumbing check ran: checkpointing on/off dX rel {'dx_rel': 0.0})
+
+M2-0 overall: INCOMPLETE (3 of 4 bars not measured: M2-0.1, M2-0.K, M2-0.3)
+steps: gdn=0

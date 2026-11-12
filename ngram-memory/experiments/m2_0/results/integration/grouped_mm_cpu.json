@@ -1,0 +1,101 @@
+{
+ "script": "experiments/m2_0/grouped_mm_probe.py",
+ "device": "cpu",
+ "torch": "2.15.0+cpu",
+ "available": [
+  "torch._grouped_mm",
+  "F.grouped_mm"
+ ],
+ "small_probe": {
+  "available": true,
+  "rel_err": 0.0016148107824847102,
+  "ok": true
+ },
+ "cases": [
+  {
+   "tokens": 128,
+   "rows": 1024,
+   "empty_experts": 5,
+   "pad16": false,
+   "min_count": 0,
+   "max_count": 9,
+   "loop_bf16": {
+    "ok": true,
+    "fwd_s": 3.972521555999265,
+    "bwd_s": 6.408866132000185,
+    "fwd_rel": 0.0038475184701383114,
+    "dx_rel": 0.003795664757490158,
+    "dx_cos": 0.9999928012638278
+   },
+   "torch._grouped_mm": {
+    "ok": true,
+    "fwd_s": 1.5948146989994711,
+    "bwd_s": 2.1412485010005184,
+    "fwd_rel": 0.0038475184701383114,
+    "dx_rel": 0.003795664757490158,
+    "dx_cos": 0.9999928012638278,
+    "speedup_vs_loop_fwdbwd": 2.778697022041672,
+    "pass": true
+   },
+   "F.grouped_mm": {
+    "ok": true,
+    "fwd_s": 2.6667844229996263,
+    "bwd_s": 1.7291654010005004,
+    "fwd_rel": 0.0038475184701383114,
+    "dx_rel": 0.003795664757490158,
+    "dx_cos": 0.9999928012638278,
+    "speedup_vs_loop_fwdbwd": 2.3615801143409842,
+    "pass": true
+   }
+  },
+  {
+   "tokens": 128,
+   "rows": 4032,
+   "empty_experts": 4,
+   "pad16": true,
+   "min_count": 0,
+   "max_count": 16,
+   "loop_bf16": {
+    "ok": true,
+    "fwd_s": 3.8206677830003173,
+    "bwd_s": 8.440247129999989,
+    "fwd_rel": 0.0038567259907722473,
+    "dx_rel": 0.003803263185545802,
+    "dx_cos": 0.9999927709181218
+   },
+   "torch._grouped_mm": {
+    "ok": true,
+    "fwd_s": 0.9803635110001778,
+    "bwd_s": 1.4827605279988347,
+    "fwd_rel": 0.0038567259907722473,
+    "dx_rel": 0.003803263185545802,
+    "dx_cos": 0.9999927709181218,
+    "speedup_vs_loop_fwdbwd": 4.97779028537394,
+    "pass": true
+   },
+   "F.grouped_mm": {
+    "ok": true,
+    "fwd_s": 3.706876017000468,
+    "bwd_s": 0.6567344959985348,
+    "fwd_rel": 0.0038567259907722473,
+    "dx_rel": 0.003803263185545802,
+    "dx_cos": 0.9999927709181218,
+    "speedup_vs_loop_fwdbwd": 2.80980964650158,
+    "pass": true
+   }
+  }
+ ],
+ "verdict": {
+  "torch._grouped_mm": {
+   "runs_all_cases": true,
+   "accurate_all_cases": true,
+   "runs_unaligned": true
+  },
+  "F.grouped_mm": {
+   "runs_all_cases": true,
+   "accurate_all_cases": true,
+   "runs_unaligned": true
+  }
+ },
+ "grouped_mm_runs": true
+}

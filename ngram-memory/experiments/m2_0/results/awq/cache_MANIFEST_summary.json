@@ -1,0 +1,593 @@
+{
+ "repo": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+ "revision": "f1e8415c4f29508fe281da4e256df26573213bfd",
+ "files": {
+  "L0.safetensors": {
+   "bytes": 540668608,
+   "sha256": "b2a99d47e1e14e2dcab543655b2f9ba1388bbb1799c4a0c17ea5f5a46aeb1dc3"
+  },
+  "L3.p1.safetensors": {
+   "bytes": 465876568,
+   "sha256": "8d01d82ff4556a860f2b47c1fe6ba23e2baeb9b44a75d521283a72fbb8db20d0"
+  },
+  "L3.safetensors": {
+   "bytes": 61881048,
+   "sha256": "3b4f3e56a4c488fd7c4e71a310d5c099767534eb3bfb51a287d2472b73b5224e"
+  }
+ },
+ "weight_bytes": 1067804032,
+ "http_weight_bytes_total": 1000363008,
+ "history": [
+  {
+   "time": "2026-11-12T00:48:38Z",
+   "purpose": "M2-0 B2 AWQ layer validation: 0,3:dense",
+   "requested": 2333,
+   "present": 0,
+   "reused": 10,
+   "fetched": 2323,
+   "fetched_tensor_bytes": 534795264,
+   "http_bytes": 534795264,
+   "fetch_s": 19.13
+  },
+  {
+   "time": "2026-11-12T02:17:29Z",
+   "purpose": "M2-0 B2 AWQ layer validation: 3",
+   "requested": 2317,
+   "present": 13,
+   "reused": 0,
+   "fetched": 2304,
+   "fetched_tensor_bytes": 465567744,
+   "http_bytes": 465567744,
+   "fetch_s": 3.12
+  }
+ ],
+ "config_sha256": "dcc210da7562ecc8900dc25ac350333d0c6ae992a310d1c0f387014f0083f281",
+ "index_sha256": "1be5bd6fcc8b7ec175e5d773758846eb70ffaf60e080eb5e742d6f0c48504a16",
+ "header_bytes_fetched_this_run": 0,
+ "headers": {
+  "model-00001-of-00006.safetensors.hdr.json": "88c80e69323b8e398af93099c6a06ce260193e9fa066bfa8593a9d00e9405dfb",
+  "model-00003-of-00006.safetensors.hdr.json": "3a98abfb47ef592f29d00cbd51981d86c9031a3108056b161e7b6522a82f68a0",
+  "model-00005-of-00006.safetensors.hdr.json": "d5715a9debca33b20e80eefad5216504e951652426466768fcffa44dc5db2631"
+ },
+ "tensor_count": 2333,
+ "expert_tensor_count": 2304,
+ "dense_tensors": {
+  "model.language_model.layers.0.input_layernorm.weight": {
+   "file": "L0.safetensors",
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "F16",
+   "shape": [
+    2048
+   ],
+   "src_offsets": [
+    2136394720,
+    2136398816
+   ],
+   "nbytes": 4096,
+   "repo": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+   "revision": "f1e8415c4f29508fe281da4e256df26573213bfd",
+   "sha256": "98b9d74669296395c2f9553302aa10e7c1edb641eaec3665e78d6a92047344db",
+   "source": "reuse:$SCRATCH/m2_0_cache/b1_gdn_L0"
+  },
+  "model.language_model.layers.0.linear_attn.A_log": {
+   "file": "L0.safetensors",
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "F16",
+   "shape": [
+    32
+   ],
+   "src_offsets": [
+    2136398816,
+    2136398880
+   ],
+   "nbytes": 64,
+   "repo": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+   "revision": "f1e8415c4f29508fe281da4e256df26573213bfd",
+   "sha256": "b3f3a59ef143a65afa942c8e1cd00b378bfb07083e3299e3d5345146cf44402b",
+   "source": "reuse:$SCRATCH/m2_0_cache/b1_gdn_L0"
+  },
+  "model.language_model.layers.0.linear_attn.conv1d.weight": {
+   "file": "L0.safetensors",
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "F16",
+   "shape": [
+    8192,
+    1,
+    4
+   ],
+   "src_offsets": [
+    2136398880,
+    2136464416
+   ],
+   "nbytes": 65536,
+   "repo": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+   "revision": "f1e8415c4f29508fe281da4e256df26573213bfd",
+   "sha256": "d62c2a498e49324b3657ee50c7b0fb2662c11648bd7db88319a8a4d7e8c676ae",
+   "source": "reuse:$SCRATCH/m2_0_cache/b1_gdn_L0"
+  },
+  "model.language_model.layers.0.linear_attn.dt_bias": {
+   "file": "L0.safetensors",
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "F16",
+   "shape": [
+    32
+   ],
+   "src_offsets": [
+    2136464416,
+    2136464480
+   ],
+   "nbytes": 64,
+   "repo": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+   "revision": "f1e8415c4f29508fe281da4e256df26573213bfd",
+   "sha256": "519e81ff76db2cba69cfa11e5962d3ba80eacb21474cac61144835579cfefa72",
+   "source": "reuse:$SCRATCH/m2_0_cache/b1_gdn_L0"
+  },
+  "model.language_model.layers.0.linear_attn.in_proj_a.weight": {
+   "file": "L0.safetensors",
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "F16",
+   "shape": [
+    32,
+    2048
+   ],
+   "src_offsets": [
+    2136464480,
+    2136595552
+   ],
+   "nbytes": 131072,
+   "repo": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+   "revision": "f1e8415c4f29508fe281da4e256df26573213bfd",
+   "sha256": "ff1277caf930ff68e60fb7f658a0b7a38462e3c12887f4a76c4501acb56cd44a",
+   "source": "reuse:$SCRATCH/m2_0_cache/b1_gdn_L0"
+  },
+  "model.language_model.layers.0.linear_attn.in_proj_b.weight": {
+   "file": "L0.safetensors",
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "F16",
+   "shape": [
+    32,
+    2048
+   ],
+   "src_offsets": [
+    2136595552,
+    2136726624
+   ],
+   "nbytes": 131072,
+   "repo": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+   "revision": "f1e8415c4f29508fe281da4e256df26573213bfd",
+   "sha256": "d7095886878978e4d33f1ecaefa7faab405d279468c9a3ecf2a6c0c25e39fb37",
+   "source": "reuse:$SCRATCH/m2_0_cache/b1_gdn_L0"
+  },
+  "model.language_model.layers.0.linear_attn.in_proj_qkv.weight": {
+   "file": "L0.safetensors",
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "F16",
+   "shape": [
+    8192,
+    2048
+   ],
+   "src_offsets": [
+    2136726624,
+    2170281056
+   ],
+   "nbytes": 33554432,
+   "repo": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+   "revision": "f1e8415c4f29508fe281da4e256df26573213bfd",
+   "sha256": "abef9f38af3b53464b8e8dc182f0a4363d32bd45ae2b932b60497ca8b981bbde",
+   "source": "reuse:$SCRATCH/m2_0_cache/b1_gdn_L0"
+  },
+  "model.language_model.layers.0.linear_attn.in_proj_z.weight": {
+   "file": "L0.safetensors",
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "F16",
+   "shape": [
+    4096,
+    2048
+   ],
+   "src_offsets": [
+    2170281056,
+    2187058272
+   ],
+   "nbytes": 16777216,
+   "repo": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+   "revision": "f1e8415c4f29508fe281da4e256df26573213bfd",
+   "sha256": "cf1449573693a3d691c912517b0771e161d4b99bd775cc0fbb795a0839ed4e82",
+   "source": "reuse:$SCRATCH/m2_0_cache/b1_gdn_L0"
+  },
+  "model.language_model.layers.0.linear_attn.norm.weight": {
+   "file": "L0.safetensors",
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "F16",
+   "shape": [
+    128
+   ],
+   "src_offsets": [
+    2187058272,
+    2187058528
+   ],
+   "nbytes": 256,
+   "repo": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+   "revision": "f1e8415c4f29508fe281da4e256df26573213bfd",
+   "sha256": "4cd80d7aa4019ffbfc216e8ba7613542cbabb438218ff2af35df7b81500739f3",
+   "source": "reuse:$SCRATCH/m2_0_cache/b1_gdn_L0"
+  },
+  "model.language_model.layers.0.linear_attn.out_proj.weight": {
+   "file": "L0.safetensors",
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "F16",
+   "shape": [
+    2048,
+    4096
+   ],
+   "src_offsets": [
+    2187058528,
+    2203835744
+   ],
+   "nbytes": 16777216,
+   "repo": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+   "revision": "f1e8415c4f29508fe281da4e256df26573213bfd",
+   "sha256": "52a14bc98ace58b9189c7f78d223c895624f2915a87236094eb6478ffb50a087",
+   "source": "reuse:$SCRATCH/m2_0_cache/b1_gdn_L0"
+  },
+  "model.language_model.layers.0.mlp.gate.weight": {
+   "file": "L0.safetensors",
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "F16",
+   "shape": [
+    256,
+    2048
+   ],
+   "src_offsets": [
+    2203835744,
+    2204884320
+   ],
+   "nbytes": 1048576,
+   "repo": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+   "revision": "f1e8415c4f29508fe281da4e256df26573213bfd",
+   "sha256": "6312882cce0b5386c75ee8ea21d686509e6a4ac72e79b3c9fd49d494cc6af6d1",
+   "source": "range"
+  },
+  "model.language_model.layers.0.mlp.shared_expert.down_proj.weight": {
+   "file": "L0.safetensors",
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "F16",
+   "shape": [
+    2048,
+    512
+   ],
+   "src_offsets": [
+    2204884320,
+    2206981472
+   ],
+   "nbytes": 2097152,
+   "repo": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+   "revision": "f1e8415c4f29508fe281da4e256df26573213bfd",
+   "sha256": "c664f76f0e7809ed71c2a8f18ae4e53464e36637879d9e77e9adde087c9d2f37",
+   "source": "range"
+  },
+  "model.language_model.layers.0.mlp.shared_expert.gate_proj.weight": {
+   "file": "L0.safetensors",
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "F16",
+   "shape": [
+    512,
+    2048
+   ],
+   "src_offsets": [
+    2206981472,
+    2209078624
+   ],
+   "nbytes": 2097152,
+   "repo": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+   "revision": "f1e8415c4f29508fe281da4e256df26573213bfd",
+   "sha256": "b30cd9acdc67e5bc6195bd48c6be6b2fab92c775a4af54ed151a5626c5584b53",
+   "source": "range"
+  },
+  "model.language_model.layers.0.mlp.shared_expert.up_proj.weight": {
+   "file": "L0.safetensors",
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "F16",
+   "shape": [
+    512,
+    2048
+   ],
+   "src_offsets": [
+    2209078624,
+    2211175776
+   ],
+   "nbytes": 2097152,
+   "repo": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+   "revision": "f1e8415c4f29508fe281da4e256df26573213bfd",
+   "sha256": "a3a4b0fe7e7153abb75998c02c608a312d9e78867392c2c6e7f415c67e639c10",
+   "source": "range"
+  },
+  "model.language_model.layers.0.mlp.shared_expert_gate.weight": {
+   "file": "L0.safetensors",
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "F16",
+   "shape": [
+    1,
+    2048
+   ],
+   "src_offsets": [
+    2211175776,
+    2211179872
+   ],
+   "nbytes": 4096,
+   "repo": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+   "revision": "f1e8415c4f29508fe281da4e256df26573213bfd",
+   "sha256": "fa5a22be5d5f9aa030a86b919727f536b6251631600888e117df31fe22cbb05d",
+   "source": "range"
+  },
+  "model.language_model.layers.0.post_attention_layernorm.weight": {
+   "file": "L0.safetensors",
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "F16",
+   "shape": [
+    2048
+   ],
+   "src_offsets": [
+    2211179872,
+    2211183968
+   ],
+   "nbytes": 4096,
+   "repo": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+   "revision": "f1e8415c4f29508fe281da4e256df26573213bfd",
+   "sha256": "be30e57f1ea526b8c45909145353dae290bf786c737fb61841a23a4ad363d0c9",
+   "source": "range"
+  },
+  "model.language_model.layers.3.input_layernorm.weight": {
+   "file": "L3.safetensors",
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "F16",
+   "shape": [
+    2048
+   ],
+   "src_offsets": [
+    3791997664,
+    3792001760
+   ],
+   "nbytes": 4096,
+   "repo": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+   "revision": "f1e8415c4f29508fe281da4e256df26573213bfd",
+   "sha256": "11a4be2e78c6bf47b735b4a8ad39032ece018ed004f1833144945144c405f0b9",
+   "source": "range"
+  },
+  "model.language_model.layers.3.mlp.gate.weight": {
+   "file": "L3.safetensors",
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "F16",
+   "shape": [
+    256,
+    2048
+   ],
+   "src_offsets": [
+    3792001760,
+    3793050336
+   ],
+   "nbytes": 1048576,
+   "repo": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+   "revision": "f1e8415c4f29508fe281da4e256df26573213bfd",
+   "sha256": "9b57f1cd866fb4a2cde7c248a7f2b6c3f094089a061a6ba9052bccbd2a5bd514",
+   "source": "range"
+  },
+  "model.language_model.layers.3.mlp.shared_expert.down_proj.weight": {
+   "file": "L3.safetensors",
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "F16",
+   "shape": [
+    2048,
+    512
+   ],
+   "src_offsets": [
+    3793050336,
+    3795147488
+   ],
+   "nbytes": 2097152,
+   "repo": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+   "revision": "f1e8415c4f29508fe281da4e256df26573213bfd",
+   "sha256": "f32b9c3da2530d6b7e93b727f778024c36ed52eb69cd95782714ce3c3c77dfe2",
+   "source": "range"
+  },
+  "model.language_model.layers.3.mlp.shared_expert.gate_proj.weight": {
+   "file": "L3.safetensors",
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "F16",
+   "shape": [
+    512,
+    2048
+   ],
+   "src_offsets": [
+    3795147488,
+    3797244640
+   ],
+   "nbytes": 2097152,
+   "repo": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+   "revision": "f1e8415c4f29508fe281da4e256df26573213bfd",
+   "sha256": "cdc8cd19fbf53654306a15b76a1ffd5a51164c993515d63cd1e74e0879f57010",
+   "source": "range"
+  },
+  "model.language_model.layers.3.mlp.shared_expert.up_proj.weight": {
+   "file": "L3.safetensors",
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "F16",
+   "shape": [
+    512,
+    2048
+   ],
+   "src_offsets": [
+    3797244640,
+    3799341792
+   ],
+   "nbytes": 2097152,
+   "repo": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+   "revision": "f1e8415c4f29508fe281da4e256df26573213bfd",
+   "sha256": "4cd83f0f01284587f34d810e528a5d5820e91e1b732e802d23e4c85609eb2cb5",
+   "source": "range"
+  },
+  "model.language_model.layers.3.mlp.shared_expert_gate.weight": {
+   "file": "L3.safetensors",
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "F16",
+   "shape": [
+    1,
+    2048
+   ],
+   "src_offsets": [
+    3799341792,
+    3799345888
+   ],
+   "nbytes": 4096,
+   "repo": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+   "revision": "f1e8415c4f29508fe281da4e256df26573213bfd",
+   "sha256": "63c3159d0dcdb6a0ffb79f5ebdad082a7773d38fda594df66af43d12956d874f",
+   "source": "range"
+  },
+  "model.language_model.layers.3.post_attention_layernorm.weight": {
+   "file": "L3.safetensors",
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "F16",
+   "shape": [
+    2048
+   ],
+   "src_offsets": [
+    3799345888,
+    3799349984
+   ],
+   "nbytes": 4096,
+   "repo": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+   "revision": "f1e8415c4f29508fe281da4e256df26573213bfd",
+   "sha256": "228032b2efb5592e17d31e642c20ec79b19e6e1d0068228c26aa3916d583803a",
+   "source": "range"
+  },
+  "model.language_model.layers.3.self_attn.k_norm.weight": {
+   "file": "L3.safetensors",
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "F16",
+   "shape": [
+    256
+   ],
+   "src_offsets": [
+    3799349984,
+    3799350496
+   ],
+   "nbytes": 512,
+   "repo": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+   "revision": "f1e8415c4f29508fe281da4e256df26573213bfd",
+   "sha256": "0a52c8c4dbf66b8f2d061988ca3fde8c85e940b33e9c69f3e3a10ae0d2df01f1",
+   "source": "range"
+  },
+  "model.language_model.layers.3.self_attn.k_proj.weight": {
+   "file": "L3.safetensors",
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "F16",
+   "shape": [
+    512,
+    2048
+   ],
+   "src_offsets": [
+    3799350496,
+    3801447648
+   ],
+   "nbytes": 2097152,
+   "repo": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+   "revision": "f1e8415c4f29508fe281da4e256df26573213bfd",
+   "sha256": "086fe4df3ba25cbf8aabaea235da16ede3c526e52c285420fa52846b1ee5e2ad",
+   "source": "range"
+  },
+  "model.language_model.layers.3.self_attn.o_proj.weight": {
+   "file": "L3.safetensors",
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "F16",
+   "shape": [
+    2048,
+    4096
+   ],
+   "src_offsets": [
+    3801447648,
+    3818224864
+   ],
+   "nbytes": 16777216,
+   "repo": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+   "revision": "f1e8415c4f29508fe281da4e256df26573213bfd",
+   "sha256": "231e046d6489ce526a9417a3a46380c2f2bc516d9d0de6c8ac2f86fbbb43d45b",
+   "source": "range"
+  },
+  "model.language_model.layers.3.self_attn.q_norm.weight": {
+   "file": "L3.safetensors",
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "F16",
+   "shape": [
+    256
+   ],
+   "src_offsets": [
+    3818224864,
+    3818225376
+   ],
+   "nbytes": 512,
+   "repo": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+   "revision": "f1e8415c4f29508fe281da4e256df26573213bfd",
+   "sha256": "a71c384c42d93f18269fd673f82309306aab66714fa5c66cd76ab8aeac1b2fc0",
+   "source": "range"
+  },
+  "model.language_model.layers.3.self_attn.q_proj.weight": {
+   "file": "L3.safetensors",
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "F16",
+   "shape": [
+    8192,
+    2048
+   ],
+   "src_offsets": [
+    3818225376,
+    3851779808
+   ],
+   "nbytes": 33554432,
+   "repo": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+   "revision": "f1e8415c4f29508fe281da4e256df26573213bfd",
+   "sha256": "81f00f5aae7af337b3d6aff5792b803de29887d58b7334d28ab29ca3791907ff",
+   "source": "range"
+  },
+  "model.language_model.layers.3.self_attn.v_proj.weight": {
+   "file": "L3.safetensors",
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "F16",
+   "shape": [
+    512,
+    2048
+   ],
+   "src_offsets": [
+    3851779808,
+    3853876960
+   ],
+   "nbytes": 2097152,
+   "repo": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+   "revision": "f1e8415c4f29508fe281da4e256df26573213bfd",
+   "sha256": "79c550fc26ed4a9b11927ac8416a8f33fe251bae8a4aeb62a0e284a6c84ed660",
+   "source": "range"
+  }
+ },
+ "sources": [
+  "range",
+  "reuse"
+ ],
+ "note": "full per-tensor manifest (sha256 + offsets for every expert tensor) lives in the cache dir MANIFEST.json",
+ "download_accounting_corrected": {
+  "note": "verifier D5: B2's report said 'about 2 MB of row slices over three runs'; the result JSONs give 8,109,696 B (final run 6,627,712 + 2x3,840 A_log/dt_bias; two smoke runs 2x(729,472 + 2x3,840)). Totals below are weight bytes over HTTP for all of track B. The cache total includes the integration run's L3 routed-expert fetch (465,567,744 B, 2026-11-12).",
+  "scout_in_ram": 53703648,
+  "b1_gdn_L0_cache": 67441024,
+  "b2_cyankiwi_35b_cache": 1000363008,
+  "b2_validator_reads_in_ram": 8109696,
+  "verifier_refetch_approx": 1390000,
+  "track_b_total_weight_bytes": 1131007376,
+  "budget": 2000000000,
+  "ledger": "m2_0_cache/DOWNLOADS.json (fetch_layer_cache.py --track-budget sums every MANIFEST.json + the ledger)"
+ },
+ "L3_routed_experts": {
+  "note": "verifier D6: the 527,447,040 B in B2's open item is the whole L3 layer; L3's dense tensors (61,879,296 B) are cached, so its routed experts are 465,567,744 B (fetch_layer_cache.py --layer 3 --dry-run: bytes_to_fetch). The cache writer is now append-only (new tensors go to L3.p1.safetensors), so that fetch needs 0.47 GB of disk and RAM, not a rewrite of L3.safetensors.",
+  "bytes_to_fetch": 465567744,
+  "fetched": true,
+  "file": "L3.p1.safetensors",
+  "sha256": "8d01d82ff4556a860f2b47c1fe6ba23e2baeb9b44a75d521283a72fbb8db20d0"
+ }
+}

@@ -1,0 +1,160 @@
+{
+ "mode": "cpu",
+ "repo": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+ "revision": "f1e8415c4f29508fe281da4e256df26573213bfd",
+ "weights": "layer cache $SCRATCH/m2_0_cache/cyankiwi_35b (layers 0, 3; the split step replicates them)",
+ "environment": {
+  "torch": "2.15.0+cpu",
+  "transformers": "5.22.2",
+  "hip": null,
+  "cuda_available": false,
+  "cards": [],
+  "gdn_hip_recurrent": false,
+  "gdn_hip_wmma": false,
+  "fork_autograd_present": true,
+  "fla_installed": false,
+  "env": {
+   "LEASE_ROCR_DEVICES": null,
+   "ROCR_VISIBLE_DEVICES": null,
+   "HIP_VISIBLE_DEVICES": null,
+   "TORCH_BLAS_PREFER_HIPBLASLT": null,
+   "GDN_HIP_WMMA_PREFILL": null,
+   "NGM_MINISGL_FORK": null
+  }
+ },
+ "started": "2026-11-12T02:43:49",
+ "git": "3514ee51a0a37fe422bb5d80916a1f8110af2e11",
+ "steps": [
+  {
+   "name": "gdn",
+   "rc": 0,
+   "wall_s": 206.2,
+   "log": "logs/gdn.log",
+   "out": "gdn.json"
+  }
+ ],
+ "wall_s": 206.2,
+ "criteria": [
+  {
+   "id": "M2-0.1",
+   "kind": "pass bar",
+   "criterion": "fixed GDN backward <= 1.5x native forward",
+   "status": "N/A",
+   "value": null,
+   "detail": "needs the native forward (owner's cards)"
+  },
+  {
+   "id": "M2-0.K",
+   "kind": "kill",
+   "criterion": "GDN backward < 0.2 h per 1M tokens on the 35B",
+   "status": "N/A",
+   "value": null,
+   "detail": "needs the owner's cards"
+  },
+  {
+   "id": "M2-0.2",
+   "kind": "pass bar",
+   "criterion": "dX cosine >= 0.9999 vs HF's torch delta rule (layer-0 mixer, B=1 T=256 bf16, arm fix_exact_b32)",
+   "status": "PASS (CPU stand-in)",
+   "value": 0.99998777,
+   "detail": ""
+  },
+  {
+   "id": "M2.fwd",
+   "kind": "M2 prereq",
+   "criterion": "forward rel. err <= 0.001 vs HF's torch delta rule (same layer)",
+   "status": "FAIL (CPU stand-in)",
+   "value": 0.0032,
+   "detail": "vs HF with fp32 sigmoid(b): 0.000183; vs fp32 truth: 0.00594 (HF bf16 itself vs truth: 0.00594); an exact kernel cannot meet 1e-3 against HF's bf16-rounded sigmoid, see README"
+  },
+  {
+   "id": "info.exact",
+   "kind": "info",
+   "criterion": "native math vs fp64 truth (worst over T; fwd rel / min grad cos)",
+   "status": "INFO",
+   "value": {
+    "hf_ref/fp32": [
+     8.32e-07,
+     1.0
+    ],
+    "fix/fp32": [
+     5.57e-07,
+     1.0
+    ],
+    "fork_ref/fp32": [
+     5.57e-07,
+     1.0
+    ],
+    "hf_ref/bf16": [
+     0.00238,
+     0.9999923
+    ],
+    "fix/bf16": [
+     0.0017,
+     0.999997
+    ],
+    "fork_ref/bf16": [
+     0.0017,
+     0.9999985
+    ]
+   },
+   "detail": "fix/bf16 vs fp64: {'fwd_rel': 0.0017046452917032183, 'min_grad_cos': 0.9999969845776255}"
+  },
+  {
+   "id": "M2.model",
+   "kind": "M2 prereq",
+   "criterion": "model-level train step with HF's default use_cache=True: every GDN layer runs the patched kernel (no silent HF fallback)",
+   "status": "PASS",
+   "value": {
+    "fix": [
+     3,
+     0
+    ],
+    "fix_g1": [
+     3,
+     0
+    ],
+    "native_ours": [
+     3,
+     0
+    ],
+    "ours": [
+     3,
+     0
+    ],
+    "fork_ref": [
+     3,
+     0
+    ]
+   },
+   "detail": ""
+  },
+  {
+   "id": "M2.awq",
+   "kind": "M2 prereq",
+   "criterion": "AWQ dequant bit-exact vs a reference unpack",
+   "status": "PASS",
+   "value": "L0: 768/768 fp32, 768 bf16, fork 768, stacked 256/256; L3: 768/768 fp32, 768 bf16, fork 768, stacked 256/256",
+   "detail": ""
+  },
+  {
+   "id": "7.5#2",
+   "kind": "measure",
+   "criterion": "torch grouped_mm runs on CPU at the 35B MoE shapes, fwd + dX",
+   "status": "PASS",
+   "value": [
+    2.78,
+    4.98
+   ],
+   "detail": "grouped_mm_cpu: torch._grouped_mm runs=True accurate=True, F.grouped_mm runs=True accurate=True (value: speed-up vs the per-expert loop)"
+  },
+  {
+   "id": "M2-0.3",
+   "kind": "pass bar",
+   "criterion": "per-card peak <= 15.5 GB at the planned split",
+   "status": "N/A",
+   "value": null,
+   "detail": "needs the owner's cards (CPU plumbing check ran: checkpointing on/off dX rel {'dx_rel': 0.0})"
+  }
+ ]
+}

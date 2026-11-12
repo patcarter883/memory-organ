@@ -1,0 +1,153 @@
+{
+ "repo": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+ "revision": "f1e8415c4f29508fe281da4e256df26573213bfd",
+ "purpose": "M2-0 B1 GDN validation: layer-0 linear_attn + input_layernorm",
+ "created": "2026-11-11T23:30:28Z",
+ "weight_bytes": 67441024,
+ "bytes_downloaded": {
+  "headers": 85600,
+  "weights": 67441024
+ },
+ "fetch_s": 25.151519298553467,
+ "config_sha256": "dcc210da7562ecc8900dc25ac350333d0c6ae992a310d1c0f387014f0083f281",
+ "file_sha256": "5ab45c23aadc92349dff254e607b1e6643c05fdd084dbeb30312633d2c0aeb93",
+ "tensors": {
+  "model.language_model.layers.0.input_layernorm.weight": {
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "float16",
+   "shape": [
+    2048
+   ],
+   "src_offsets": [
+    2136394720,
+    2136398816
+   ],
+   "nbytes": 4096,
+   "sha256": "98b9d74669296395c2f9553302aa10e7c1edb641eaec3665e78d6a92047344db"
+  },
+  "model.language_model.layers.0.linear_attn.A_log": {
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "float16",
+   "shape": [
+    32
+   ],
+   "src_offsets": [
+    2136398816,
+    2136398880
+   ],
+   "nbytes": 64,
+   "sha256": "b3f3a59ef143a65afa942c8e1cd00b378bfb07083e3299e3d5345146cf44402b"
+  },
+  "model.language_model.layers.0.linear_attn.conv1d.weight": {
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "float16",
+   "shape": [
+    8192,
+    1,
+    4
+   ],
+   "src_offsets": [
+    2136398880,
+    2136464416
+   ],
+   "nbytes": 65536,
+   "sha256": "d62c2a498e49324b3657ee50c7b0fb2662c11648bd7db88319a8a4d7e8c676ae"
+  },
+  "model.language_model.layers.0.linear_attn.dt_bias": {
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "float16",
+   "shape": [
+    32
+   ],
+   "src_offsets": [
+    2136464416,
+    2136464480
+   ],
+   "nbytes": 64,
+   "sha256": "519e81ff76db2cba69cfa11e5962d3ba80eacb21474cac61144835579cfefa72"
+  },
+  "model.language_model.layers.0.linear_attn.in_proj_a.weight": {
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "float16",
+   "shape": [
+    32,
+    2048
+   ],
+   "src_offsets": [
+    2136464480,
+    2136595552
+   ],
+   "nbytes": 131072,
+   "sha256": "ff1277caf930ff68e60fb7f658a0b7a38462e3c12887f4a76c4501acb56cd44a"
+  },
+  "model.language_model.layers.0.linear_attn.in_proj_b.weight": {
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "float16",
+   "shape": [
+    32,
+    2048
+   ],
+   "src_offsets": [
+    2136595552,
+    2136726624
+   ],
+   "nbytes": 131072,
+   "sha256": "d7095886878978e4d33f1ecaefa7faab405d279468c9a3ecf2a6c0c25e39fb37"
+  },
+  "model.language_model.layers.0.linear_attn.in_proj_qkv.weight": {
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "float16",
+   "shape": [
+    8192,
+    2048
+   ],
+   "src_offsets": [
+    2136726624,
+    2170281056
+   ],
+   "nbytes": 33554432,
+   "sha256": "abef9f38af3b53464b8e8dc182f0a4363d32bd45ae2b932b60497ca8b981bbde"
+  },
+  "model.language_model.layers.0.linear_attn.in_proj_z.weight": {
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "float16",
+   "shape": [
+    4096,
+    2048
+   ],
+   "src_offsets": [
+    2170281056,
+    2187058272
+   ],
+   "nbytes": 16777216,
+   "sha256": "cf1449573693a3d691c912517b0771e161d4b99bd775cc0fbb795a0839ed4e82"
+  },
+  "model.language_model.layers.0.linear_attn.norm.weight": {
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "float16",
+   "shape": [
+    128
+   ],
+   "src_offsets": [
+    2187058272,
+    2187058528
+   ],
+   "nbytes": 256,
+   "sha256": "4cd80d7aa4019ffbfc216e8ba7613542cbabb438218ff2af35df7b81500739f3"
+  },
+  "model.language_model.layers.0.linear_attn.out_proj.weight": {
+   "shard": "model-00005-of-00006.safetensors",
+   "dtype": "float16",
+   "shape": [
+    2048,
+    4096
+   ],
+   "src_offsets": [
+    2187058528,
+    2203835744
+   ],
+   "nbytes": 16777216,
+   "sha256": "52a14bc98ace58b9189c7f78d223c895624f2915a87236094eb6478ffb50a087"
+  }
+ }
+}

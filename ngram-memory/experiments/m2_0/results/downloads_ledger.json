@@ -1,0 +1,10 @@
+{
+ "note": "Track-B weight bytes read over HTTP that are NOT recorded in a cache MANIFEST.json (kept in RAM only). fetch_layer_cache.py adds these to the manifests' totals for --track-budget.",
+ "repo_revisions": {"cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit": "f1e8415c4f29508fe281da4e256df26573213bfd", "Qwen/Qwen3.6-35B-A3B": "345d467b117d1fd5eda9b879a5988de9ae5f47a7"},
+ "extra": [
+  {"what": "b2 awq_layers_validate part 3+5 (bf16-original row slices + A_log/dt_bias), final run", "weight_bytes": 6635392},
+  {"what": "b2 awq_layers_validate parts 3+5, two smoke runs", "weight_bytes": 1474304},
+  {"what": "verifier re-fetch of 16 tensors (sha256 check), approx.", "weight_bytes": 1390000}
+ ],
+ "header_bytes_not_in_manifests_approx": 3700000
+}

@@ -1,0 +1,99 @@
+{
+ "repo": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+ "revision": "f1e8415c4f29508fe281da4e256df26573213bfd",
+ "cache_files": {
+  "L0.safetensors": {
+   "bytes": 540668608,
+   "sha256": "b2a99d47e1e14e2dcab543655b2f9ba1388bbb1799c4a0c17ea5f5a46aeb1dc3"
+  },
+  "L3.p1.safetensors": {
+   "bytes": 465876568,
+   "sha256": "8d01d82ff4556a860f2b47c1fe6ba23e2baeb9b44a75d521283a72fbb8db20d0"
+  },
+  "L3.safetensors": {
+   "bytes": 61881048,
+   "sha256": "3b4f3e56a4c488fd7c4e71a310d5c099767534eb3bfb51a287d2472b73b5224e"
+  }
+ },
+ "device": "cpu",
+ "threads": 3,
+ "torch": "2.15.0+cpu",
+ "args": {
+  "cache_dir": "$SCRATCH/m2_0_cache",
+  "ckpt": null,
+  "out": "$SCRATCH/integ/selftest/awq",
+  "tag": "selftest",
+  "parts": "1",
+  "threads": 3,
+  "gpu": false,
+  "epg": 32,
+  "layer_T": 2048,
+  "moe_ref_tokens": [
+   2048,
+   8192
+  ],
+  "gdn_B": 1,
+  "gdn_T": 4096,
+  "attn_B": 1,
+  "attn_T": 4096,
+  "piece_T": 4096,
+  "moe_chunk_tokens": [
+   8192,
+   16384
+  ],
+  "epg_mem": [
+   8,
+   32
+  ],
+  "orig_rows": 256
+ },
+ "nproc": 4,
+ "loadavg_start": [
+  5.708984375,
+  3.5556640625,
+  2.65625
+ ],
+ "grouped_mm_cpu": {
+  "available": true,
+  "rel_err": 0.0016148107824847102,
+  "ok": true
+ },
+ "1_bitexact": {
+  "L0": {
+   "matrices": 768,
+   "ours_eq_ref_fp32": 768,
+   "ours_eq_ref_bf16": 768,
+   "ours_eq_fork_fp32": 768,
+   "fork_available": true,
+   "nan": 0,
+   "ref_build_s": 367.2,
+   "down_proj_all_zero_input_columns": {
+    "min": 2,
+    "max": 419,
+    "mean": 211.94140625,
+    "of": 512
+   },
+   "experts": 256,
+   "stacked_module_eq_ref": 256
+  },
+  "L3": {
+   "matrices": 768,
+   "ours_eq_ref_fp32": 768,
+   "ours_eq_ref_bf16": 768,
+   "ours_eq_fork_fp32": 768,
+   "fork_available": true,
+   "nan": 0,
+   "ref_build_s": 395.0,
+   "down_proj_all_zero_input_columns": {
+    "min": 0,
+    "max": 120,
+    "mean": 1.4453125,
+    "of": 512
+   },
+   "experts": 256,
+   "stacked_module_eq_ref": 256
+  }
+ },
+ "wall_s": 822.2,
+ "peak_rss_bytes": 6046019584
+}
