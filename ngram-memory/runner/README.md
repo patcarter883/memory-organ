@@ -119,6 +119,18 @@ for M1b. Chunking works as before (`--stop-after S1_select`, then the rest). M1c
 targets under `_cache/`, which stays on the runner like the checkpoints, and a REG output directory
 (`REG_op/reg/`), which is uploaded. Without `--grid`, `run.py` runs the M1b grid exactly as before.
 
+### M1d
+
+M1d (`experiments/m1d/PREREG.md`, dev only, no test read) uses the same task with its own grid:
+
+- `run_name: m1d`
+- `args: --grid experiments/m1d/grid.json --parallel 2 --max-stage-threads 16`
+
+Estimated 10–11 h (`python experiments/m1d/eta.py`); chunk with `--stop-after P3_e3_dev` if a job limit needs it.
+P3's snapshots (`P3_seed0/cartridge_e1.pt`, `cartridge_e2.pt`) stay on the runner like the other `.pt` files. The run
+directory holds the planted canary secrets (`*/canaries.json`, `REG2/reg/*.jsonl`); results copies for the
+repository are made with `python experiments/m1d/redact.py RUN_DIR OUT_DIR`, which strips them.
+
 ## 5. What makes a runner run comparable to the dev container
 
 `scripts/runner_inputs.py` pins every input by content (`runner/inputs/inputs.lock.json`):

@@ -81,6 +81,9 @@ def main() -> None:
     ap.add_argument("--countgrid-weights", default=None,
                     help="comma list of count weights for countgrid:* conditions (default countgrid.DEFAULT_WEIGHTS)")
     ap.add_argument("--no-countgrid-npz", action="store_true", help="do not write <set>__<label>__grid.npz")
+    ap.add_argument("--countgrid-kl-sets", default=argparse.SUPPRESS,   # absent from summary args unless given
+                    help="M1d: comma list of sets on which countgrid:* computes KL(base || mixture) and top-1 "
+                         "agreement (default: every set); elsewhere NLL and EM only, from the same mixture floats")
     a = ap.parse_args()
     os.environ.setdefault("OMP_NUM_THREADS", str(a.threads))
     import torch
@@ -367,7 +370,9 @@ def main() -> None:
         for set_name, docs in sets.items():
             R = S["sets"].setdefault(set_name, {})
             if isinstance(cond, cg.CountGridCondition):  # many count weights in one pass (M1c frontier)
-                g = cg.score_grid(model, docs, plans[set_name], cond)
+                kls = getattr(a, "countgrid_kl_sets", None)
+                kl_here = kls is None or set_name in kls.split(",")
+                g = cg.score_grid(model, docs, plans[set_name], cond, **({} if kl_here else dict(kl=False)))
                 if not a.no_countgrid_npz:
                     g.save(out / f"{set_name}__{label(spec)}__grid.npz")
                 b = base_res[set_name]

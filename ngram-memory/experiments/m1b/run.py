@@ -104,6 +104,8 @@ def load_grid(smoke: bool) -> dict:
     g["eval_flags"] = g["eval"]["smoke" if smoke else "full"]
     if "reg" in g:
         g["reg_flags"] = g["reg"]["smoke" if smoke else "full"]
+    if "reg2" in g:
+        g["reg2_flags"] = g["reg2"]["smoke" if smoke else "full"]
     return g
 
 
@@ -141,14 +143,102 @@ def canary_config(cfgd: dict):
 
 def arm_steps(cfgd: dict, B: dict, n_windows: int) -> int:
     """Training steps of an arm: the budget's steps, an int override, or 'epoch' (one full pass over the train
-    windows; capped by the budget's epoch_steps_cap in smoke runs)."""
+    windows; capped by the budget's epoch_steps_cap in smoke runs). M1d: with 'epoch', the arm field `epochs`
+    (default 1) gives that many passes; pass e visits the windows in the permutation default_rng([seed, e])
+    (ingest/train.py RowTrainer.train_index), so pass 1 is the one-pass order of the same seed."""
     sp = cfgd.get("steps")
     if sp is None:
         return int(B["steps"])
     if sp == "epoch":
         cap = B.get("epoch_steps_cap")
-        return min(n_windows, int(cap)) if cap else n_windows
+        per = min(n_windows, int(cap)) if cap else n_windows
+        return per * int(cfgd.get("epochs", 1))
     return int(sp)
+
+
+def snapshot_steps(cfgd: dict, B: dict, n_windows: int, steps: int) -> list[tuple[int, int]]:
+    """M1d: [(pass p, step at the end of pass p)] for the cartridge snapshots of an arm with `snapshots: "epochs"`
+    (every pass end before the last; the last pass is cartridge.pt). [] when the arm has no snapshots."""
+    if cfgd.get("snapshots") in (None, False):
+        return []
+    if cfgd.get("snapshots") != "epochs" or cfgd.get("steps") != "epoch":
+        raise SystemExit("snapshots: only 'epochs' with steps 'epoch' is supported")
+    per = arm_steps(dict(cfgd, epochs=1), B, n_windows)
+    return [(p, p * per) for p in range(1, int(cfgd.get("epochs", 1))) if p * per < steps]
+
+
+def train_with_snapshots(trainer, snaps: list[tuple[int, int]], d: Path, ckpt: Path, cb, save) -> list[dict]:
+    """Train up to each snapshot step and write <d>/cartridge_e<p>.pt (+ .json) there; resumable: a snapshot that
+    exists is kept, one that is missing is written only if training stands exactly at its step (a checkpoint is
+    saved at the end of every train() call, so a resume lands there), else the run fails rather than snapshot the
+    wrong step. Splitting train() into segments does not change the optimisation (same steps, same state)."""
+    out = []
+    for pno, at in snaps:
+        sp = d / f"cartridge_e{pno}.pt"
+        if trainer.step_idx < at:
+            trainer.train(at - trainer.step_idx, ckpt, cb)
+        meta = sp.with_suffix(".json")
+        if not (sp.exists() and meta.exists()):
+            if trainer.step_idx != at:
+                raise SystemExit(f"{sp.name} is missing and training is already at step {trainer.step_idx}")
+            c = trainer.cartridge()
+            save(c, str(sp) + ".tmp")
+            os.replace(str(sp) + ".tmp", sp)
+            jdump(meta, dict(pass_no=pno, step=at, rows=len(c), path=str(sp)))
+            log(f"snapshot pass {pno} at step {at}: {len(c)} rows")
+        out.append(jload(meta))
+    return out
+
+
+def canary_stream_spans(tok, files, docs, man: dict, framing: str = "bare") -> dict[str, list[tuple[int, int]]]:
+    """Token spans [lo, hi) of every planted secret in the packed train stream (docs joined with EOS, in `files`
+    order): canary id -> one span per copy. Offsets come from the tokenizer on the framed text, checked to give the
+    same ids as the training documents."""
+    import numpy as np
+    from ngram_memory.ingest import corpus as C
+    off = np.cumsum([0] + [len(d.ids) + 1 for d in docs])[:-1]
+    idx = {f.path: i for i, f in enumerate(files)}
+    spans: dict[str, list[tuple[int, int]]] = {}
+    for path in man["files"]:
+        i = idx[path]
+        f = files[i]
+        txt = C.frame(f.rel, f.text, framing)
+        h = len(txt) - len(f.text)
+        enc = tok.tok.encode(txt, add_special_tokens=False)
+        if list(enc.ids) != [int(x) for x in docs[i].ids]:
+            raise SystemExit(f"canary spans: tokenizer offsets disagree with the training ids of {path}")
+        o = np.asarray(enc.offsets, np.int64)
+        for r in man["records"]:
+            if r["path"] != path:
+                continue
+            c0, c1 = h + r["secret_start"], h + r["secret_end"]
+            hit = np.nonzero((o[:, 0] < c1) & (o[:, 1] > c0))[0]
+            spans.setdefault(r["id"], []).append((int(off[i] + hit[0]), int(off[i] + hit[-1] + 1)))
+    return spans
+
+
+def canary_windows(stream, spans: dict, window: int, after: int, context_len: int, eos: int) -> list:
+    """M1d positive control: one training window per planted copy, `window` tokens of the train stream ending
+    `after` tokens past the copy's secret (the copy with up to window - after - len(secret) tokens before it); every
+    target scored, the true n-gram context before the window. Ordered by (stream position)."""
+    import numpy as np
+    from ngram_memory.ingest.corpus import IGNORE, Window
+    n = int(stream.size)
+    out = []
+    for lo, hi in sorted(x for v in spans.values() for x in v):
+        b = min(n, hi + after)
+        a = max(0, b - window)
+        ids = stream[a:b].copy()
+        tgt = np.arange(a + 1, b + 1)
+        lab = np.full(b - a, IGNORE, dtype=np.int64)
+        ok = tgt < n
+        lab[ok] = stream[tgt[ok]]
+        ctx = np.full(context_len, eos, dtype=np.int64)
+        k = min(a, context_len)
+        if k:
+            ctx[context_len - k:] = stream[a - k:a]
+        out.append(Window(ids, ctx, lab, a))
+    return out
 
 
 def trim_metrics(path: Path, step: int) -> int:
@@ -287,6 +377,25 @@ def worker_train(a) -> int:
     docs = C.tokenize_files(tok, train_files, "bare")
     stream = C.pack_stream(docs, eos)
     windows = C.make_windows(stream, B["window"], B["stride"], key.context_len, eos)
+    if cc is not None and isinstance(cc, CN.DoseCanaryConfig):     # M1d: copies of a canary in distinct windows
+        spans = canary_stream_spans(tok, train_files, docs, cman)
+        wc = CN.window_copies(spans, [(w.start, w.start + w.ids.size) for w in windows])
+        summ["canary_windows"] = dict(conflicts=wc["conflicts"], canary_windows=wc["canary_windows"],
+                                      per_canary={k: dict(copies=v["copies"], distinct_windows=v["distinct_windows"])
+                                                  for k, v in wc["per_canary"].items()})
+        log("canary windows", dict(n=len(wc["canary_windows"]), conflicts=wc["conflicts"]))
+        if wc["conflicts"]:
+            raise SystemExit(f"canaries: a training window holds two copies of one canary: {wc['conflicts']}")
+        if cfgd.get("train_windows") == "canary":   # M1d positive control: train on the canary copies only
+            pw = min(int(cfgd.get("pc_window", 512)), int(B["window"]))
+            windows = canary_windows(stream, spans, pw, int(cfgd.get("pc_after", 32)), key.context_len, eos)
+            summ["train_windows"] = dict(kind="canary", window=pw, after=int(cfgd.get("pc_after", 32)),
+                                         n=len(windows))
+            log("positive control windows", summ["train_windows"])
+    elif cfgd.get("train_windows") == "canary":
+        raise SystemExit("train_windows 'canary' needs dose-response canaries (canaries.groups)")
+    if B.get("train_windows_cap"):     # M1d smoke budget only: a short pass, so passes 2-3 use fresh permutations
+        windows = windows[: int(B["train_windows_cap"])]
     dev_stream = C.pack_stream(C.tokenize_files(tok, dev_files, "bare"), eos)
     dev_windows = C.make_windows(dev_stream, B["window"], B["stride"], key.context_len, eos)[: B["monitor_dev_windows"]]
     summ["data"] = dict(corpus=corpus, train_files=len(train_files), train_tokens=int(stream.size),
@@ -310,7 +419,7 @@ def worker_train(a) -> int:
     ING.trim()
 
     anchors_w = {}
-    for name, ds in (("near", near_docs), ("chat", chat_docs)):
+    for name, ds in (() if cfgd.get("anchors", True) is False else (("near", near_docs), ("chat", chat_docs))):
         aw = C.make_windows(C.pack_stream(ds, eos), B["anchor_window"], B["anchor_window"], key.context_len, eos)
         aw = aw[: B["anchor_windows"]]
         aw, nm = ING.specific_mask(aw, key, specific)
@@ -356,6 +465,8 @@ def worker_train(a) -> int:
     if cfgd.get("steps") is not None:
         summ["steps_mode"] = dict(spec=cfgd["steps"], train_windows=len(windows), steps=base_steps,
                                   epoch_steps_cap=B.get("epoch_steps_cap"))
+        if "epochs" in cfgd:                        # M1d (absent for M1c arms, whose train.json is unchanged)
+            summ["steps_mode"]["epochs"] = int(cfgd["epochs"])
     steps = base_steps if not a.max_steps else min(base_steps, a.max_steps)
     if a.max_steps:
         summ["max_steps_override"] = a.max_steps
@@ -409,6 +520,10 @@ def worker_train(a) -> int:
         jdump(d / "train_progress.json", dict(step=r["step"] + 1, steps=steps, step_s=r["step_s"],
                                               rss_mb=r["rss_mb"], peak_rss_mb=r["peak_rss_mb"], t=time.time()))
 
+    snaps = snapshot_steps(cfgd, B, len(windows), steps)
+    if snaps:     # M1d: cartridge snapshots at the end of every pass but the last (the last is cartridge.pt)
+        summ["snapshots"] = train_with_snapshots(trainer, snaps, d, ckpt, cb,
+                                                 lambda c, path: torch.save(c.state_dict(), path))
     trainer.train(None, ckpt, cb)
     summ["dev_monitor_after"] = trainer.eval_nll(dev_windows)
     allrec = [json.loads(x) for x in (d / "metrics.jsonl").read_text().splitlines() if x.strip()]
@@ -554,6 +669,8 @@ class Runner:
             cmd += ["--tune-max-windows", str(E["tune_max_windows"])]
         if E.get("countgrid_weights") is not None:
             cmd += ["--countgrid-weights", str(E["countgrid_weights"])]
+        if E.get("countgrid_kl_sets") is not None:             # M1d: KL only where the bars read it (R1)
+            cmd += ["--countgrid-kl-sets", str(E["countgrid_kl_sets"])]
         if reuse_base is not None:
             cmd += ["--reuse-base", str(reuse_base)]
         if fmt_map:
@@ -1126,13 +1243,279 @@ class Runner:
                                counts_matched=oprow["counts_matched"]))
         return out
 
+    # ---------------------------------------------------------------------------------- M1d stage kinds
+    def stage_train(self, st: dict) -> dict:
+        """M1d: train one arm and do not evaluate it (its cartridges are evaluated by rows_eval stages, or only used
+        by REG v2). Same worker and arm.json check as train_eval."""
+        name = st["name"]
+        d = self.out / name
+        d.mkdir(parents=True, exist_ok=True)
+        arm = resolve_arm(self.grid, name, self.out)
+        if (d / "arm.json").exists() and jload(d / "arm.json") != arm:
+            raise SystemExit(f"{name}: resolved config differs from the one this arm started with")
+        jdump(d / "arm.json", arm)
+        if not (d / "train.json").exists():
+            self.mark(name, status="training", config=arm)
+            cmd = [PY, str(Path(__file__).resolve()), "--worker", "train", "--stage", name, "--out", str(self.out),
+                   "--threads", str(self.threads())] + (["--smoke"] if self.a.smoke else []) + grid_args()
+            r = run_guarded(cmd, d / "train.log", self.a.rss_limit_gb * 1024, self.threads())
+            if r["aborted"] or r["returncode"] != 0:
+                raise StageFailed(name, r)
+        tr = jload(d / "train.json")
+        out = dict(config=arm, train=tr["train"], rows=tr["rows"], cartridge=tr["cartridge"], data=tr["data"],
+                   snapshots=tr.get("snapshots") or [], host_unchanged=tr["host_unchanged"])
+        for k in ("teacher", "canaries", "steps_mode", "canary_windows", "train_windows"):
+            if k in tr:
+                out[k] = {kk: v for kk, v in tr[k].items() if kk != "manifest"} if k == "canaries" else tr[k]
+        return out
+
+    def _cartridge_of(self, source: str, snapshot) -> tuple[Path, int, dict]:
+        """(cartridge path, training step it was taken at, the source stage's result) of a train / train_eval
+        stage: snapshot 'final' (cartridge.pt) or a pass number (cartridge_e<p>.pt, PREREG §2)."""
+        src = self._res(source)
+        if src is None:
+            raise StageFailed(source, dict(error=f"{source} has no result"))
+        sd = self.out / source
+        if snapshot in (None, "final"):
+            return sd / "cartridge.pt", int(src["train"]["steps"]), src
+        snaps = {int(x["pass_no"]): x for x in src.get("snapshots") or []}
+        if int(snapshot) not in snaps:
+            raise StageFailed(source, dict(error=f"{source} has no pass-{snapshot} snapshot"))
+        return Path(snaps[int(snapshot)]["path"]), int(snaps[int(snapshot)]["step"]), src
+
+    def stage_rows_eval(self, st: dict) -> dict:
+        """M1d: evaluate one cartridge of a train stage (st['source'], st['snapshot'] = pass number or 'final') on
+        the dev sets exactly as train_eval evaluates its own: rows + arm_extra_conditions, base reused. The
+        cartridge is linked as <stage>/cartridge.pt so its labels are rows[cartridge] (the bar code's labels)."""
+        name = st["name"]
+        d = self.out / name
+        d.mkdir(parents=True, exist_ok=True)
+        snap = st.get("snapshot", "final")
+        cpath, step, src = self._cartridge_of(st["source"], snap)
+        link = d / "cartridge.pt"
+        if link.is_symlink() and Path(os.readlink(link)) != cpath:
+            raise SystemExit(f"{name}: cartridge link points elsewhere ({os.readlink(link)})")
+        if not link.exists():
+            link.symlink_to(cpath)
+        sd = self.out / st["source"]
+        rows = f"rows:{link}"
+        conds = ",".join([rows] + [c.replace("{rows}", rows) for c in self.grid.get("arm_extra_conditions", [])])
+        self.mark(name, status="evaluating", source=st["source"], snapshot=snap, step=step)
+        ev = self.evaluate(name, self.grid["dev_sets"], conds, reuse_base=self.out / self.grid["base_stage"] / "eval",
+                           fmt_map={"cartridge": str(sd / "fmt.json")})
+        res = dev_metrics(ev["summary"], "rows[cartridge]", self.grid.get("primary"))
+        config = dict(src["config"], name=name, source=st["source"], snapshot=snap, snapshot_step=step)
+        n_rows = next((int(x["rows"]) for x in src.get("snapshots") or [] if str(x["pass_no"]) == str(snap)),
+                      src["cartridge"]["rows"])
+        return dict(config=config, source=st["source"], snapshot=snap, snapshot_step=step, train=src["train"],
+                    rows=src["rows"], cartridge=dict(rows=n_rows, path=str(cpath)), dev=res,
+                    eval_dir=str(d / "eval"), eval_wall_s=ev["run"]["wall_s"], eval_peak_rss_mb=ev["run"]["peak_rss_mb"])
+
+    def stage_reg2(self, st: dict) -> dict:
+        """M1d REG v2 (PREREG §6): scripts/reg2.py on every listed cartridge against base, with the shared canary
+        manifest (all listed arms must hold the same one); the positive control is a listed condition."""
+        d = self.out / st["name"]
+        F = self.grid.get("reg2_flags", {})
+        cmd = [PY, str(ROOT / "scripts/reg2.py"), "--splits", str(self.splits_json()), "--host", QWEN25,
+               "--out", str(d / "reg"), "--threads", str(self.threads())]
+        shas, man, skipped = set(), None, []
+        for c in st["conditions"]:
+            if self._res(c["source"]) is None and c["source"] in st.get("optional_after", []):
+                skipped.append(dict(label=c["label"], source=c["source"], why=self._stage_error(c["source"])))
+                continue                     # a failed optional source (the positive control): run without it
+            cpath, step, _src = self._cartridge_of(c["source"], c.get("snapshot", "final"))
+            sd = self.out / c["source"]
+            m = sd / "canaries.json"
+            if not m.exists():
+                raise StageFailed(st["name"], dict(error=f"{c['source']} has no canary manifest"))
+            shas.add(jload(m)["sha256"])
+            man = man or m
+            cmd += ["--rows", str(cpath), "--fmt", str(sd / "fmt.json"), "--label", c["label"]]
+            if c.get("positive_control"):
+                cmd += ["--positive-control", c["label"]]
+        if len(shas) != 1:
+            raise StageFailed(st["name"], dict(error=f"the listed arms hold different canary manifests: {sorted(shas)}"))
+        cmd += ["--canaries", str(man)]
+        for k in ("n_prefixes", "min_prefix", "max_prefix", "max_new", "min_run", "batch_size", "score_batch", "seed",
+                  "canary_context", "canary_max_new", "n_random", "n_boot", "max_train_files"):
+            if F.get(k) is not None:
+                cmd += ["--" + k.replace("_", "-"), str(F[k])]
+        r = run_guarded(cmd, d / "reg.log", self.a.rss_limit_gb * 1024, self.threads())
+        if r["aborted"] or r["returncode"] != 0:
+            raise StageFailed(st["name"], r)
+        S = jload(d / "reg" / "summary.json")
+        brief = {k: dict(runs_excl=c["runs_excl"], true=c["true"],
+                         canaries=[{kk: x[kk] for kk in ("id", "exact", "secret_lcp_chars", "rank", "exposure_bits",
+                                                          "delta", "masked")} for x in c["canaries"]],
+                         canary_rows=c.get("canary_rows")) for k, c in S["conditions"].items()}
+        return dict(conditions=st["conditions"], skipped=skipped, verdict=S["verdict"], reg_pass=S["reg_pass"],
+                    validated=S["validated"], versus_base=S["versus_base"], brief=brief, canaries=S["canaries"],
+                    probes=S["probes"], summary=str(d / "reg" / "summary.json"), wall_s=r["wall_s"],
+                    peak_rss_mb=r["peak_rss_mb"])
+
+    def _rho_diag(self, stage: str, steps_per_pass: int | None = None) -> dict | None:
+        """rho diagnostics from <stage>/metrics.jsonl (overall and per pass): how often the rho budget bound."""
+        mp = self.out / stage / "metrics.jsonl"
+        if not mp.exists():
+            return None
+        rec = [json.loads(x) for x in mp.read_text().splitlines() if x.strip()]
+
+        def summ(rs):
+            if not rs:
+                return None
+            pen = [r.get("rho_pen_near", 0.0) + r.get("rho_pen_chat", 0.0) for r in rs]
+            over = [max(r.get("rho_frac_over_near", 0.0), r.get("rho_frac_over_chat", 0.0)) for r in rs]
+            return dict(steps=len(rs), steps_with_rho_penalty=int(sum(p > 0 for p in pen)),
+                        anchor_frac_over_max=float(max(over)),
+                        train_rho_p99_max=float(max(r["rho_train_p99"] for r in rs)),
+                        train_frac_over_max=float(max(r["rho_train_frac_over"] for r in rs)),
+                        nll_mean=float(sum(r["nll"] for r in rs) / len(rs)))
+        out = dict(all=summ(rec))
+        if steps_per_pass:
+            out["per_pass"] = {str(e + 1): summ([r for r in rec if r["step"] // steps_per_pass == e])
+                               for e in range((max(r["step"] for r in rec) // steps_per_pass) + 1)} if rec else {}
+        return out
+
+    def stage_m1d_report(self, st: dict) -> dict:
+        """M1d (PREREG §5, §7): dev bars per arm and snapshot against the fresh counts frontier (M1c's definitions),
+        and the pre-registered M2-recipe rules. No test read; no model is run."""
+        R_ = st["rules"]
+        role = st["arms"]                                      # role -> stage holding its dev evaluation
+        ctx, rows = self._m1c_rows(list(role.values()), st["counts"], st["name"])
+        by = {r["stage"]: r for r in rows}
+        p3 = self._res(st.get("p3_train", "P3_seed0")) or {}
+        sm = p3.get("steps_mode") or {}
+        per_pass = int(sm["train_windows"]) if sm.get("spec") == "epoch" and sm.get("train_windows") else None
+
+        def row(k):
+            return by.get(role.get(k))
+
+        def A(k):
+            r = row(k)
+            return None if r is None or r["bar_a"]["diff"] is None else float(r["bar_a"]["diff"]["pts"])
+
+        def sh(k):
+            r = row(k)
+            return None if r is None else float(r["x_share"])
+
+        def num(x):
+            return float("-inf") if x is None else x
+        table = []
+        for k, stg in role.items():
+            r = by.get(stg)
+            if r is None:
+                table.append(dict(role=k, stage=stg, missing=self._stage_error(stg)))
+                continue
+            steps = r["config"].get("snapshot_step") or ((self._res(stg) or {}).get("train") or {}).get("steps")
+            table.append(dict(role=k, stage=stg, steps=steps,
+                              rho=r["config"]["rho"], objective=r["config"].get("objective", "nll"),
+                              seed=r["config"]["seed"], e1=r["x"]["e1"], e1_ci=r["x"]["e1_ci"], e1_all=r["x"]["e1_all"],
+                              r1=r["x"]["r1"], kl=r["x"]["kl"], r2=r["x"]["r2"], share=r["x_share"],
+                              x_within=r["x_within"], lambda_x=r["lambda_x"]["weight"],
+                              bar_a_diff=A(k), bar_a_ci=r["bar_a"]["diff"] and r["bar_a"]["diff"]["ci"],
+                              bar_a=r["bar_a"]["holds"], bar_a_at_lstar=r["bar_a_at_lstar"]["diff"]["pts"],
+                              counts_matched=r["counts_matched"]["weight"], bar_b_ratio=r["bar_b"]["ratio"],
+                              bar_b_diff_ci=r["bar_b"]["diff"]["ci"], bar_b=r["bar_b"]["holds"], any_bar=r["any_bar"]))
+        dec: dict = {}
+        # 1. epochs (PREREG §7.1)
+        P = R_["epochs"]
+        ks = P["passes"]
+        a = {k: A(f"P3_e{k}") for k in ks}
+        s = {k: sh(f"P3_e{k}") for k in ks}
+        w = {k: (row(f"P3_e{k}") or {}).get("x_within") for k in ks}
+        steps_log, ep = [], None
+        if all(row(f"P3_e{k}") is not None for k in ks):
+            for k in ks[:-1]:
+                nx = k + 1
+                gain = None if a[nx] is None else a[nx] - num(a[k])
+                dshare = s[nx] - s[k]
+                stop = a[nx] is None or gain < P["min_gain_pts"] or dshare > P["max_share_increase"] or not w[nx]
+                steps_log.append(dict(from_pass=k, to_pass=nx, bar_a_gain_pts=gain, share_increase=dshare,
+                                      next_within=w[nx], stop=bool(stop)))
+                if stop:
+                    ep = k
+                    break
+            if ep is None:
+                ep = ks[-1]
+            dec["epochs"] = dict(value=ep, steps=steps_log, bar_a=a, share=s, still_gaining_at_last=ep == ks[-1]
+                                 and bool(steps_log) and not steps_log[-1]["stop"], rule=P["text"])
+        else:
+            dec["epochs"] = dict(value=None, reason="a P3 snapshot has no dev result", bar_a=a, share=s)
+        # 2. rho (PREREG §7.2)
+        Q = R_["rho"]
+        a1, ar = A("P3_e1"), A("R01_rho0p1")
+        if row("P3_e1") is None or row("R01_rho0p1") is None:
+            dec["rho"] = dict(value=None, reason="P3_e1 or R01 has no dev result")
+        else:
+            if ar is None and a1 is None:
+                val, why = None, "neither has a lambda_X (no Bar-A difference)"
+            elif ar is not None and ar >= num(a1) - Q["tie_pts"]:
+                val, why = Q["small"], f"R01's Bar-A diff is within {Q['tie_pts']} points of P3_e1's, or above it"
+            else:
+                val, why = Q["large"], f"P3_e1's Bar-A diff exceeds R01's by more than {Q['tie_pts']} points"
+            dec["rho"] = dict(value=val, reason=why, bar_a_r01=ar, bar_a_p3e1=a1,
+                              diff=None if ar is None or a1 is None else ar - a1, rule=Q["text"],
+                              rho_diag={"R01_rho0p1": self._rho_diag(role["R01_rho0p1"]),
+                                        "P3_pass1": (self._rho_diag(st.get("p3_train", "P3_seed0"),
+                                                                    per_pass) or {}).get("per_pass", {}).get("1")})
+        # 3. distill (PREREG §7.3)
+        D = R_["distill"]
+        ad = A("DF_distill")
+        if row("DF_distill") is None or row("P3_e1") is None:
+            dec["distill"] = dict(value=None, reason="DF or P3_e1 has no dev result")
+        else:
+            keep = ad is not None and ad >= num(a1)
+            dec["distill"] = dict(value="keep" if keep else "drop", bar_a_df=ad, bar_a_p3e1=a1,
+                                  diff=None if ad is None or a1 is None else ad - a1, rule=D["text"])
+        # 4. replicate (PREREG §7.4)
+        r0, r1_ = row("P3_e1"), row("S1_seed1")
+        if r0 is None or r1_ is None:
+            dec["replicate"] = dict(value=None, reason="P3_e1 or S1_seed1 has no dev result")
+        else:
+            both = bool(r1_["bar_a"]["holds"] and r1_["bar_b"]["holds"])
+            dA = None if A("S1_seed1") is None or a1 is None else abs(A("S1_seed1") - a1)
+            dec["replicate"] = dict(abs_diff_e1=abs(r1_["x"]["e1"] - r0["x"]["e1"]), abs_diff_bar_a=dA,
+                                    seed1_bar_a=r1_["bar_a"]["holds"], seed1_bar_b=r1_["bar_b"]["holds"],
+                                    seed1_holds_both=both, m1c_pass_fragile=not both, rule=R_["replicate"]["text"])
+            for k in ("rho", "distill"):                       # margins against the seed difference (annotation)
+                df = dec.get(k, {}).get("diff")
+                if df is not None and dA is not None:
+                    dec[k]["within_seed_noise"] = bool(abs(df) <= dA)
+            if dec.get("epochs", {}).get("steps") and dA is not None:
+                for x in dec["epochs"]["steps"]:
+                    if x["bar_a_gain_pts"] is not None:
+                        x["within_seed_noise"] = bool(abs(x["bar_a_gain_pts"]) <= dA)
+        ref = self.grid.get("m1c_reference", {})
+        comp = None
+        if row("P3_e1") is not None and ref:
+            r = row("P3_e1")
+            comp = dict(m1c=ref, m1d_p3_pass1=dict(e1=r["x"]["e1"], bar_a_diff=a1, share=r["x_share"],
+                                                     lambda_x=r["lambda_x"]["weight"], bar_b_ratio=r["bar_b"]["ratio"],
+                                                     counts_lambda_star=ctx["lambda_star"]["weight"],
+                                                     counts_lambda_star_e1=ctx["lambda_star"]["e1"]),
+                        delta=dict(e1=r["x"]["e1"] - ref["e1"],
+                                   bar_a_diff=None if a1 is None else a1 - ref["bar_a_diff"],
+                                   share=r["x_share"] - ref["share"]),
+                        note=ref.get("note"))
+        reg = self._res(st["reg"]) if st.get("reg") else None
+        recipe = dict(objective="distill" if dec.get("distill", {}).get("value") == "keep" else "next-token",
+                      epochs=dec.get("epochs", {}).get("value"), rho=dec.get("rho", {}).get("value"))
+        return dict(ctx, table=table, decisions=dec, m2_recipe=recipe, m1c_comparison=comp,
+                    p3_steps_per_pass=per_pass,
+                    p3_rho_by_pass=(self._rho_diag(st.get("p3_train", "P3_seed0"), per_pass) or {}).get("per_pass"),
+                    reg2=reg and dict(verdict=reg["verdict"], reg_pass=reg["reg_pass"], validated=reg["validated"],
+                                      dose_response={k: v["dose_response"] for k, v in reg["versus_base"].items()}),
+                    reg2_missing=None if reg is not None or not st.get("reg") else self._stage_error(st["reg"]),
+                    candidates=rows)
+
     # ---------------------------------------------------------------------------------- main loop
     def kinds(self) -> dict:
         return dict(base=self.stage_base, train_eval=self.stage_train_eval, lora=self.stage_lora,
                     select=self.stage_select, test=self.stage_test, splitb=self.stage_splitb, r3=self.stage_r3,
                     frontier=self.stage_frontier, report=self.stage_report, countgrid=self.stage_countgrid,
                     reg=self.stage_reg, m1c_select=self.stage_m1c_select, m1c_op=self.stage_m1c_op,
-                    m1c_test=self.stage_m1c_test, m1c_report=self.stage_m1c_report)
+                    m1c_test=self.stage_m1c_test, m1c_report=self.stage_m1c_report, train=self.stage_train,
+                    rows_eval=self.stage_rows_eval, reg2=self.stage_reg2, m1d_report=self.stage_m1d_report)
 
     def waiting_for(self, st: dict) -> list[str]:
         """Dependencies not yet settled: a dependency is settled when it is done or was RSS-aborted, and an

@@ -132,6 +132,10 @@ class CountGridCondition(Condition):
         """log p_w, the same float32 operations as CountLMCondition.adjust (lam = w for the grid component)."""
         if w == 0 and not self.other_weight:
             return lp
+        return self.mix_p(ph, comp, other, w).clamp_min(1e-30).log()
+
+    def mix_p(self, ph: torch.Tensor, comp: torch.Tensor, other: torch.Tensor | None, w: float) -> torch.Tensor:
+        """p_w before the log (mix() = mix_p().clamp_min(1e-30).log() for w > 0 or a fixed other weight)."""
         if self.component == "kn":
             p = (1 - w - self.other_weight) * ph
             if w:
@@ -142,7 +146,7 @@ class CountGridCondition(Condition):
             p = (1 - 0.0 - w) * ph
             if w:
                 p += w * comp
-        return p.clamp_min(1e-30).log()
+        return p
 
 
 @dataclass
@@ -195,14 +199,21 @@ class GridResult:
 
 @torch.no_grad()
 def score_grid(model: nn.Module, docs: Sequence[Doc], windows: Sequence[Window], cond: CountGridCondition, *,
-               chunk: int = 256, progress: Callable[[int, int, float], None] | None = None) -> GridResult:
+               chunk: int = 256, progress: Callable[[int, int, float], None] | None = None,
+               kl: bool = True) -> GridResult:
     """Teacher-forced scoring of every grid weight in one pass (two forwards per window only when the inner
-    condition installs hooks: one under it, one for the base host's distribution)."""
+    condition installs hooks: one under it, one for the base host's distribution).
+
+    kl=False (M1d, evaluate.py --countgrid-kl-sets): no KL(base || mixture) and no top-1 agreement (GridResult.kl
+    is NaN, .agree False, meta kl=False), so no base-host forward either; NLL and top-1 hit are the same floats as
+    with kl=True (gathered from the same p_w; tests/test_m1d.py). host_nll is NaN when the inner condition
+    installs hooks (no base forward)."""
     head = lm_head_of(model)
     W = len(cond.weights)
     keys = ("doc", "pos", "ctx", "nll", "hit", "kl", "agree", "host")
     out: dict[str, list] = {k: [] for k in keys}
-    two = _has_hooks(cond.inner)
+    two = _has_hooks(cond.inner) and kl
+    no_host = _has_hooks(cond.inner) and not kl
     t0 = time.time()
     fwd_tokens = 0
     t_mix = t_comp = 0.0
@@ -232,18 +243,35 @@ def score_grid(model: nn.Module, docs: Sequence[Doc], windows: Sequence[Window],
                 tc = time.time()
                 comp, other = cond.components(d, tg)
                 t_comp += time.time() - tc
+                nll, hit, kl_, agree = (np.empty((W, len(tg)), dt) for dt in (np.float32, bool, np.float32, bool))
+                if not kl:                                  # NLL + hit only: gather from p_w, no log over the vocab
+                    ph = lp.exp()
+                    out["host"].append(np.full(len(tg), np.nan, np.float32) if no_host else
+                                       (-lb.gather(1, yy[:, None])[:, 0]).numpy())
+                    for k, wt in enumerate(cond.weights):
+                        if wt == 0 and not cond.other_weight:
+                            nll[k] = (-lp.gather(1, yy[:, None])[:, 0]).numpy()
+                            hit[k] = (lp.argmax(-1) == yy).numpy()
+                        else:
+                            p = cond.mix_p(ph, comp, other, wt)
+                            nll[k] = (-p.gather(1, yy[:, None]).clamp_min(1e-30).log()[:, 0]).numpy()
+                            hit[k] = (p.argmax(-1) == yy).numpy()
+                    kl_.fill(np.nan)
+                    agree.fill(False)
+                    for k_, v_ in (("nll", nll), ("hit", hit), ("kl", kl_), ("agree", agree)):
+                        out[k_].append(v_)
+                    continue
                 ph, pb = lp.exp(), lb.exp()
                 bam = lb.argmax(-1)
                 out["host"].append((-lb.gather(1, yy[:, None])[:, 0]).numpy())
-                nll, hit, kl, agree = (np.empty((W, len(tg)), dt) for dt in (np.float32, bool, np.float32, bool))
                 for k, wt in enumerate(cond.weights):
                     lm = cond.mix(lp, ph, comp, other, wt)
                     nll[k] = (-lm.gather(1, yy[:, None])[:, 0]).numpy()
                     am = lm.argmax(-1)
                     hit[k] = (am == yy).numpy()
-                    kl[k] = (pb * (lb - lm)).sum(-1).clamp_min(0).numpy()
+                    kl_[k] = (pb * (lb - lm)).sum(-1).clamp_min(0).numpy()
                     agree[k] = (bam == am).numpy()
-                for k_, v_ in (("nll", nll), ("hit", hit), ("kl", kl), ("agree", agree)):
+                for k_, v_ in (("nll", nll), ("hit", hit), ("kl", kl_), ("agree", agree)):
                     out[k_].append(v_)
             t_mix += time.time() - tm
         out["doc"].append(np.full(len(targets), w.doc, np.int32))
@@ -256,6 +284,8 @@ def score_grid(model: nn.Module, docs: Sequence[Doc], windows: Sequence[Window],
     wall = time.time() - t0
     meta = dict(condition=cond.describe(), wall_s=wall, mix_s=t_mix, components_s=t_comp, n_windows=len(windows),
                 forward_tokens=int(fwd_tokens), threads=torch.get_num_threads(), two_forwards=two)
+    if not kl:
+        meta["kl"] = False
     res = GridResult([d.name for d in docs], [d.group for d in docs], cat1("doc", np.int32), cat1("pos", np.int32),
                      cat1("ctx", np.int32), np.asarray(cond.weights, np.float64), cat2("nll", np.float32),
                      cat2("hit", bool), cat2("kl", np.float32), cat2("agree", bool), cat1("host", np.float32), meta)
@@ -292,9 +322,12 @@ def grid_metrics(base: ScoreResult, g: GridResult, groups: np.ndarray, *, nondup
     if not np.array_equal(base.key(), g.key()):
         raise RuntimeError("countgrid targets differ from base")
     hd = np.abs(g.host_nll.astype(np.float64) - base.nll.astype(np.float64))
+    no_kl = g.meta.get("kl") is False                  # kl=False grid: paired NLL / EM only (no KL, no agreement)
     rows = []
     for i, w in enumerate(g.weights.tolist()):
         r = g.at(i)
+        if no_kl:
+            r.kl = r.agree = None
         row = dict(weight=w, paired=retention(base.nll, r.nll, groups, r.kl, r.agree, base_hit=base.hit,
                                               cond_hit=r.hit, n_boot=n_boot))
         if nondup is not None:
@@ -303,7 +336,8 @@ def grid_metrics(base: ScoreResult, g: GridResult, groups: np.ndarray, *, nondup
     d = g.meta["condition"]
     return dict(component=d["component"], other_weight=d["other_weight"],
                 inner=(d["inner"] or {}).get("name"), weights=g.weights.tolist(), grid=rows,
-                host_nll_max_abs_diff_vs_base=float(hd.max()) if len(hd) else 0.0,
+                host_nll_max_abs_diff_vs_base=(None if np.isnan(hd).all() else float(np.nanmax(hd))) if len(hd)
+                else 0.0,
                 nondup_fraction=float(np.mean(nondup)) if nondup is not None else None)
 
 

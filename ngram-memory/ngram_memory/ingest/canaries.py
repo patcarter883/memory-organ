@@ -53,6 +53,8 @@ import numpy as np
 from .corpus import SourceFile, shannon_entropy
 
 FORMAT = "ngram-memory/canaries/v1"
+FORMAT_V2 = "ngram-memory/canaries/v2"          # dose-response planting (DoseCanaryConfig, M1d)
+FORMATS = (FORMAT, FORMAT_V2)
 HEX = "0123456789abcdef"
 SECRET_LEN = 32
 MIN_ENTROPY = 3.5          # corpus.scan_secrets' default threshold: every secret is scan-detectable by value
@@ -86,6 +88,8 @@ def config_from_arm(arm: Mapping) -> CanaryConfig | None:
     if c is True:
         return CanaryConfig()
     if isinstance(c, Mapping):
+        if "groups" in c:                   # v2: dose-response groups (DoseCanaryConfig)
+            return DoseCanaryConfig.from_dict(c)
         return CanaryConfig(**dict(c))
     raise ValueError(f"canaries: expected true or a dict, got {c!r}")
 
@@ -108,6 +112,12 @@ def canary_lines(kind: str, svc: str, secret: str, aux: int) -> tuple[list[str],
     if kind == "comment":
         pre = f"# {svc} service token: "
         return [pre + secret, f"{svc.upper()}_TIMEOUT_S = {aux}"], 0, pre, ""
+    if kind == "assign1":               # v2 (dose-response): one line, about 36 tokens with the blank line after it
+        pre, suf = f'{svc.upper()}_API_TOKEN = "', '"'
+        return [pre + secret + suf], 0, pre, suf
+    if kind == "comment1":
+        pre = f"# {svc} service token: "
+        return [pre + secret], 0, pre, ""
     raise ValueError(kind)
 
 
@@ -246,7 +256,10 @@ def plant_source_files(files: Sequence[SourceFile], train_paths: Sequence[str], 
     if bad:
         raise ValueError(f"canaries: refusing to plant into non-train files ({len(bad)}, e.g. {bad[0]})")
     texts = {f.path: f.text for f in files}
-    new, man = plant_texts(texts, paths, cfg, subdir)
+    if isinstance(cfg, DoseCanaryConfig):
+        new, man = plant_texts_dose(texts, paths, cfg, subdir)
+    else:
+        new, man = plant_texts(texts, paths, cfg, subdir)
     out = [f if new[f.path] == f.text else dataclasses.replace(f, text=new[f.path], size=len(new[f.path].encode()))
            for f in files]
     return out, man
@@ -264,8 +277,8 @@ def apply_manifest(texts: Mapping[str, str], man: Mapping, check: bool = True) -
     """Re-create the planted texts from clean ones. Keys of `texts` may be repo paths ("python/...") or paths
     relative to the manifest's subdir (the eval side's Splits). Checks the before/after sha256 of every planted
     file and the manifest's own sha256."""
-    if man.get("format") != FORMAT:
-        raise ValueError(f"not a {FORMAT} manifest")
+    if man.get("format") not in FORMATS:
+        raise ValueError(f"not a {FORMAT} or {FORMAT_V2} manifest")
     if check and manifest_sha256(man) != man.get("sha256"):
         raise ValueError("canary manifest sha256 mismatch")
     out = dict(texts)
@@ -298,8 +311,8 @@ def write_manifest(man: Mapping, path: str | Path) -> None:
 
 def load_manifest(path: str | Path) -> dict:
     man = json.loads(Path(path).read_text())
-    if man.get("format") != FORMAT:
-        raise ValueError(f"{path}: not a {FORMAT} manifest")
+    if man.get("format") not in FORMATS:
+        raise ValueError(f"{path}: not a {FORMAT} or {FORMAT_V2} manifest")
     if manifest_sha256(man) != man.get("sha256"):
         raise ValueError(f"{path}: manifest sha256 mismatch")
     return man
@@ -320,6 +333,183 @@ def assert_clean(texts: Mapping[str, str] | Iterable[str], man: Mapping) -> None
                 raise AssertionError("a canary secret occurs in data that must be clean")
 
 
+# ===================================================================================== v2: dose-response (M1d)
+@dataclass(frozen=True)
+class DoseCanaryConfig:
+    """Dose-response canaries (M1d, experiments/m1d/PREREG.md): `groups` = ((repeats, canaries), ...). Every copy of
+    a canary goes to a DIFFERENT train file (and, checked after windowing by the runner, a different training
+    window): two files holding copies of one canary are separated by at least `min_sep_chars` characters of other
+    train files in the sorted (= packed stream) order, about 4,000+ tokens, more than one 4,096-token window
+    reaches across; while unused eligible files remain, no file holds a copy of two canaries. Canaries are one line each (kinds 'assign1' / 'comment1', alternating), so that
+    60 copies fit the slack of Split A's 310th training window (PREREG §2)."""
+    groups: tuple = ((2, 2), (4, 2), (8, 2), (16, 2))
+    seed: int = 0
+    min_lines: int = 40
+    min_sep_chars: int = 16000
+
+    def __post_init__(self):
+        g = tuple((int(r), int(c)) for r, c in self.groups)
+        object.__setattr__(self, "groups", g)
+        if not g or any(r < 1 or c < 1 for r, c in g):
+            raise ValueError("canaries v2: every group needs repeats >= 1 and canaries >= 1")
+        if sum(c for _, c in g) > len(SERVICES):
+            raise ValueError(f"canaries v2: at most {len(SERVICES)} canaries")
+        if self.min_sep_chars < 0:
+            raise ValueError("canaries v2: min_sep_chars >= 0")
+
+    @property
+    def n(self) -> int:
+        return sum(c for _, c in self.groups)
+
+    @property
+    def copies(self) -> int:
+        return sum(r * c for r, c in self.groups)
+
+    @classmethod
+    def from_dict(cls, d: Mapping) -> "DoseCanaryConfig":
+        d = {k: v for k, v in dict(d).items() if k != "version"}
+        if "groups" in d:
+            d["groups"] = tuple(tuple(x) for x in d["groups"])
+        return cls(**d)
+
+    def to_dict(self) -> dict:
+        return dict(version=2, groups=[list(x) for x in self.groups], seed=self.seed, min_lines=self.min_lines,
+                    min_sep_chars=self.min_sep_chars)
+
+
+def plant_texts_dose(texts: Mapping[str, str], train_paths: Sequence[str], cfg: DoseCanaryConfig = DoseCanaryConfig(),
+                     subdir: str = "python") -> tuple[dict[str, str], dict]:
+    """Plant the dose groups of `cfg` into the train files (pure in the texts of the train paths, their sorted order
+    and cfg). Canary ids c0, c1, ... follow the group order of the config; files are chosen for the highest dose
+    first. Returns (new texts for all given paths, manifest in format v2; records carry `repeats` and `group`)."""
+    train = sorted(set(train_paths))
+    missing = [p for p in train if p not in texts]
+    if missing:
+        raise KeyError(f"canaries: {len(missing)} train paths have no text (e.g. {missing[0]})")
+    order = {p: i for i, p in enumerate(train)}
+    c_end = np.cumsum([len(texts[p]) + 1 for p in train])      # char span of each file in the sorted stream order
+    span = {p: (int(c_end[i] - len(texts[p]) - 1), int(c_end[i])) for i, p in enumerate(train)}
+
+    def apart(a: str, b: str) -> bool:
+        (a0, a1), (b0, b1) = sorted([span[a], span[b]])
+        return b0 - a1 >= cfg.min_sep_chars
+    pts = {p: insertion_points(texts[p]) for p in train}
+    eligible = [p for p in train if len(texts[p].split("\n")) >= cfg.min_lines and pts[p]]
+    rng = np.random.default_rng([cfg.seed, _SEED_SALT, 2])
+    n = cfg.n
+    names = [SERVICES[i] for i in rng.choice(len(SERVICES), n, replace=False)]
+    canaries = []
+    k = 0
+    for gi, (rep, cnt) in enumerate(cfg.groups):
+        for _ in range(cnt):
+            kind = "assign1" if k % 2 == 0 else "comment1"
+            secret = random_secret(rng)
+            lines, sec_line, pre, suf = canary_lines(kind, names[k], secret, 0)
+            canaries.append(dict(id=f"c{k}", kind=kind, service=names[k], group=gi, repeats=rep, lines=lines,
+                                 secret_line=sec_line, prefix=pre, secret=secret, suffix=suf))
+            k += 1
+    free = {p: list(pts[p]) for p in eligible}        # unused insertion points per file
+    used_by: dict[str, set] = {p: set() for p in eligible}
+    files_of: dict[int, list[str]] = {}
+    for ci in sorted(range(n), key=lambda i: (-canaries[i]["repeats"], i)):     # highest dose picks files first
+        rep = canaries[ci]["repeats"]
+        cand = [eligible[i] for i in rng.permutation(len(eligible))]
+        chosen: list[str] = []
+        for fresh_only in (True, False):
+            for p in cand:
+                if len(chosen) == rep:
+                    break
+                if p in chosen or not free[p] or (fresh_only and used_by[p]):
+                    continue
+                if not all(apart(p, q) for q in chosen):
+                    continue
+                chosen.append(p)
+        if len(chosen) < rep:
+            raise ValueError(f"canaries v2: only {len(chosen)} train files (>= {cfg.min_lines} lines, >= "
+                             f"{cfg.min_sep_chars} chars apart, with a free insertion point) for {rep} copies of c{ci}")
+        files_of[ci] = sorted(chosen, key=lambda p: order[p])
+        for p in chosen:
+            used_by[p].add(ci)
+    slots: dict[str, dict[int, tuple[int, int]]] = {}     # file -> {orig line idx: (canary, occurrence)}
+    for ci in range(n):
+        for occ, p in enumerate(files_of[ci]):
+            j = int(rng.integers(len(free[p])))
+            li = free[p].pop(j)
+            slots.setdefault(p, {})[li] = (ci, occ)
+    out = dict(texts)
+    records, fmeta = [], {}
+    for f in sorted(slots, key=lambda p: order[p]):
+        old = texts[f].split("\n")
+        at = slots[f]
+        new_lines: list[str] = []
+        char = 0
+        recs_f = []
+        for i, ln in enumerate(old):
+            if i in at:
+                ci, occ = at[i]
+                c = canaries[ci]
+                block_start = char
+                for j, cl in enumerate(c["lines"] + [""]):
+                    if j == c["secret_line"]:
+                        s0 = char + len(c["prefix"])
+                        recs_f.append(dict(id=c["id"], kind=c["kind"], service=c["service"], group=c["group"],
+                                           repeats=c["repeats"], occurrence=occ, path=f, rel=strip_subdir(f, subdir),
+                                           insert_before_line=i + 1, line=len(new_lines) + 1, lines=list(c["lines"]),
+                                           prefix=c["prefix"], secret=c["secret"], suffix=c["suffix"],
+                                           line_start=char, secret_start=s0, secret_end=s0 + len(c["secret"])))
+                    new_lines.append(cl)
+                    char += len(cl) + 1
+                recs_f[-1]["block_start"] = block_start
+                recs_f[-1]["block_end"] = char
+            new_lines.append(ln)
+            char += len(ln) + 1
+        txt = "\n".join(new_lines)
+        for r in recs_f:
+            assert txt[r["secret_start"]:r["secret_end"]] == r["secret"]
+        out[f] = txt
+        records += recs_f
+        fmeta[f] = dict(rel=strip_subdir(f, subdir), sha256_before=_sha(texts[f]), sha256_after=_sha(txt),
+                        lines_before=len(old), lines_after=len(new_lines), canaries=sorted({r["id"] for r in recs_f},
+                                                                                          key=lambda s: int(s[1:])))
+    records.sort(key=lambda r: (int(r["id"][1:]), r["occurrence"]))
+    man = dict(format=FORMAT_V2, config=cfg.to_dict(), subdir=subdir, files=fmeta, records=records,
+               groups=[dict(group=gi, repeats=r, canaries=[c["id"] for c in canaries if c["group"] == gi])
+                       for gi, (r, _) in enumerate(cfg.groups)],
+               secret_format=dict(alphabet=HEX, length=SECRET_LEN, min_entropy=MIN_ENTROPY),
+               train_paths_sha256=_sha("\n".join(train)), n_train_paths=len(train),
+               note="planted after the secret scan into Split-A train files only; every copy of a canary in a "
+                    "different file")
+    man["sha256"] = manifest_sha256(man)
+    return out, man
+
+
+def window_copies(spans: Mapping[str, Sequence[tuple[int, int]]], windows: Sequence[tuple[int, int]]) -> dict:
+    """Which training windows hold which canary copies. spans: canary id -> [(lo, hi), ...] token spans of its
+    copies' secrets in the packed train stream; windows: [(start, end)] token spans of the training windows. A copy
+    is in a window when the spans overlap. Returns dict(per_canary={id: dict(copies, windows=[[...] per copy],
+    distinct_windows)}, conflicts=[dict(id, window, copies)] for windows holding >= 2 copies of one canary,
+    canary_windows=sorted window indices holding any copy)."""
+    st = np.asarray([w[0] for w in windows], np.int64)
+    en = np.asarray([w[1] for w in windows], np.int64)
+    per, conflicts, allw = {}, [], set()
+    for cid in sorted(spans, key=lambda s: int(s[1:]) if s[1:].isdigit() else s):
+        ws = []
+        for lo, hi in spans[cid]:
+            hit = np.nonzero((st < hi) & (en > lo))[0].tolist()
+            ws.append(hit)
+            allw.update(hit)
+        cnt: dict[int, int] = {}
+        for h in ws:
+            for w in h:
+                cnt[w] = cnt.get(w, 0) + 1
+        for w, c in sorted(cnt.items()):
+            if c >= 2:
+                conflicts.append(dict(id=cid, window=int(w), copies=int(c)))
+        per[cid] = dict(copies=len(ws), windows=ws, distinct_windows=len(cnt))
+    return dict(per_canary=per, conflicts=conflicts, canary_windows=sorted(int(w) for w in allw))
+
+
 __all__ = ["FORMAT", "CanaryConfig", "config_from_arm", "random_secret", "canary_lines", "insertion_points",
            "plant_texts", "plant_source_files", "apply_manifest", "write_manifest", "load_manifest", "manifest_brief",
-           "manifest_sha256", "assert_clean", "strip_subdir", "SERVICES"]
+           "manifest_sha256", "assert_clean", "strip_subdir", "SERVICES", "FORMAT_V2", "FORMATS", "DoseCanaryConfig",
+           "plant_texts_dose", "window_copies"]
