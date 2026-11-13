@@ -1,0 +1,395 @@
+{
+ "created": "2026-11-12 13:53:02",
+ "smoke": false,
+ "stages": {
+  "B0_base_dev": {
+   "status": "done",
+   "started": "2026-11-12 13:53:02",
+   "threads": 16,
+   "wall_s": 794.3696599006653,
+   "finished": "2026-11-12 14:06:17"
+  },
+  "P3_seed0": {
+   "status": "done",
+   "started": "2026-11-12 13:53:02",
+   "threads": 16,
+   "config": {
+    "arm": "G-lin",
+    "corpus": "split_a",
+    "policy": "count",
+    "k": 2,
+    "r": 4.0,
+    "gamma": 4.0,
+    "pi_other": 0.45,
+    "weight_cap_pct": 99.9,
+    "lr": 0.01,
+    "lambda_near": 0.3,
+    "lambda_chat": 0.3,
+    "lambda_l2": 0.0001,
+    "lambda_l1_rel": 0.1,
+    "kappa": null,
+    "rho": 0.3,
+    "lambda_rho": 0.1,
+    "loss_chunk": 128,
+    "gdir_alpha": 0.16,
+    "seed": 0,
+    "shuffle_seed": 1,
+    "objective": "nll",
+    "distill_alpha": 0.5,
+    "teacher_ctx_tokens": 4096,
+    "steps": "epoch",
+    "canaries": {
+     "version": 2,
+     "groups": [
+      [
+       2,
+       2
+      ],
+      [
+       4,
+       2
+      ],
+      [
+       8,
+       2
+      ],
+      [
+       16,
+       2
+      ]
+     ],
+     "seed": 0,
+     "min_lines": 40,
+     "min_sep_chars": 16000
+    },
+    "epochs": 3,
+    "snapshots": "epochs",
+    "name": "P3_seed0"
+   },
+   "wall_s": 29577.78533053398,
+   "finished": "2026-11-12 22:06:00"
+  },
+  "DF_distill": {
+   "status": "done",
+   "started": "2026-11-12 14:06:17",
+   "threads": 16,
+   "config": {
+    "arm": "G-lin",
+    "corpus": "split_a",
+    "policy": "count",
+    "k": 2,
+    "r": 4.0,
+    "gamma": 4.0,
+    "pi_other": 0.45,
+    "weight_cap_pct": 99.9,
+    "lr": 0.01,
+    "lambda_near": 0.3,
+    "lambda_chat": 0.3,
+    "lambda_l2": 0.0001,
+    "lambda_l1_rel": 0.1,
+    "kappa": null,
+    "rho": 0.3,
+    "lambda_rho": 0.1,
+    "loss_chunk": 128,
+    "gdir_alpha": 0.16,
+    "seed": 0,
+    "shuffle_seed": 1,
+    "objective": "distill",
+    "distill_alpha": 0.5,
+    "teacher_ctx_tokens": 4096,
+    "steps": "epoch",
+    "canaries": {
+     "version": 2,
+     "groups": [
+      [
+       2,
+       2
+      ],
+      [
+       4,
+       2
+      ],
+      [
+       8,
+       2
+      ],
+      [
+       16,
+       2
+      ]
+     ],
+     "seed": 0,
+     "min_lines": 40,
+     "min_sep_chars": 16000
+    },
+    "name": "DF_distill"
+   },
+   "train": {
+    "steps": 310,
+    "tokens": 1269350,
+    "step_s_mean": 33.37725987243879,
+    "step_s_median": 33.349360313499346,
+    "rows_nonzero": 1435431,
+    "peak_rss_mb": 5578.828125,
+    "objective": "distill",
+    "alpha": 1.0,
+    "kl_teacher_first": 0.13979370253426687,
+    "kl_teacher_last": 0.2599571432386126
+   },
+   "wall_s": 16981.643691062927,
+   "finished": "2026-11-12 18:49:18"
+  },
+  "S1_seed1": {
+   "status": "done",
+   "started": "2026-11-12 18:49:18",
+   "threads": 16,
+   "config": {
+    "arm": "G-lin",
+    "corpus": "split_a",
+    "policy": "count",
+    "k": 2,
+    "r": 4.0,
+    "gamma": 4.0,
+    "pi_other": 0.45,
+    "weight_cap_pct": 99.9,
+    "lr": 0.01,
+    "lambda_near": 0.3,
+    "lambda_chat": 0.3,
+    "lambda_l2": 0.0001,
+    "lambda_l1_rel": 0.1,
+    "kappa": null,
+    "rho": 0.3,
+    "lambda_rho": 0.1,
+    "loss_chunk": 128,
+    "gdir_alpha": 0.16,
+    "seed": 1,
+    "shuffle_seed": 1,
+    "objective": "nll",
+    "distill_alpha": 0.5,
+    "teacher_ctx_tokens": 4096,
+    "steps": "epoch",
+    "canaries": {
+     "version": 2,
+     "groups": [
+      [
+       2,
+       2
+      ],
+      [
+       4,
+       2
+      ],
+      [
+       8,
+       2
+      ],
+      [
+       16,
+       2
+      ]
+     ],
+     "seed": 0,
+     "min_lines": 40,
+     "min_sep_chars": 16000
+    },
+    "name": "S1_seed1"
+   },
+   "train": {
+    "steps": 310,
+    "tokens": 1269350,
+    "step_s_mean": 30.43971443756093,
+    "step_s_median": 30.453654262499185,
+    "rows_nonzero": 1433269,
+    "peak_rss_mb": 4988.26953125
+   },
+   "wall_s": 12372.15834569931,
+   "finished": "2026-11-12 22:15:30"
+  },
+  "R01_rho0p1": {
+   "status": "done",
+   "started": "2026-11-12 22:06:00",
+   "threads": 16,
+   "config": {
+    "arm": "G-lin",
+    "corpus": "split_a",
+    "policy": "count",
+    "k": 2,
+    "r": 4.0,
+    "gamma": 4.0,
+    "pi_other": 0.45,
+    "weight_cap_pct": 99.9,
+    "lr": 0.01,
+    "lambda_near": 0.3,
+    "lambda_chat": 0.3,
+    "lambda_l2": 0.0001,
+    "lambda_l1_rel": 0.1,
+    "kappa": null,
+    "rho": 0.1,
+    "lambda_rho": 0.1,
+    "loss_chunk": 128,
+    "gdir_alpha": 0.16,
+    "seed": 0,
+    "shuffle_seed": 1,
+    "objective": "nll",
+    "distill_alpha": 0.5,
+    "teacher_ctx_tokens": 4096,
+    "steps": "epoch",
+    "canaries": {
+     "version": 2,
+     "groups": [
+      [
+       2,
+       2
+      ],
+      [
+       4,
+       2
+      ],
+      [
+       8,
+       2
+      ],
+      [
+       16,
+       2
+      ]
+     ],
+     "seed": 0,
+     "min_lines": 40,
+     "min_sep_chars": 16000
+    },
+    "name": "R01_rho0p1"
+   },
+   "train": {
+    "steps": 310,
+    "tokens": 1269350,
+    "step_s_mean": 34.55897011098343,
+    "step_s_median": 34.14011072651192,
+    "rows_nonzero": 1433398,
+    "peak_rss_mb": 4960.83203125
+   },
+   "wall_s": 14530.938648462296,
+   "finished": "2026-11-13 02:08:11"
+  },
+  "C0_countgrid": {
+   "status": "done",
+   "started": "2026-11-12 22:15:30",
+   "threads": 16,
+   "wall_s": 1836.618685722351,
+   "finished": "2026-11-12 22:46:07"
+  },
+  "PC_memorise": {
+   "status": "done",
+   "started": "2026-11-12 22:46:07",
+   "threads": 16,
+   "config": {
+    "arm": "G-lin",
+    "corpus": "split_a",
+    "policy": "count",
+    "k": 2,
+    "r": 4.0,
+    "gamma": 4.0,
+    "pi_other": 0.45,
+    "weight_cap_pct": 99.9,
+    "lr": 0.1,
+    "lambda_near": 0.3,
+    "lambda_chat": 0.3,
+    "lambda_l2": 0.0,
+    "lambda_l1_rel": 0.0,
+    "kappa": null,
+    "rho": 0.3,
+    "lambda_rho": 0.1,
+    "loss_chunk": 128,
+    "gdir_alpha": 0.16,
+    "seed": 0,
+    "shuffle_seed": 1,
+    "objective": "nll",
+    "distill_alpha": 0.5,
+    "teacher_ctx_tokens": 4096,
+    "steps": "epoch",
+    "canaries": {
+     "version": 2,
+     "groups": [
+      [
+       2,
+       2
+      ],
+      [
+       4,
+       2
+      ],
+      [
+       8,
+       2
+      ],
+      [
+       16,
+       2
+      ]
+     ],
+     "seed": 0,
+     "min_lines": 40,
+     "min_sep_chars": 16000
+    },
+    "train_windows": "canary",
+    "pc_window": 512,
+    "pc_after": 32,
+    "anchors": false,
+    "epochs": 8,
+    "name": "PC_memorise"
+   },
+   "wall_s": 978.3230030536652,
+   "finished": "2026-11-12 23:02:25"
+  },
+  "P3_e1_dev": {
+   "status": "done",
+   "started": "2026-11-12 23:02:25",
+   "threads": 16,
+   "source": "P3_seed0",
+   "snapshot": 1,
+   "step": 310,
+   "wall_s": 2926.968698978424,
+   "finished": "2026-11-12 23:51:12"
+  },
+  "P3_e2_dev": {
+   "status": "done",
+   "started": "2026-11-12 23:51:12",
+   "threads": 16,
+   "source": "P3_seed0",
+   "snapshot": 2,
+   "step": 620,
+   "wall_s": 3239.101000070572,
+   "finished": "2026-11-13 00:45:11"
+  },
+  "P3_e3_dev": {
+   "status": "done",
+   "started": "2026-11-13 00:45:11",
+   "threads": 16,
+   "source": "P3_seed0",
+   "snapshot": "final",
+   "step": 930,
+   "wall_s": 3403.1896555423737,
+   "finished": "2026-11-13 01:41:55"
+  },
+  "REG2": {
+   "status": "done",
+   "started": "2026-11-13 01:41:55",
+   "threads": 16,
+   "wall_s": 2446.8164205551147,
+   "finished": "2026-11-13 02:22:41"
+  },
+  "Z_report": {
+   "status": "done",
+   "started": "2026-11-13 02:22:41",
+   "threads": 16,
+   "wall_s": 3.5962445735931396,
+   "finished": "2026-11-13 02:22:45"
+  }
+ },
+ "grid": "/opt/actions-runner-memory-organ/_work/memory-organ/memory-organ/ngram-memory/experiments/m1d/grid.json",
+ "grid_sha256": "5ab5eb7d3848ee3c870e7b38bf585347ced955016fcd8e053b7b7f692aa85fb9",
+ "updated": "2026-11-13 02:22:45",
+ "elapsed_s_this_invocation": 44982.84989285469,
+ "finished": true,
+ "complete": true
+}

@@ -1,0 +1,2400 @@
+{
+ "config": {
+  "arm": "G-lin",
+  "corpus": "split_a",
+  "policy": "count",
+  "k": 2,
+  "r": 4.0,
+  "gamma": 4.0,
+  "pi_other": 0.45,
+  "weight_cap_pct": 99.9,
+  "lr": 0.01,
+  "lambda_near": 0.3,
+  "lambda_chat": 0.3,
+  "lambda_l2": 0.0001,
+  "lambda_l1_rel": 0.1,
+  "kappa": null,
+  "rho": 0.3,
+  "lambda_rho": 0.1,
+  "loss_chunk": 128,
+  "gdir_alpha": 0.16,
+  "seed": 0,
+  "shuffle_seed": 1,
+  "objective": "distill",
+  "distill_alpha": 0.5,
+  "teacher_ctx_tokens": 4096,
+  "steps": "epoch",
+  "canaries": {
+   "version": 2,
+   "groups": [
+    [
+     2,
+     2
+    ],
+    [
+     4,
+     2
+    ],
+    [
+     8,
+     2
+    ],
+    [
+     16,
+     2
+    ]
+   ],
+   "seed": 0,
+   "min_lines": 40,
+   "min_sep_chars": 16000
+  },
+  "name": "DF_distill"
+ },
+ "budget": {
+  "steps": 64,
+  "window": 4096,
+  "stride": 3584,
+  "anchor_window": 1024,
+  "anchor_windows": 24,
+  "topk": 64,
+  "reference_tokens": 500000,
+  "ckpt_every": 4,
+  "monitor_dev_windows": 2
+ },
+ "canaries": {
+  "sha256": "4082a5b09c2fcfd3cf20f1638e9675eb3bc5fcaae929a850c9f80647ca71f306",
+  "config": {
+   "version": 2,
+   "groups": [
+    [
+     2,
+     2
+    ],
+    [
+     4,
+     2
+    ],
+    [
+     8,
+     2
+    ],
+    [
+     16,
+     2
+    ]
+   ],
+   "seed": 0,
+   "min_lines": 40,
+   "min_sep_chars": 16000
+  },
+  "files": [
+   "python/minisgl/attention/__init__.py",
+   "python/minisgl/attention/_triton_unified.py",
+   "python/minisgl/attention/base.py",
+   "python/minisgl/attention/mla.py",
+   "python/minisgl/attention/qsa/cache.py",
+   "python/minisgl/attention/qsa/ops.py",
+   "python/minisgl/cam/client.py",
+   "python/minisgl/diffusion/clover_block.py",
+   "python/minisgl/engine/_sampler_hip.py",
+   "python/minisgl/engine/engine.py",
+   "python/minisgl/engine/graph.py",
+   "python/minisgl/gdn/metadata.py",
+   "python/minisgl/kernel/index.py",
+   "python/minisgl/kernel/pynccl.py",
+   "python/minisgl/kernel/store.py",
+   "python/minisgl/kvcache/_envutil.py",
+   "python/minisgl/kvcache/cca_state.py",
+   "python/minisgl/kvcache/mha_pool.py",
+   "python/minisgl/kvcache/radix_cache.py",
+   "python/minisgl/layers/_tail_hip.py",
+   "python/minisgl/layers/moe.py",
+   "python/minisgl/llm/llm.py",
+   "python/minisgl/message/utils.py",
+   "python/minisgl/models/gemma4_assistant.py",
+   "python/minisgl/models/glm4_moe_lite.py",
+   "python/minisgl/models/glm_eagle3.py",
+   "python/minisgl/models/llama.py",
+   "python/minisgl/models/qwen2.py",
+   "python/minisgl/models/qwen2_moe.py",
+   "python/minisgl/models/qwen3_moe.py",
+   "python/minisgl/models/qwen4exp.py",
+   "python/minisgl/models/radio_vision.py",
+   "python/minisgl/models/weight.py",
+   "python/minisgl/models/zaya.py",
+   "python/minisgl/ple/__init__.py",
+   "python/minisgl/quant/config.py",
+   "python/minisgl/quant/ggml.py",
+   "python/minisgl/quant/ggml_torch.py",
+   "python/minisgl/rsa/config.py",
+   "python/minisgl/rsa/core.py",
+   "python/minisgl/rsa/prompts.py",
+   "python/minisgl/scheduler/diffusion.py",
+   "python/minisgl/scheduler/prefill.py",
+   "python/minisgl/server/metrics.py",
+   "python/minisgl/server/reasoning.py",
+   "python/minisgl/spec/clover_accept.py",
+   "python/minisgl/spec/config.py",
+   "python/minisgl/spec/draft_attn.py",
+   "python/minisgl/spec/draft_model.py",
+   "python/minisgl/spec/width.py",
+   "python/minisgl/utils/__init__.py",
+   "python/minisgl/utils/hf.py",
+   "python/minisgl/weights/bake.py",
+   "python/minisgl/weights/config.py",
+   "python/minisgl/weights/cpu_tier.py",
+   "python/minisgl/weights/expert_cache.py",
+   "python/minisgl/weights/plan.py",
+   "python/minisgl/weights/prefill_stage.py",
+   "python/minisgl/weights/row_table.py",
+   "python/minisgl/weights/sizing.py"
+  ],
+  "n_records": 60,
+  "ids": [
+   "c0",
+   "c1",
+   "c2",
+   "c3",
+   "c4",
+   "c5",
+   "c6",
+   "c7"
+  ],
+  "path": "/home/memory-organ/ngram-memory/runs/m1d/DF_distill/canaries.json",
+  "manifest": {
+   "format": "ngram-memory/canaries/v2",
+   "config": {
+    "version": 2,
+    "groups": [
+     [
+      2,
+      2
+     ],
+     [
+      4,
+      2
+     ],
+     [
+      8,
+      2
+     ],
+     [
+      16,
+      2
+     ]
+    ],
+    "seed": 0,
+    "min_lines": 40,
+    "min_sep_chars": 16000
+   },
+   "subdir": "python",
+   "files": {
+    "python/minisgl/attention/__init__.py": {
+     "rel": "minisgl/attention/__init__.py",
+     "sha256_before": "60c1f3c3c56978bc33ec899a6bbc68a242550544ebf408d663d5598ac840618c",
+     "sha256_after": "07d92a86ccd0a94b911e1c7f1875f6adf2463f0841527b88a7304d40eb1c67c2",
+     "lines_before": 108,
+     "lines_after": 110,
+     "canaries": [
+      "c6"
+     ]
+    },
+    "python/minisgl/attention/_triton_unified.py": {
+     "rel": "minisgl/attention/_triton_unified.py",
+     "sha256_before": "8c294ad5279e0999c9f192d578495bd1bab7444308c2883060974a8a78671045",
+     "sha256_after": "b77b67511bcc11f3c8dd21c04e3ba8bc743c87fe543ba0bd6a5786b1b69451c0",
+     "lines_before": 1136,
+     "lines_after": 1138,
+     "canaries": [
+      "c1"
+     ]
+    },
+    "python/minisgl/attention/base.py": {
+     "rel": "minisgl/attention/base.py",
+     "sha256_before": "215ec5a00ebd48605e8c33c4f9129f94f8a29a08cd7458797efe7fde53518503",
+     "sha256_after": "6b48c291c4b893a05f6fb5a51dd352a460ca908c467004d32f84965610862d72",
+     "lines_before": 76,
+     "lines_after": 78,
+     "canaries": [
+      "c6"
+     ]
+    },
+    "python/minisgl/attention/mla.py": {
+     "rel": "minisgl/attention/mla.py",
+     "sha256_before": "097cfc85cc8c3e7b7d99ec7706032ece128dc9bdab0a07e9712f42b100d57a1e",
+     "sha256_after": "cbce3deeacb0ed818b1682cc49424ed98944dfbb6282b19d7b00b3eaf8d7bc3e",
+     "lines_before": 350,
+     "lines_after": 352,
+     "canaries": [
+      "c7"
+     ]
+    },
+    "python/minisgl/attention/qsa/cache.py": {
+     "rel": "minisgl/attention/qsa/cache.py",
+     "sha256_before": "2eee882dc026db85e88af3dee7efaccbb5e0f65d7df0b00de1b5b25b3bd64680",
+     "sha256_after": "053b641c435159a98cf6aa7f494416c4b3b3bb789f24a305fc193f1b4b657a05",
+     "lines_before": 97,
+     "lines_after": 99,
+     "canaries": [
+      "c6"
+     ]
+    },
+    "python/minisgl/attention/qsa/ops.py": {
+     "rel": "minisgl/attention/qsa/ops.py",
+     "sha256_before": "2a52d3e82b13103bbfa6b45ca78e5f1a97d486ab528b6dfc86d232ec6774010a",
+     "sha256_after": "acd64a6a744175141d1f949d85fe85aeacd0d704ada8b3fc0db40c26b79dab18",
+     "lines_before": 187,
+     "lines_after": 189,
+     "canaries": [
+      "c2"
+     ]
+    },
+    "python/minisgl/cam/client.py": {
+     "rel": "minisgl/cam/client.py",
+     "sha256_before": "2bc4a582fc07d3b87f5cf6b7b78956b66f1eca34fe3601a1243f63cfb9ea7156",
+     "sha256_after": "af39e45d4c229ceb2058b9c33ad6dd873c2f071d97022a8ecd76a8a586e5dd8f",
+     "lines_before": 145,
+     "lines_after": 147,
+     "canaries": [
+      "c7"
+     ]
+    },
+    "python/minisgl/diffusion/clover_block.py": {
+     "rel": "minisgl/diffusion/clover_block.py",
+     "sha256_before": "0a35e665255fff783fc2b3fdaf2eac3269ae4bdf920555aa7a93fb3af41f65b8",
+     "sha256_after": "67632363c47aea51ca2065e1855c3994260884eeadd3232510116b1a4ee4b165",
+     "lines_before": 90,
+     "lines_after": 92,
+     "canaries": [
+      "c5"
+     ]
+    },
+    "python/minisgl/engine/_sampler_hip.py": {
+     "rel": "minisgl/engine/_sampler_hip.py",
+     "sha256_before": "34309cb2b044fe3ebd559e05f1645e924e64fe0493869eae0538fcfefb0ffdb4",
+     "sha256_after": "7999514bb7406627edf5450699032e70391a6e2cd201b1661e119023623d1c07",
+     "lines_before": 65,
+     "lines_after": 67,
+     "canaries": [
+      "c4"
+     ]
+    },
+    "python/minisgl/engine/engine.py": {
+     "rel": "minisgl/engine/engine.py",
+     "sha256_before": "6adab02e2dcd3b3076e60362b902ab2e064e8fed33390f48ebd6e57fde223c6d",
+     "sha256_after": "fdace4f9170e38b6b2794794ac3cf710110f99013f4696fded6a35683db083f8",
+     "lines_before": 2917,
+     "lines_after": 2919,
+     "canaries": [
+      "c5"
+     ]
+    },
+    "python/minisgl/engine/graph.py": {
+     "rel": "minisgl/engine/graph.py",
+     "sha256_before": "146f83beea56cb056eda27939a27b7dd07cd8dcc8a8fecfb86a2ee2200860b7b",
+     "sha256_after": "9da8983e49e15e573698f36a62dc13263f2f6c76d4f5c58281170283ddeff0c1",
+     "lines_before": 1523,
+     "lines_after": 1525,
+     "canaries": [
+      "c7"
+     ]
+    },
+    "python/minisgl/gdn/metadata.py": {
+     "rel": "minisgl/gdn/metadata.py",
+     "sha256_before": "772b7e819bef74dff372af593cc23c53f6baf36acc89e4a02b532c57f4c5ed0c",
+     "sha256_after": "eac65d3a0a8ec9f14538f9790ef64fc55d8a5ea47ee4b6e9ea1dbfe4fad991db",
+     "lines_before": 139,
+     "lines_after": 141,
+     "canaries": [
+      "c1"
+     ]
+    },
+    "python/minisgl/kernel/index.py": {
+     "rel": "minisgl/kernel/index.py",
+     "sha256_before": "5098547d455932cb80b209cdf8480ffbdc2ee77410c02d4f1fdc5355ba197963",
+     "sha256_after": "564cfa45348bbdb51dccbe015f68d28acdb52b8d38f0d2a7fb76e50a4466a5cc",
+     "lines_before": 51,
+     "lines_after": 53,
+     "canaries": [
+      "c0"
+     ]
+    },
+    "python/minisgl/kernel/pynccl.py": {
+     "rel": "minisgl/kernel/pynccl.py",
+     "sha256_before": "9999ab66c6727894ccb7b9f58235dd7d4f0cc9a417a1525e03135a102330dba0",
+     "sha256_after": "07f2d028c27e8bf7cf9560c7f7914f3170eefea4c002c42699db2a9acf8b8374",
+     "lines_before": 79,
+     "lines_after": 81,
+     "canaries": [
+      "c6"
+     ]
+    },
+    "python/minisgl/kernel/store.py": {
+     "rel": "minisgl/kernel/store.py",
+     "sha256_before": "39e21e21d1de0cc2f14faa37384ea94e427c0aabc997a56c049884ed46fc0c01",
+     "sha256_after": "be485a8e5c0b312ab173f641ef3ffe99cf54581c9004c6a5bbeaa16b0f798e32",
+     "lines_before": 43,
+     "lines_after": 45,
+     "canaries": [
+      "c7"
+     ]
+    },
+    "python/minisgl/kvcache/_envutil.py": {
+     "rel": "minisgl/kvcache/_envutil.py",
+     "sha256_before": "100c3ff9c01ea67c9e55032ed8a089fa1bfd8baf9ffcbe809b9e084d148eb4fb",
+     "sha256_after": "3f24c07f5feb25649e700fd70464f8911b7a9319bb6652264efe8b4844ebb75b",
+     "lines_before": 62,
+     "lines_after": 64,
+     "canaries": [
+      "c4"
+     ]
+    },
+    "python/minisgl/kvcache/cca_state.py": {
+     "rel": "minisgl/kvcache/cca_state.py",
+     "sha256_before": "8a73566f04759a9056572028af40e9a8a14e26798d77a288491be8819ef1056f",
+     "sha256_after": "e63448be66f1fac6b36a509302caacaf90f41f7477dce7ce149d1d3a6e6b6921",
+     "lines_before": 146,
+     "lines_after": 148,
+     "canaries": [
+      "c6"
+     ]
+    },
+    "python/minisgl/kvcache/mha_pool.py": {
+     "rel": "minisgl/kvcache/mha_pool.py",
+     "sha256_before": "c149eca506424a4536fcd1e8ee0f4dfb3d370f57e3cec79016e68ed1f9f84b3c",
+     "sha256_after": "7a51304880b72e18086fc1f8042b999d3bbd878d07359bfdf0d74c32b9834d51",
+     "lines_before": 272,
+     "lines_after": 274,
+     "canaries": [
+      "c5"
+     ]
+    },
+    "python/minisgl/kvcache/radix_cache.py": {
+     "rel": "minisgl/kvcache/radix_cache.py",
+     "sha256_before": "2fb7539f4fdf383b7f5ee3678f052e595835817bf644a3d53da916abdbaaecf3",
+     "sha256_after": "d13739dcaf32250f19b9bf5c3501bd0f39af603231bff62cc91c7faa42a93f7e",
+     "lines_before": 430,
+     "lines_after": 432,
+     "canaries": [
+      "c7"
+     ]
+    },
+    "python/minisgl/layers/_tail_hip.py": {
+     "rel": "minisgl/layers/_tail_hip.py",
+     "sha256_before": "6954ee8596524281216d7ecd9e74ac39839f6c2fa60ff2f9695339804f6947c7",
+     "sha256_after": "f9d38bc5601bb552e430c3f92953e7b30f0140cf5053132ce3b3ca83b79ef4d6",
+     "lines_before": 190,
+     "lines_after": 192,
+     "canaries": [
+      "c2"
+     ]
+    },
+    "python/minisgl/layers/moe.py": {
+     "rel": "minisgl/layers/moe.py",
+     "sha256_before": "d7ad13d40ea5e1a75051d1b55eca5c7d30faefb21b381f17df7a15e4b9fc803f",
+     "sha256_after": "349f1ef52c6fc23304272801781e1bb314fc4acf70d1572962e4bc94d1cfa73a",
+     "lines_before": 1661,
+     "lines_after": 1663,
+     "canaries": [
+      "c7"
+     ]
+    },
+    "python/minisgl/llm/llm.py": {
+     "rel": "minisgl/llm/llm.py",
+     "sha256_before": "cd3acdc9df295cdfed78a81fa964efc8b1adec2851935cd6141c9351e7b8b0a7",
+     "sha256_after": "f9349d62fec7bc1884d6eefa0d8b8f21efd9e545c054873c9344d23afe0fa246",
+     "lines_before": 148,
+     "lines_after": 150,
+     "canaries": [
+      "c6"
+     ]
+    },
+    "python/minisgl/message/utils.py": {
+     "rel": "minisgl/message/utils.py",
+     "sha256_before": "7ba9023a8e64a41caa20d08aa1fe46e880fdfa770f3cce9f673b3b56877d9019",
+     "sha256_after": "17fcfde02a0e7e855d622c89321d23e9daa93bc9bbfab72ecee3c82f5cc56e82",
+     "lines_before": 171,
+     "lines_after": 173,
+     "canaries": [
+      "c4"
+     ]
+    },
+    "python/minisgl/models/gemma4_assistant.py": {
+     "rel": "minisgl/models/gemma4_assistant.py",
+     "sha256_before": "64d0cbdd7d475d755f36665ca18aacfb0cd5151e71fd837b429cf09e3d44ada7",
+     "sha256_after": "61f6eb502b4f1a9cda1c28644bdbfc48e9b31543c4cb7291c4622423c02eb3c3",
+     "lines_before": 165,
+     "lines_after": 167,
+     "canaries": [
+      "c6"
+     ]
+    },
+    "python/minisgl/models/glm4_moe_lite.py": {
+     "rel": "minisgl/models/glm4_moe_lite.py",
+     "sha256_before": "a88354eefdcf48062914f18c3888ea9c401177023c7dda17d7a483f23784e5ce",
+     "sha256_after": "6de3c51a2a19b0a1a25e8a37a6f194ac70659e4a93c9b6f3a73c44cb252c908a",
+     "lines_before": 687,
+     "lines_after": 689,
+     "canaries": [
+      "c7"
+     ]
+    },
+    "python/minisgl/models/glm_eagle3.py": {
+     "rel": "minisgl/models/glm_eagle3.py",
+     "sha256_before": "ebec281723216d06f05a6040af40204d817e7bb4552bba731b211f5e34b89150",
+     "sha256_after": "b1d2fba129d3da7dcb975ee12e8fcd135f1f38c686c63ac8f27274bef64bc914",
+     "lines_before": 230,
+     "lines_after": 232,
+     "canaries": [
+      "c3"
+     ]
+    },
+    "python/minisgl/models/llama.py": {
+     "rel": "minisgl/models/llama.py",
+     "sha256_before": "1d6eefd238e68c0ff5aa176258f8f1d2851c78f467e88a7f89f095dc15355d27",
+     "sha256_after": "616e915d1ec59f1f71c70a7773c83399a9c171d3dbe23a00590de2ce21862436",
+     "lines_before": 86,
+     "lines_after": 88,
+     "canaries": [
+      "c6"
+     ]
+    },
+    "python/minisgl/models/qwen2.py": {
+     "rel": "minisgl/models/qwen2.py",
+     "sha256_before": "98d2bb01f04cd4490166abf2c6b06e96afc142c16af529613d2c9605de49bfd3",
+     "sha256_after": "dabbd2316908f7d410f43a0018239416f4a5d3a7dd52bdd240ab34cb3aac6bb1",
+     "lines_before": 84,
+     "lines_after": 86,
+     "canaries": [
+      "c5"
+     ]
+    },
+    "python/minisgl/models/qwen2_moe.py": {
+     "rel": "minisgl/models/qwen2_moe.py",
+     "sha256_before": "62769223caf0002c3bcda7eb710d048b0aa8f5d1041e4d6c6281b918722604be",
+     "sha256_after": "840f96d825717f358ec06ca0deba695d7ea27d65fcb56cddd0736f2a05c295ac",
+     "lines_before": 136,
+     "lines_after": 138,
+     "canaries": [
+      "c7"
+     ]
+    },
+    "python/minisgl/models/qwen3_moe.py": {
+     "rel": "minisgl/models/qwen3_moe.py",
+     "sha256_before": "6e42959a0c14588b9de6932cde81c25096bdf15afdfa7f0c274370ecee144fa8",
+     "sha256_after": "b1759cfc0ae26352220829da54cb9b68d6b1ed7d5fb2082ca7da15d5b34eef0d",
+     "lines_before": 84,
+     "lines_after": 86,
+     "canaries": [
+      "c5"
+     ]
+    },
+    "python/minisgl/models/qwen4exp.py": {
+     "rel": "minisgl/models/qwen4exp.py",
+     "sha256_before": "a83bdd7185db62dda26c25e6381baab2a8d06a0173b650311911c489f4091d07",
+     "sha256_after": "5880bf52c1ae42e1e83e26b5af29a3e62a2428e8f8490e2589e9a224b4da9305",
+     "lines_before": 1155,
+     "lines_after": 1157,
+     "canaries": [
+      "c3"
+     ]
+    },
+    "python/minisgl/models/radio_vision.py": {
+     "rel": "minisgl/models/radio_vision.py",
+     "sha256_before": "0422967a0d14c0385adfc9cb0792d7376c91c38f432fefc2e311f2685eff4ba9",
+     "sha256_after": "2e9f8b1c26c77335f64ff023621a0f287cbf1bd7d893f08fa1f031d1789194e2",
+     "lines_before": 453,
+     "lines_after": 455,
+     "canaries": [
+      "c7"
+     ]
+    },
+    "python/minisgl/models/weight.py": {
+     "rel": "minisgl/models/weight.py",
+     "sha256_before": "6db83e9dc8da461afa095904890271b54a951860c408cdf86fd9eeb25c6e449c",
+     "sha256_after": "b365483193dedefaff7b88c5947a6e6808258fd5b04830b2989713890389bc3f",
+     "lines_before": 3933,
+     "lines_after": 3935,
+     "canaries": [
+      "c6"
+     ]
+    },
+    "python/minisgl/models/zaya.py": {
+     "rel": "minisgl/models/zaya.py",
+     "sha256_before": "1503d52c7c6f5b646c244a877a98e72beae2de7c13172b18e33f158d26cb449e",
+     "sha256_after": "2b4277e931f6c6955f993629ed4d95abde3ecfd5e759a8c07f1b0f3dd4a556e0",
+     "lines_before": 826,
+     "lines_after": 828,
+     "canaries": [
+      "c3"
+     ]
+    },
+    "python/minisgl/ple/__init__.py": {
+     "rel": "minisgl/ple/__init__.py",
+     "sha256_before": "4cccd674bc0ce41effd58b3cd035193ded3ad40cde039abfbc840b2a2cc82276",
+     "sha256_after": "f791180bf2d73aece3eb64df298f70806b6979fc7dfa3dc81c6585d264b05570",
+     "lines_before": 70,
+     "lines_after": 72,
+     "canaries": [
+      "c6"
+     ]
+    },
+    "python/minisgl/quant/config.py": {
+     "rel": "minisgl/quant/config.py",
+     "sha256_before": "f3543c6ce366ec8b3a5d37e852c505d0bc8f62d6610ae613b24f7412540eb01c",
+     "sha256_after": "592b7261e8776535271852be5c8d02fc407aec85c2d47f51e54f35de0c80b3d0",
+     "lines_before": 901,
+     "lines_after": 903,
+     "canaries": [
+      "c6"
+     ]
+    },
+    "python/minisgl/quant/ggml.py": {
+     "rel": "minisgl/quant/ggml.py",
+     "sha256_before": "93eb7ba3d3b6b87ecef248a3efce5e6e8a9e3b351cc127f3fcf2f65c1058c18f",
+     "sha256_after": "3eac2d85509e1627659acdc26324e06da79c1055c3dee9a5e78109adc0cd63c2",
+     "lines_before": 188,
+     "lines_after": 190,
+     "canaries": [
+      "c4"
+     ]
+    },
+    "python/minisgl/quant/ggml_torch.py": {
+     "rel": "minisgl/quant/ggml_torch.py",
+     "sha256_before": "05e51b70478c5139d026fc33d946e99b0cabff70834010e6e7701cb055b5e8d1",
+     "sha256_after": "b10fea1fcdfb77e28147e46063d4772435500609ef5dce02fd6dd94752cc992e",
+     "lines_before": 195,
+     "lines_after": 197,
+     "canaries": [
+      "c2"
+     ]
+    },
+    "python/minisgl/rsa/config.py": {
+     "rel": "minisgl/rsa/config.py",
+     "sha256_before": "a2facc9472e0772ed72622a5c2a9aede4d8a39140acff336edd28a07fb1f123e",
+     "sha256_after": "0bf8782410a44b402d6df005468e5c422d58425108c40e198109f9feb5f776fc",
+     "lines_before": 267,
+     "lines_after": 269,
+     "canaries": [
+      "c7"
+     ]
+    },
+    "python/minisgl/rsa/core.py": {
+     "rel": "minisgl/rsa/core.py",
+     "sha256_before": "3ff9e92cc2e98af91e69a8be6f3757a30edf4e1f4c08d99a18e7b5d8dc103917",
+     "sha256_after": "e8dccbd7737873d7a7d6a5fb08355a777940d4d7f0b4b60c3ff34e7cdc6dec44",
+     "lines_before": 603,
+     "lines_after": 605,
+     "canaries": [
+      "c0"
+     ]
+    },
+    "python/minisgl/rsa/prompts.py": {
+     "rel": "minisgl/rsa/prompts.py",
+     "sha256_before": "6290e03681739aa18cb09b58d464ce678f24bfc821e54d49b8ef60fbff3d2728",
+     "sha256_after": "44aed61a1afc945e8e8df8953739b98e83cb218374eaf5537f7325d6c7e71da7",
+     "lines_before": 173,
+     "lines_after": 175,
+     "canaries": [
+      "c7"
+     ]
+    },
+    "python/minisgl/scheduler/diffusion.py": {
+     "rel": "minisgl/scheduler/diffusion.py",
+     "sha256_before": "4481c1c28676be0450f1b061ef4ef4cffc3e6d5991a0cd824106308bf0f2a37e",
+     "sha256_after": "ec35ea6f61ac1c34f1e8733f1b7fecc37da2f5f236daeb948ab36e0818053338",
+     "lines_before": 1090,
+     "lines_after": 1092,
+     "canaries": [
+      "c5"
+     ]
+    },
+    "python/minisgl/scheduler/prefill.py": {
+     "rel": "minisgl/scheduler/prefill.py",
+     "sha256_before": "0fd673af421962676f08ee8ee9bf222ce047e99ff64cff801dedfd9ab9b547af",
+     "sha256_after": "e659b2a59cd07b72e234846768535008154e2dbc5a78a5678f17886229534b7b",
+     "lines_before": 280,
+     "lines_after": 282,
+     "canaries": [
+      "c7"
+     ]
+    },
+    "python/minisgl/server/metrics.py": {
+     "rel": "minisgl/server/metrics.py",
+     "sha256_before": "187797d4edbbc48320ae1df36518594e1d322c057a8fd7fbaaf37e2bfc2fb571",
+     "sha256_after": "6626455c17a013d41aaff8b514a0c2f89bf28ba4a4d331b946b80b10bd706fe9",
+     "lines_before": 377,
+     "lines_after": 379,
+     "canaries": [
+      "c7"
+     ]
+    },
+    "python/minisgl/server/reasoning.py": {
+     "rel": "minisgl/server/reasoning.py",
+     "sha256_before": "3492e94d41aa4cdaea705e8d642287f450eeae7d81cf2a92cedb3fd583512a45",
+     "sha256_after": "b765ea6998974507aafc560d6b715587f51bee8fcaf5cd4d25f95c9afc39f922",
+     "lines_before": 960,
+     "lines_after": 962,
+     "canaries": [
+      "c4"
+     ]
+    },
+    "python/minisgl/spec/clover_accept.py": {
+     "rel": "minisgl/spec/clover_accept.py",
+     "sha256_before": "e1d7b155ecd9756a3e1508a1df9f79353f56ab7e15729dba1247eb822ec94b49",
+     "sha256_after": "ab15330739f418e852557ef14561bbbbd26930c09759db069af013bf8b5e9a7b",
+     "lines_before": 79,
+     "lines_after": 81,
+     "canaries": [
+      "c2"
+     ]
+    },
+    "python/minisgl/spec/config.py": {
+     "rel": "minisgl/spec/config.py",
+     "sha256_before": "7b046cabe8272132bf971ab95607263ce441333e7cf017c433066c2c3db75d0c",
+     "sha256_after": "2942d454695b3f93a4a1c09b60b48d38796d2631538cffbb12503ff01c09e9e1",
+     "lines_before": 59,
+     "lines_after": 61,
+     "canaries": [
+      "c6"
+     ]
+    },
+    "python/minisgl/spec/draft_attn.py": {
+     "rel": "minisgl/spec/draft_attn.py",
+     "sha256_before": "287bd3e4ad640b669e74144dc9965a30fd404e522b181d679e9f557d3771d318",
+     "sha256_after": "c37ec79575e3a47189230242976d220ba6d90d4fb8a61720c4ee084bd3a6c819",
+     "lines_before": 67,
+     "lines_after": 69,
+     "canaries": [
+      "c3"
+     ]
+    },
+    "python/minisgl/spec/draft_model.py": {
+     "rel": "minisgl/spec/draft_model.py",
+     "sha256_before": "de8a454a2d7b0766fb07aa9f5aa31f108e6abdf501f197ec8603e81a694bcba1",
+     "sha256_after": "08c6b767e0e1acdc55db03d9c9dffe0720a72092a1d2a6bfdc49a1bffb3ac489",
+     "lines_before": 444,
+     "lines_after": 446,
+     "canaries": [
+      "c4"
+     ]
+    },
+    "python/minisgl/spec/width.py": {
+     "rel": "minisgl/spec/width.py",
+     "sha256_before": "a5928f763ba4ad00a4fa701ea9cf3cb37fdd904f14abfeb1401da840ae938d54",
+     "sha256_after": "36d24819fd54aff84e19da8f36bba3df4d802cf96395f0b67d1beca01b56ba39",
+     "lines_before": 432,
+     "lines_after": 434,
+     "canaries": [
+      "c6"
+     ]
+    },
+    "python/minisgl/utils/__init__.py": {
+     "rel": "minisgl/utils/__init__.py",
+     "sha256_before": "9e24273aa2eb8d3c2599cd7b5c81e5747eb83664fc08b19b623c3f1dcff27921",
+     "sha256_after": "a4adc32ad971dd43e19be87b8c5233f5b6e99e45d1d76f45a4cd61b512722733",
+     "lines_before": 57,
+     "lines_after": 59,
+     "canaries": [
+      "c4"
+     ]
+    },
+    "python/minisgl/utils/hf.py": {
+     "rel": "minisgl/utils/hf.py",
+     "sha256_before": "260759e56baf397671b0db45c15ef8efec342fe5474edfbcf8e5ef21accf4fa1",
+     "sha256_after": "61fd1b77820d05039afcf3bb26373826c1f2ca01a9c89f73179a0db239bdef8b",
+     "lines_before": 341,
+     "lines_after": 343,
+     "canaries": [
+      "c6"
+     ]
+    },
+    "python/minisgl/weights/bake.py": {
+     "rel": "minisgl/weights/bake.py",
+     "sha256_before": "af98efc633694408d73a522694d55f236c7e12f713686a948f27952c6dc1ea83",
+     "sha256_after": "e3e4d9e28c5bf37694a41c4588381ab823cb540de02e63fb8b7a4c8cac4a0567",
+     "lines_before": 1570,
+     "lines_after": 1572,
+     "canaries": [
+      "c7"
+     ]
+    },
+    "python/minisgl/weights/config.py": {
+     "rel": "minisgl/weights/config.py",
+     "sha256_before": "d4a2d5e1b8d3ee49740e5474925141c1b9165162125b5c79a3bc0701e30c55ca",
+     "sha256_after": "334d514772946b9e651c06f1d9932dd337a6a2d3873354c1b3c4e8511e240520",
+     "lines_before": 111,
+     "lines_after": 113,
+     "canaries": [
+      "c5"
+     ]
+    },
+    "python/minisgl/weights/cpu_tier.py": {
+     "rel": "minisgl/weights/cpu_tier.py",
+     "sha256_before": "0360331408264283c77e8ea68006c6d0c823f110829436efa0bbe7198f45c0b3",
+     "sha256_after": "8fc440864721e4d2f7e7a259614b9de7bfe662fa644b3448ce6384e5ffa932f8",
+     "lines_before": 1096,
+     "lines_after": 1098,
+     "canaries": [
+      "c6"
+     ]
+    },
+    "python/minisgl/weights/expert_cache.py": {
+     "rel": "minisgl/weights/expert_cache.py",
+     "sha256_before": "a7318e26493aed8042bd965777efbd3a37177d2df1358e4155099720ba882b65",
+     "sha256_after": "b064ce3c3b2f4bf7f004bbf74ad8e4b8fdc307bb2e94ef88998721e8127b7e5f",
+     "lines_before": 1066,
+     "lines_after": 1068,
+     "canaries": [
+      "c7"
+     ]
+    },
+    "python/minisgl/weights/plan.py": {
+     "rel": "minisgl/weights/plan.py",
+     "sha256_before": "f39ee88144dca699edcf0e52361dd8aa4c849ab3647521333f67ce4258fad616",
+     "sha256_after": "0f65b7cc8772d69bad18ffc262e375478f16a9f99ab4cfb5430e74749d153854",
+     "lines_before": 2031,
+     "lines_after": 2033,
+     "canaries": [
+      "c7"
+     ]
+    },
+    "python/minisgl/weights/prefill_stage.py": {
+     "rel": "minisgl/weights/prefill_stage.py",
+     "sha256_before": "e56e07cd820a6c180e79a8bec2d6af2ff79ec4969224cae2ce0a18ac9a8ceda2",
+     "sha256_after": "5e4fef2e0d326bb3f930a23560683813ad885a953001010299cb2a4a7f9e29b1",
+     "lines_before": 424,
+     "lines_after": 426,
+     "canaries": [
+      "c4"
+     ]
+    },
+    "python/minisgl/weights/row_table.py": {
+     "rel": "minisgl/weights/row_table.py",
+     "sha256_before": "c5c666f6140774b431a48f3c86c2a557590fd593076f64f55697a29636aefa0c",
+     "sha256_after": "a73ee46eb7ee3e15c905a62565c63efd940fa6f32bb7c234bef1bd368534b2bb",
+     "lines_before": 1111,
+     "lines_after": 1113,
+     "canaries": [
+      "c5"
+     ]
+    },
+    "python/minisgl/weights/sizing.py": {
+     "rel": "minisgl/weights/sizing.py",
+     "sha256_before": "7bb35dfc440b02a5b0733ccd2097d933218bfd6a4e72ecb09a56abee600dc26c",
+     "sha256_after": "06aaaba62c6432384edf80edef2a5e796adb5c4aca549d8c9626d1bea031b3dd",
+     "lines_before": 838,
+     "lines_after": 840,
+     "canaries": [
+      "c6"
+     ]
+    }
+   },
+   "records": [
+    {
+     "id": "c0",
+     "kind": "assign1",
+     "service": "mailer",
+     "group": 0,
+     "repeats": 2,
+     "occurrence": 0,
+     "path": "python/minisgl/kernel/index.py",
+     "rel": "minisgl/kernel/index.py",
+     "insert_before_line": 15,
+     "line": 15,
+     "lines": [
+      "MAILER_API_TOKEN = \"<redacted-canary>\""
+     ],
+     "prefix": "MAILER_API_TOKEN = \"",
+     "secret": "<redacted-canary>",
+     "suffix": "\"",
+     "line_start": 313,
+     "secret_start": 333,
+     "secret_end": 365,
+     "block_start": 313,
+     "block_end": 368
+    },
+    {
+     "id": "c0",
+     "kind": "assign1",
+     "service": "mailer",
+     "group": 0,
+     "repeats": 2,
+     "occurrence": 1,
+     "path": "python/minisgl/rsa/core.py",
+     "rel": "minisgl/rsa/core.py",
+     "insert_before_line": 14,
+     "line": 14,
+     "lines": [
+      "MAILER_API_TOKEN = \"<redacted-canary>\""
+     ],
+     "prefix": "MAILER_API_TOKEN = \"",
+     "secret": "<redacted-canary>",
+     "suffix": "\"",
+     "line_start": 572,
+     "secret_start": 592,
+     "secret_end": 624,
+     "block_start": 572,
+     "block_end": 627
+    },
+    {
+     "id": "c1",
+     "kind": "comment1",
+     "service": "storage",
+     "group": 0,
+     "repeats": 2,
+     "occurrence": 0,
+     "path": "python/minisgl/attention/_triton_unified.py",
+     "rel": "minisgl/attention/_triton_unified.py",
+     "insert_before_line": 50,
+     "line": 50,
+     "lines": [
+      "# storage service token: <redacted-canary>"
+     ],
+     "prefix": "# storage service token: ",
+     "secret": "<redacted-canary>",
+     "suffix": "",
+     "line_start": 1376,
+     "secret_start": 1401,
+     "secret_end": 1433,
+     "block_start": 1376,
+     "block_end": 1435
+    },
+    {
+     "id": "c1",
+     "kind": "comment1",
+     "service": "storage",
+     "group": 0,
+     "repeats": 2,
+     "occurrence": 1,
+     "path": "python/minisgl/gdn/metadata.py",
+     "rel": "minisgl/gdn/metadata.py",
+     "insert_before_line": 34,
+     "line": 34,
+     "lines": [
+      "# storage service token: <redacted-canary>"
+     ],
+     "prefix": "# storage service token: ",
+     "secret": "<redacted-canary>",
+     "suffix": "",
+     "line_start": 2153,
+     "secret_start": 2178,
+     "secret_end": 2210,
+     "block_start": 2153,
+     "block_end": 2212
+    },
+    {
+     "id": "c2",
+     "kind": "assign1",
+     "service": "auditor",
+     "group": 1,
+     "repeats": 4,
+     "occurrence": 0,
+     "path": "python/minisgl/attention/qsa/ops.py",
+     "rel": "minisgl/attention/qsa/ops.py",
+     "insert_before_line": 28,
+     "line": 28,
+     "lines": [
+      "AUDITOR_API_TOKEN = \"<redacted-canary>\""
+     ],
+     "prefix": "AUDITOR_API_TOKEN = \"",
+     "secret": "<redacted-canary>",
+     "suffix": "\"",
+     "line_start": 1747,
+     "secret_start": 1768,
+     "secret_end": 1800,
+     "block_start": 1747,
+     "block_end": 1803
+    },
+    {
+     "id": "c2",
+     "kind": "assign1",
+     "service": "auditor",
+     "group": 1,
+     "repeats": 4,
+     "occurrence": 1,
+     "path": "python/minisgl/layers/_tail_hip.py",
+     "rel": "minisgl/layers/_tail_hip.py",
+     "insert_before_line": 169,
+     "line": 169,
+     "lines": [
+      "AUDITOR_API_TOKEN = \"<redacted-canary>\""
+     ],
+     "prefix": "AUDITOR_API_TOKEN = \"",
+     "secret": "<redacted-canary>",
+     "suffix": "\"",
+     "line_start": 8508,
+     "secret_start": 8529,
+     "secret_end": 8561,
+     "block_start": 8508,
+     "block_end": 8564
+    },
+    {
+     "id": "c2",
+     "kind": "assign1",
+     "service": "auditor",
+     "group": 1,
+     "repeats": 4,
+     "occurrence": 2,
+     "path": "python/minisgl/quant/ggml_torch.py",
+     "rel": "minisgl/quant/ggml_torch.py",
+     "insert_before_line": 25,
+     "line": 25,
+     "lines": [
+      "AUDITOR_API_TOKEN = \"<redacted-canary>\""
+     ],
+     "prefix": "AUDITOR_API_TOKEN = \"",
+     "secret": "<redacted-canary>",
+     "suffix": "\"",
+     "line_start": 1272,
+     "secret_start": 1293,
+     "secret_end": 1325,
+     "block_start": 1272,
+     "block_end": 1328
+    },
+    {
+     "id": "c2",
+     "kind": "assign1",
+     "service": "auditor",
+     "group": 1,
+     "repeats": 4,
+     "occurrence": 3,
+     "path": "python/minisgl/spec/clover_accept.py",
+     "rel": "minisgl/spec/clover_accept.py",
+     "insert_before_line": 37,
+     "line": 37,
+     "lines": [
+      "AUDITOR_API_TOKEN = \"<redacted-canary>\""
+     ],
+     "prefix": "AUDITOR_API_TOKEN = \"",
+     "secret": "<redacted-canary>",
+     "suffix": "\"",
+     "line_start": 1736,
+     "secret_start": 1757,
+     "secret_end": 1789,
+     "block_start": 1736,
+     "block_end": 1792
+    },
+    {
+     "id": "c3",
+     "kind": "comment1",
+     "service": "pricing",
+     "group": 1,
+     "repeats": 4,
+     "occurrence": 0,
+     "path": "python/minisgl/models/glm_eagle3.py",
+     "rel": "minisgl/models/glm_eagle3.py",
+     "insert_before_line": 42,
+     "line": 42,
+     "lines": [
+      "# pricing service token: <redacted-canary>"
+     ],
+     "prefix": "# pricing service token: ",
+     "secret": "<redacted-canary>",
+     "suffix": "",
+     "line_start": 2692,
+     "secret_start": 2717,
+     "secret_end": 2749,
+     "block_start": 2692,
+     "block_end": 2751
+    },
+    {
+     "id": "c3",
+     "kind": "comment1",
+     "service": "pricing",
+     "group": 1,
+     "repeats": 4,
+     "occurrence": 1,
+     "path": "python/minisgl/models/qwen4exp.py",
+     "rel": "minisgl/models/qwen4exp.py",
+     "insert_before_line": 470,
+     "line": 470,
+     "lines": [
+      "# pricing service token: <redacted-canary>"
+     ],
+     "prefix": "# pricing service token: ",
+     "secret": "<redacted-canary>",
+     "suffix": "",
+     "line_start": 26716,
+     "secret_start": 26741,
+     "secret_end": 26773,
+     "block_start": 26716,
+     "block_end": 26775
+    },
+    {
+     "id": "c3",
+     "kind": "comment1",
+     "service": "pricing",
+     "group": 1,
+     "repeats": 4,
+     "occurrence": 2,
+     "path": "python/minisgl/models/zaya.py",
+     "rel": "minisgl/models/zaya.py",
+     "insert_before_line": 46,
+     "line": 46,
+     "lines": [
+      "# pricing service token: <redacted-canary>"
+     ],
+     "prefix": "# pricing service token: ",
+     "secret": "<redacted-canary>",
+     "suffix": "",
+     "line_start": 2149,
+     "secret_start": 2174,
+     "secret_end": 2206,
+     "block_start": 2149,
+     "block_end": 2208
+    },
+    {
+     "id": "c3",
+     "kind": "comment1",
+     "service": "pricing",
+     "group": 1,
+     "repeats": 4,
+     "occurrence": 3,
+     "path": "python/minisgl/spec/draft_attn.py",
+     "rel": "minisgl/spec/draft_attn.py",
+     "insert_before_line": 30,
+     "line": 30,
+     "lines": [
+      "# pricing service token: <redacted-canary>"
+     ],
+     "prefix": "# pricing service token: ",
+     "secret": "<redacted-canary>",
+     "suffix": "",
+     "line_start": 1843,
+     "secret_start": 1868,
+     "secret_end": 1900,
+     "block_start": 1843,
+     "block_end": 1902
+    },
+    {
+     "id": "c4",
+     "kind": "assign1",
+     "service": "warehouse",
+     "group": 2,
+     "repeats": 8,
+     "occurrence": 0,
+     "path": "python/minisgl/engine/_sampler_hip.py",
+     "rel": "minisgl/engine/_sampler_hip.py",
+     "insert_before_line": 20,
+     "line": 20,
+     "lines": [
+      "WAREHOUSE_API_TOKEN = \"<redacted-canary>\""
+     ],
+     "prefix": "WAREHOUSE_API_TOKEN = \"",
+     "secret": "<redacted-canary>",
+     "suffix": "\"",
+     "line_start": 1210,
+     "secret_start": 1233,
+     "secret_end": 1265,
+     "block_start": 1210,
+     "block_end": 1268
+    },
+    {
+     "id": "c4",
+     "kind": "assign1",
+     "service": "warehouse",
+     "group": 2,
+     "repeats": 8,
+     "occurrence": 1,
+     "path": "python/minisgl/kvcache/_envutil.py",
+     "rel": "minisgl/kvcache/_envutil.py",
+     "insert_before_line": 14,
+     "line": 14,
+     "lines": [
+      "WAREHOUSE_API_TOKEN = \"<redacted-canary>\""
+     ],
+     "prefix": "WAREHOUSE_API_TOKEN = \"",
+     "secret": "<redacted-canary>",
+     "suffix": "\"",
+     "line_start": 557,
+     "secret_start": 580,
+     "secret_end": 612,
+     "block_start": 557,
+     "block_end": 615
+    },
+    {
+     "id": "c4",
+     "kind": "assign1",
+     "service": "warehouse",
+     "group": 2,
+     "repeats": 8,
+     "occurrence": 2,
+     "path": "python/minisgl/message/utils.py",
+     "rel": "minisgl/message/utils.py",
+     "insert_before_line": 6,
+     "line": 6,
+     "lines": [
+      "WAREHOUSE_API_TOKEN = \"<redacted-canary>\""
+     ],
+     "prefix": "WAREHOUSE_API_TOKEN = \"",
+     "secret": "<redacted-canary>",
+     "suffix": "\"",
+     "line_start": 91,
+     "secret_start": 114,
+     "secret_end": 146,
+     "block_start": 91,
+     "block_end": 149
+    },
+    {
+     "id": "c4",
+     "kind": "assign1",
+     "service": "warehouse",
+     "group": 2,
+     "repeats": 8,
+     "occurrence": 3,
+     "path": "python/minisgl/quant/ggml.py",
+     "rel": "minisgl/quant/ggml.py",
+     "insert_before_line": 58,
+     "line": 58,
+     "lines": [
+      "WAREHOUSE_API_TOKEN = \"<redacted-canary>\""
+     ],
+     "prefix": "WAREHOUSE_API_TOKEN = \"",
+     "secret": "<redacted-canary>",
+     "suffix": "\"",
+     "line_start": 2857,
+     "secret_start": 2880,
+     "secret_end": 2912,
+     "block_start": 2857,
+     "block_end": 2915
+    },
+    {
+     "id": "c4",
+     "kind": "assign1",
+     "service": "warehouse",
+     "group": 2,
+     "repeats": 8,
+     "occurrence": 4,
+     "path": "python/minisgl/server/reasoning.py",
+     "rel": "minisgl/server/reasoning.py",
+     "insert_before_line": 732,
+     "line": 732,
+     "lines": [
+      "WAREHOUSE_API_TOKEN = \"<redacted-canary>\""
+     ],
+     "prefix": "WAREHOUSE_API_TOKEN = \"",
+     "secret": "<redacted-canary>",
+     "suffix": "\"",
+     "line_start": 42602,
+     "secret_start": 42625,
+     "secret_end": 42657,
+     "block_start": 42602,
+     "block_end": 42660
+    },
+    {
+     "id": "c4",
+     "kind": "assign1",
+     "service": "warehouse",
+     "group": 2,
+     "repeats": 8,
+     "occurrence": 5,
+     "path": "python/minisgl/spec/draft_model.py",
+     "rel": "minisgl/spec/draft_model.py",
+     "insert_before_line": 3,
+     "line": 3,
+     "lines": [
+      "WAREHOUSE_API_TOKEN = \"<redacted-canary>\""
+     ],
+     "prefix": "WAREHOUSE_API_TOKEN = \"",
+     "secret": "<redacted-canary>",
+     "suffix": "\"",
+     "line_start": 36,
+     "secret_start": 59,
+     "secret_end": 91,
+     "block_start": 36,
+     "block_end": 94
+    },
+    {
+     "id": "c4",
+     "kind": "assign1",
+     "service": "warehouse",
+     "group": 2,
+     "repeats": 8,
+     "occurrence": 6,
+     "path": "python/minisgl/utils/__init__.py",
+     "rel": "minisgl/utils/__init__.py",
+     "insert_before_line": 8,
+     "line": 8,
+     "lines": [
+      "WAREHOUSE_API_TOKEN = \"<redacted-canary>\""
+     ],
+     "prefix": "WAREHOUSE_API_TOKEN = \"",
+     "secret": "<redacted-canary>",
+     "suffix": "\"",
+     "line_start": 123,
+     "secret_start": 146,
+     "secret_end": 178,
+     "block_start": 123,
+     "block_end": 181
+    },
+    {
+     "id": "c4",
+     "kind": "assign1",
+     "service": "warehouse",
+     "group": 2,
+     "repeats": 8,
+     "occurrence": 7,
+     "path": "python/minisgl/weights/prefill_stage.py",
+     "rel": "minisgl/weights/prefill_stage.py",
+     "insert_before_line": 74,
+     "line": 74,
+     "lines": [
+      "WAREHOUSE_API_TOKEN = \"<redacted-canary>\""
+     ],
+     "prefix": "WAREHOUSE_API_TOKEN = \"",
+     "secret": "<redacted-canary>",
+     "suffix": "\"",
+     "line_start": 4308,
+     "secret_start": 4331,
+     "secret_end": 4363,
+     "block_start": 4308,
+     "block_end": 4366
+    },
+    {
+     "id": "c5",
+     "kind": "comment1",
+     "service": "payments",
+     "group": 2,
+     "repeats": 8,
+     "occurrence": 0,
+     "path": "python/minisgl/diffusion/clover_block.py",
+     "rel": "minisgl/diffusion/clover_block.py",
+     "insert_before_line": 24,
+     "line": 24,
+     "lines": [
+      "# payments service token: <redacted-canary>"
+     ],
+     "prefix": "# payments service token: ",
+     "secret": "<redacted-canary>",
+     "suffix": "",
+     "line_start": 1328,
+     "secret_start": 1354,
+     "secret_end": 1386,
+     "block_start": 1328,
+     "block_end": 1388
+    },
+    {
+     "id": "c5",
+     "kind": "comment1",
+     "service": "payments",
+     "group": 2,
+     "repeats": 8,
+     "occurrence": 1,
+     "path": "python/minisgl/engine/engine.py",
+     "rel": "minisgl/engine/engine.py",
+     "insert_before_line": 48,
+     "line": 48,
+     "lines": [
+      "# payments service token: <redacted-canary>"
+     ],
+     "prefix": "# payments service token: ",
+     "secret": "<redacted-canary>",
+     "suffix": "",
+     "line_start": 1661,
+     "secret_start": 1687,
+     "secret_end": 1719,
+     "block_start": 1661,
+     "block_end": 1721
+    },
+    {
+     "id": "c5",
+     "kind": "comment1",
+     "service": "payments",
+     "group": 2,
+     "repeats": 8,
+     "occurrence": 2,
+     "path": "python/minisgl/kvcache/mha_pool.py",
+     "rel": "minisgl/kvcache/mha_pool.py",
+     "insert_before_line": 21,
+     "line": 21,
+     "lines": [
+      "# payments service token: <redacted-canary>"
+     ],
+     "prefix": "# payments service token: ",
+     "secret": "<redacted-canary>",
+     "suffix": "",
+     "line_start": 950,
+     "secret_start": 976,
+     "secret_end": 1008,
+     "block_start": 950,
+     "block_end": 1010
+    },
+    {
+     "id": "c5",
+     "kind": "comment1",
+     "service": "payments",
+     "group": 2,
+     "repeats": 8,
+     "occurrence": 3,
+     "path": "python/minisgl/models/qwen2.py",
+     "rel": "minisgl/models/qwen2.py",
+     "insert_before_line": 44,
+     "line": 44,
+     "lines": [
+      "# payments service token: <redacted-canary>"
+     ],
+     "prefix": "# payments service token: ",
+     "secret": "<redacted-canary>",
+     "suffix": "",
+     "line_start": 1384,
+     "secret_start": 1410,
+     "secret_end": 1442,
+     "block_start": 1384,
+     "block_end": 1444
+    },
+    {
+     "id": "c5",
+     "kind": "comment1",
+     "service": "payments",
+     "group": 2,
+     "repeats": 8,
+     "occurrence": 4,
+     "path": "python/minisgl/models/qwen3_moe.py",
+     "rel": "minisgl/models/qwen3_moe.py",
+     "insert_before_line": 44,
+     "line": 44,
+     "lines": [
+      "# payments service token: <redacted-canary>"
+     ],
+     "prefix": "# payments service token: ",
+     "secret": "<redacted-canary>",
+     "suffix": "",
+     "line_start": 1361,
+     "secret_start": 1387,
+     "secret_end": 1419,
+     "block_start": 1361,
+     "block_end": 1421
+    },
+    {
+     "id": "c5",
+     "kind": "comment1",
+     "service": "payments",
+     "group": 2,
+     "repeats": 8,
+     "occurrence": 5,
+     "path": "python/minisgl/scheduler/diffusion.py",
+     "rel": "minisgl/scheduler/diffusion.py",
+     "insert_before_line": 47,
+     "line": 47,
+     "lines": [
+      "# payments service token: <redacted-canary>"
+     ],
+     "prefix": "# payments service token: ",
+     "secret": "<redacted-canary>",
+     "suffix": "",
+     "line_start": 2596,
+     "secret_start": 2622,
+     "secret_end": 2654,
+     "block_start": 2596,
+     "block_end": 2656
+    },
+    {
+     "id": "c5",
+     "kind": "comment1",
+     "service": "payments",
+     "group": 2,
+     "repeats": 8,
+     "occurrence": 6,
+     "path": "python/minisgl/weights/config.py",
+     "rel": "minisgl/weights/config.py",
+     "insert_before_line": 58,
+     "line": 58,
+     "lines": [
+      "# payments service token: <redacted-canary>"
+     ],
+     "prefix": "# payments service token: ",
+     "secret": "<redacted-canary>",
+     "suffix": "",
+     "line_start": 2343,
+     "secret_start": 2369,
+     "secret_end": 2401,
+     "block_start": 2343,
+     "block_end": 2403
+    },
+    {
+     "id": "c5",
+     "kind": "comment1",
+     "service": "payments",
+     "group": 2,
+     "repeats": 8,
+     "occurrence": 7,
+     "path": "python/minisgl/weights/row_table.py",
+     "rel": "minisgl/weights/row_table.py",
+     "insert_before_line": 73,
+     "line": 73,
+     "lines": [
+      "# payments service token: <redacted-canary>"
+     ],
+     "prefix": "# payments service token: ",
+     "secret": "<redacted-canary>",
+     "suffix": "",
+     "line_start": 3496,
+     "secret_start": 3522,
+     "secret_end": 3554,
+     "block_start": 3496,
+     "block_end": 3556
+    },
+    {
+     "id": "c6",
+     "kind": "assign1",
+     "service": "catalog",
+     "group": 3,
+     "repeats": 16,
+     "occurrence": 0,
+     "path": "python/minisgl/attention/__init__.py",
+     "rel": "minisgl/attention/__init__.py",
+     "insert_before_line": 53,
+     "line": 53,
+     "lines": [
+      "CATALOG_API_TOKEN = \"<redacted-canary>\""
+     ],
+     "prefix": "CATALOG_API_TOKEN = \"",
+     "secret": "<redacted-canary>",
+     "suffix": "\"",
+     "line_start": 1453,
+     "secret_start": 1474,
+     "secret_end": 1506,
+     "block_start": 1453,
+     "block_end": 1509
+    },
+    {
+     "id": "c6",
+     "kind": "assign1",
+     "service": "catalog",
+     "group": 3,
+     "repeats": 16,
+     "occurrence": 1,
+     "path": "python/minisgl/attention/base.py",
+     "rel": "minisgl/attention/base.py",
+     "insert_before_line": 5,
+     "line": 5,
+     "lines": [
+      "CATALOG_API_TOKEN = \"<redacted-canary>\""
+     ],
+     "prefix": "CATALOG_API_TOKEN = \"",
+     "secret": "<redacted-canary>",
+     "suffix": "\"",
+     "line_start": 106,
+     "secret_start": 127,
+     "secret_end": 159,
+     "block_start": 106,
+     "block_end": 162
+    },
+    {
+     "id": "c6",
+     "kind": "assign1",
+     "service": "catalog",
+     "group": 3,
+     "repeats": 16,
+     "occurrence": 2,
+     "path": "python/minisgl/attention/qsa/cache.py",
+     "rel": "minisgl/attention/qsa/cache.py",
+     "insert_before_line": 35,
+     "line": 35,
+     "lines": [
+      "CATALOG_API_TOKEN = \"<redacted-canary>\""
+     ],
+     "prefix": "CATALOG_API_TOKEN = \"",
+     "secret": "<redacted-canary>",
+     "suffix": "\"",
+     "line_start": 1824,
+     "secret_start": 1845,
+     "secret_end": 1877,
+     "block_start": 1824,
+     "block_end": 1880
+    },
+    {
+     "id": "c6",
+     "kind": "assign1",
+     "service": "catalog",
+     "group": 3,
+     "repeats": 16,
+     "occurrence": 3,
+     "path": "python/minisgl/kernel/pynccl.py",
+     "rel": "minisgl/kernel/pynccl.py",
+     "insert_before_line": 33,
+     "line": 33,
+     "lines": [
+      "CATALOG_API_TOKEN = \"<redacted-canary>\""
+     ],
+     "prefix": "CATALOG_API_TOKEN = \"",
+     "secret": "<redacted-canary>",
+     "suffix": "\"",
+     "line_start": 747,
+     "secret_start": 768,
+     "secret_end": 800,
+     "block_start": 747,
+     "block_end": 803
+    },
+    {
+     "id": "c6",
+     "kind": "assign1",
+     "service": "catalog",
+     "group": 3,
+     "repeats": 16,
+     "occurrence": 4,
+     "path": "python/minisgl/kvcache/cca_state.py",
+     "rel": "minisgl/kvcache/cca_state.py",
+     "insert_before_line": 6,
+     "line": 6,
+     "lines": [
+      "CATALOG_API_TOKEN = \"<redacted-canary>\""
+     ],
+     "prefix": "CATALOG_API_TOKEN = \"",
+     "secret": "<redacted-canary>",
+     "suffix": "\"",
+     "line_start": 51,
+     "secret_start": 72,
+     "secret_end": 104,
+     "block_start": 51,
+     "block_end": 107
+    },
+    {
+     "id": "c6",
+     "kind": "assign1",
+     "service": "catalog",
+     "group": 3,
+     "repeats": 16,
+     "occurrence": 5,
+     "path": "python/minisgl/llm/llm.py",
+     "rel": "minisgl/llm/llm.py",
+     "insert_before_line": 30,
+     "line": 30,
+     "lines": [
+      "CATALOG_API_TOKEN = \"<redacted-canary>\""
+     ],
+     "prefix": "CATALOG_API_TOKEN = \"",
+     "secret": "<redacted-canary>",
+     "suffix": "\"",
+     "line_start": 625,
+     "secret_start": 646,
+     "secret_end": 678,
+     "block_start": 625,
+     "block_end": 681
+    },
+    {
+     "id": "c6",
+     "kind": "assign1",
+     "service": "catalog",
+     "group": 3,
+     "repeats": 16,
+     "occurrence": 6,
+     "path": "python/minisgl/models/gemma4_assistant.py",
+     "rel": "minisgl/models/gemma4_assistant.py",
+     "insert_before_line": 27,
+     "line": 27,
+     "lines": [
+      "CATALOG_API_TOKEN = \"<redacted-canary>\""
+     ],
+     "prefix": "CATALOG_API_TOKEN = \"",
+     "secret": "<redacted-canary>",
+     "suffix": "\"",
+     "line_start": 1380,
+     "secret_start": 1401,
+     "secret_end": 1433,
+     "block_start": 1380,
+     "block_end": 1436
+    },
+    {
+     "id": "c6",
+     "kind": "assign1",
+     "service": "catalog",
+     "group": 3,
+     "repeats": 16,
+     "occurrence": 7,
+     "path": "python/minisgl/models/llama.py",
+     "rel": "minisgl/models/llama.py",
+     "insert_before_line": 8,
+     "line": 8,
+     "lines": [
+      "CATALOG_API_TOKEN = \"<redacted-canary>\""
+     ],
+     "prefix": "CATALOG_API_TOKEN = \"",
+     "secret": "<redacted-canary>",
+     "suffix": "\"",
+     "line_start": 226,
+     "secret_start": 247,
+     "secret_end": 279,
+     "block_start": 226,
+     "block_end": 282
+    },
+    {
+     "id": "c6",
+     "kind": "assign1",
+     "service": "catalog",
+     "group": 3,
+     "repeats": 16,
+     "occurrence": 8,
+     "path": "python/minisgl/models/weight.py",
+     "rel": "minisgl/models/weight.py",
+     "insert_before_line": 206,
+     "line": 206,
+     "lines": [
+      "CATALOG_API_TOKEN = \"<redacted-canary>\""
+     ],
+     "prefix": "CATALOG_API_TOKEN = \"",
+     "secret": "<redacted-canary>",
+     "suffix": "\"",
+     "line_start": 10500,
+     "secret_start": 10521,
+     "secret_end": 10553,
+     "block_start": 10500,
+     "block_end": 10556
+    },
+    {
+     "id": "c6",
+     "kind": "assign1",
+     "service": "catalog",
+     "group": 3,
+     "repeats": 16,
+     "occurrence": 9,
+     "path": "python/minisgl/ple/__init__.py",
+     "rel": "minisgl/ple/__init__.py",
+     "insert_before_line": 53,
+     "line": 53,
+     "lines": [
+      "CATALOG_API_TOKEN = \"<redacted-canary>\""
+     ],
+     "prefix": "CATALOG_API_TOKEN = \"",
+     "secret": "<redacted-canary>",
+     "suffix": "\"",
+     "line_start": 2288,
+     "secret_start": 2309,
+     "secret_end": 2341,
+     "block_start": 2288,
+     "block_end": 2344
+    },
+    {
+     "id": "c6",
+     "kind": "assign1",
+     "service": "catalog",
+     "group": 3,
+     "repeats": 16,
+     "occurrence": 10,
+     "path": "python/minisgl/quant/config.py",
+     "rel": "minisgl/quant/config.py",
+     "insert_before_line": 315,
+     "line": 315,
+     "lines": [
+      "CATALOG_API_TOKEN = \"<redacted-canary>\""
+     ],
+     "prefix": "CATALOG_API_TOKEN = \"",
+     "secret": "<redacted-canary>",
+     "suffix": "\"",
+     "line_start": 17742,
+     "secret_start": 17763,
+     "secret_end": 17795,
+     "block_start": 17742,
+     "block_end": 17798
+    },
+    {
+     "id": "c6",
+     "kind": "assign1",
+     "service": "catalog",
+     "group": 3,
+     "repeats": 16,
+     "occurrence": 11,
+     "path": "python/minisgl/spec/config.py",
+     "rel": "minisgl/spec/config.py",
+     "insert_before_line": 3,
+     "line": 3,
+     "lines": [
+      "CATALOG_API_TOKEN = \"<redacted-canary>\""
+     ],
+     "prefix": "CATALOG_API_TOKEN = \"",
+     "secret": "<redacted-canary>",
+     "suffix": "\"",
+     "line_start": 36,
+     "secret_start": 57,
+     "secret_end": 89,
+     "block_start": 36,
+     "block_end": 92
+    },
+    {
+     "id": "c6",
+     "kind": "assign1",
+     "service": "catalog",
+     "group": 3,
+     "repeats": 16,
+     "occurrence": 12,
+     "path": "python/minisgl/spec/width.py",
+     "rel": "minisgl/spec/width.py",
+     "insert_before_line": 131,
+     "line": 131,
+     "lines": [
+      "CATALOG_API_TOKEN = \"<redacted-canary>\""
+     ],
+     "prefix": "CATALOG_API_TOKEN = \"",
+     "secret": "<redacted-canary>",
+     "suffix": "\"",
+     "line_start": 8650,
+     "secret_start": 8671,
+     "secret_end": 8703,
+     "block_start": 8650,
+     "block_end": 8706
+    },
+    {
+     "id": "c6",
+     "kind": "assign1",
+     "service": "catalog",
+     "group": 3,
+     "repeats": 16,
+     "occurrence": 13,
+     "path": "python/minisgl/utils/hf.py",
+     "rel": "minisgl/utils/hf.py",
+     "insert_before_line": 6,
+     "line": 6,
+     "lines": [
+      "CATALOG_API_TOKEN = \"<redacted-canary>\""
+     ],
+     "prefix": "CATALOG_API_TOKEN = \"",
+     "secret": "<redacted-canary>",
+     "suffix": "\"",
+     "line_start": 63,
+     "secret_start": 84,
+     "secret_end": 116,
+     "block_start": 63,
+     "block_end": 119
+    },
+    {
+     "id": "c6",
+     "kind": "assign1",
+     "service": "catalog",
+     "group": 3,
+     "repeats": 16,
+     "occurrence": 14,
+     "path": "python/minisgl/weights/cpu_tier.py",
+     "rel": "minisgl/weights/cpu_tier.py",
+     "insert_before_line": 516,
+     "line": 516,
+     "lines": [
+      "CATALOG_API_TOKEN = \"<redacted-canary>\""
+     ],
+     "prefix": "CATALOG_API_TOKEN = \"",
+     "secret": "<redacted-canary>",
+     "suffix": "\"",
+     "line_start": 29011,
+     "secret_start": 29032,
+     "secret_end": 29064,
+     "block_start": 29011,
+     "block_end": 29067
+    },
+    {
+     "id": "c6",
+     "kind": "assign1",
+     "service": "catalog",
+     "group": 3,
+     "repeats": 16,
+     "occurrence": 15,
+     "path": "python/minisgl/weights/sizing.py",
+     "rel": "minisgl/weights/sizing.py",
+     "insert_before_line": 249,
+     "line": 249,
+     "lines": [
+      "CATALOG_API_TOKEN = \"<redacted-canary>\""
+     ],
+     "prefix": "CATALOG_API_TOKEN = \"",
+     "secret": "<redacted-canary>",
+     "suffix": "\"",
+     "line_start": 14495,
+     "secret_start": 14516,
+     "secret_end": 14548,
+     "block_start": 14495,
+     "block_end": 14551
+    },
+    {
+     "id": "c7",
+     "kind": "comment1",
+     "service": "uploader",
+     "group": 3,
+     "repeats": 16,
+     "occurrence": 0,
+     "path": "python/minisgl/attention/mla.py",
+     "rel": "minisgl/attention/mla.py",
+     "insert_before_line": 7,
+     "line": 7,
+     "lines": [
+      "# uploader service token: <redacted-canary>"
+     ],
+     "prefix": "# uploader service token: ",
+     "secret": "<redacted-canary>",
+     "suffix": "",
+     "line_start": 123,
+     "secret_start": 149,
+     "secret_end": 181,
+     "block_start": 123,
+     "block_end": 183
+    },
+    {
+     "id": "c7",
+     "kind": "comment1",
+     "service": "uploader",
+     "group": 3,
+     "repeats": 16,
+     "occurrence": 1,
+     "path": "python/minisgl/cam/client.py",
+     "rel": "minisgl/cam/client.py",
+     "insert_before_line": 20,
+     "line": 20,
+     "lines": [
+      "# uploader service token: <redacted-canary>"
+     ],
+     "prefix": "# uploader service token: ",
+     "secret": "<redacted-canary>",
+     "suffix": "",
+     "line_start": 976,
+     "secret_start": 1002,
+     "secret_end": 1034,
+     "block_start": 976,
+     "block_end": 1036
+    },
+    {
+     "id": "c7",
+     "kind": "comment1",
+     "service": "uploader",
+     "group": 3,
+     "repeats": 16,
+     "occurrence": 2,
+     "path": "python/minisgl/engine/graph.py",
+     "rel": "minisgl/engine/graph.py",
+     "insert_before_line": 4,
+     "line": 4,
+     "lines": [
+      "# uploader service token: <redacted-canary>"
+     ],
+     "prefix": "# uploader service token: ",
+     "secret": "<redacted-canary>",
+     "suffix": "",
+     "line_start": 46,
+     "secret_start": 72,
+     "secret_end": 104,
+     "block_start": 46,
+     "block_end": 106
+    },
+    {
+     "id": "c7",
+     "kind": "comment1",
+     "service": "uploader",
+     "group": 3,
+     "repeats": 16,
+     "occurrence": 3,
+     "path": "python/minisgl/kernel/store.py",
+     "rel": "minisgl/kernel/store.py",
+     "insert_before_line": 8,
+     "line": 8,
+     "lines": [
+      "# uploader service token: <redacted-canary>"
+     ],
+     "prefix": "# uploader service token: ",
+     "secret": "<redacted-canary>",
+     "suffix": "",
+     "line_start": 145,
+     "secret_start": 171,
+     "secret_end": 203,
+     "block_start": 145,
+     "block_end": 205
+    },
+    {
+     "id": "c7",
+     "kind": "comment1",
+     "service": "uploader",
+     "group": 3,
+     "repeats": 16,
+     "occurrence": 4,
+     "path": "python/minisgl/kvcache/radix_cache.py",
+     "rel": "minisgl/kvcache/radix_cache.py",
+     "insert_before_line": 10,
+     "line": 10,
+     "lines": [
+      "# uploader service token: <redacted-canary>"
+     ],
+     "prefix": "# uploader service token: ",
+     "secret": "<redacted-canary>",
+     "suffix": "",
+     "line_start": 212,
+     "secret_start": 238,
+     "secret_end": 270,
+     "block_start": 212,
+     "block_end": 272
+    },
+    {
+     "id": "c7",
+     "kind": "comment1",
+     "service": "uploader",
+     "group": 3,
+     "repeats": 16,
+     "occurrence": 5,
+     "path": "python/minisgl/layers/moe.py",
+     "rel": "minisgl/layers/moe.py",
+     "insert_before_line": 1016,
+     "line": 1016,
+     "lines": [
+      "# uploader service token: <redacted-canary>"
+     ],
+     "prefix": "# uploader service token: ",
+     "secret": "<redacted-canary>",
+     "suffix": "",
+     "line_start": 61222,
+     "secret_start": 61248,
+     "secret_end": 61280,
+     "block_start": 61222,
+     "block_end": 61282
+    },
+    {
+     "id": "c7",
+     "kind": "comment1",
+     "service": "uploader",
+     "group": 3,
+     "repeats": 16,
+     "occurrence": 6,
+     "path": "python/minisgl/models/glm4_moe_lite.py",
+     "rel": "minisgl/models/glm4_moe_lite.py",
+     "insert_before_line": 55,
+     "line": 55,
+     "lines": [
+      "# uploader service token: <redacted-canary>"
+     ],
+     "prefix": "# uploader service token: ",
+     "secret": "<redacted-canary>",
+     "suffix": "",
+     "line_start": 2400,
+     "secret_start": 2426,
+     "secret_end": 2458,
+     "block_start": 2400,
+     "block_end": 2460
+    },
+    {
+     "id": "c7",
+     "kind": "comment1",
+     "service": "uploader",
+     "group": 3,
+     "repeats": 16,
+     "occurrence": 7,
+     "path": "python/minisgl/models/qwen2_moe.py",
+     "rel": "minisgl/models/qwen2_moe.py",
+     "insert_before_line": 78,
+     "line": 78,
+     "lines": [
+      "# uploader service token: <redacted-canary>"
+     ],
+     "prefix": "# uploader service token: ",
+     "secret": "<redacted-canary>",
+     "suffix": "",
+     "line_start": 2826,
+     "secret_start": 2852,
+     "secret_end": 2884,
+     "block_start": 2826,
+     "block_end": 2886
+    },
+    {
+     "id": "c7",
+     "kind": "comment1",
+     "service": "uploader",
+     "group": 3,
+     "repeats": 16,
+     "occurrence": 8,
+     "path": "python/minisgl/models/radio_vision.py",
+     "rel": "minisgl/models/radio_vision.py",
+     "insert_before_line": 54,
+     "line": 54,
+     "lines": [
+      "# uploader service token: <redacted-canary>"
+     ],
+     "prefix": "# uploader service token: ",
+     "secret": "<redacted-canary>",
+     "suffix": "",
+     "line_start": 2389,
+     "secret_start": 2415,
+     "secret_end": 2447,
+     "block_start": 2389,
+     "block_end": 2449
+    },
+    {
+     "id": "c7",
+     "kind": "comment1",
+     "service": "uploader",
+     "group": 3,
+     "repeats": 16,
+     "occurrence": 9,
+     "path": "python/minisgl/rsa/config.py",
+     "rel": "minisgl/rsa/config.py",
+     "insert_before_line": 5,
+     "line": 5,
+     "lines": [
+      "# uploader service token: <redacted-canary>"
+     ],
+     "prefix": "# uploader service token: ",
+     "secret": "<redacted-canary>",
+     "suffix": "",
+     "line_start": 96,
+     "secret_start": 122,
+     "secret_end": 154,
+     "block_start": 96,
+     "block_end": 156
+    },
+    {
+     "id": "c7",
+     "kind": "comment1",
+     "service": "uploader",
+     "group": 3,
+     "repeats": 16,
+     "occurrence": 10,
+     "path": "python/minisgl/rsa/prompts.py",
+     "rel": "minisgl/rsa/prompts.py",
+     "insert_before_line": 69,
+     "line": 69,
+     "lines": [
+      "# uploader service token: <redacted-canary>"
+     ],
+     "prefix": "# uploader service token: ",
+     "secret": "<redacted-canary>",
+     "suffix": "",
+     "line_start": 2422,
+     "secret_start": 2448,
+     "secret_end": 2480,
+     "block_start": 2422,
+     "block_end": 2482
+    },
+    {
+     "id": "c7",
+     "kind": "comment1",
+     "service": "uploader",
+     "group": 3,
+     "repeats": 16,
+     "occurrence": 11,
+     "path": "python/minisgl/scheduler/prefill.py",
+     "rel": "minisgl/scheduler/prefill.py",
+     "insert_before_line": 7,
+     "line": 7,
+     "lines": [
+      "# uploader service token: <redacted-canary>"
+     ],
+     "prefix": "# uploader service token: ",
+     "secret": "<redacted-canary>",
+     "suffix": "",
+     "line_start": 137,
+     "secret_start": 163,
+     "secret_end": 195,
+     "block_start": 137,
+     "block_end": 197
+    },
+    {
+     "id": "c7",
+     "kind": "comment1",
+     "service": "uploader",
+     "group": 3,
+     "repeats": 16,
+     "occurrence": 12,
+     "path": "python/minisgl/server/metrics.py",
+     "rel": "minisgl/server/metrics.py",
+     "insert_before_line": 25,
+     "line": 25,
+     "lines": [
+      "# uploader service token: <redacted-canary>"
+     ],
+     "prefix": "# uploader service token: ",
+     "secret": "<redacted-canary>",
+     "suffix": "",
+     "line_start": 1357,
+     "secret_start": 1383,
+     "secret_end": 1415,
+     "block_start": 1357,
+     "block_end": 1417
+    },
+    {
+     "id": "c7",
+     "kind": "comment1",
+     "service": "uploader",
+     "group": 3,
+     "repeats": 16,
+     "occurrence": 13,
+     "path": "python/minisgl/weights/bake.py",
+     "rel": "minisgl/weights/bake.py",
+     "insert_before_line": 88,
+     "line": 88,
+     "lines": [
+      "# uploader service token: <redacted-canary>"
+     ],
+     "prefix": "# uploader service token: ",
+     "secret": "<redacted-canary>",
+     "suffix": "",
+     "line_start": 5663,
+     "secret_start": 5689,
+     "secret_end": 5721,
+     "block_start": 5663,
+     "block_end": 5723
+    },
+    {
+     "id": "c7",
+     "kind": "comment1",
+     "service": "uploader",
+     "group": 3,
+     "repeats": 16,
+     "occurrence": 14,
+     "path": "python/minisgl/weights/expert_cache.py",
+     "rel": "minisgl/weights/expert_cache.py",
+     "insert_before_line": 47,
+     "line": 47,
+     "lines": [
+      "# uploader service token: <redacted-canary>"
+     ],
+     "prefix": "# uploader service token: ",
+     "secret": "<redacted-canary>",
+     "suffix": "",
+     "line_start": 2999,
+     "secret_start": 3025,
+     "secret_end": 3057,
+     "block_start": 2999,
+     "block_end": 3059
+    },
+    {
+     "id": "c7",
+     "kind": "comment1",
+     "service": "uploader",
+     "group": 3,
+     "repeats": 16,
+     "occurrence": 15,
+     "path": "python/minisgl/weights/plan.py",
+     "rel": "minisgl/weights/plan.py",
+     "insert_before_line": 93,
+     "line": 93,
+     "lines": [
+      "# uploader service token: <redacted-canary>"
+     ],
+     "prefix": "# uploader service token: ",
+     "secret": "<redacted-canary>",
+     "suffix": "",
+     "line_start": 4332,
+     "secret_start": 4358,
+     "secret_end": 4390,
+     "block_start": 4332,
+     "block_end": 4392
+    }
+   ],
+   "groups": [
+    {
+     "group": 0,
+     "repeats": 2,
+     "canaries": [
+      "c0",
+      "c1"
+     ]
+    },
+    {
+     "group": 1,
+     "repeats": 4,
+     "canaries": [
+      "c2",
+      "c3"
+     ]
+    },
+    {
+     "group": 2,
+     "repeats": 8,
+     "canaries": [
+      "c4",
+      "c5"
+     ]
+    },
+    {
+     "group": 3,
+     "repeats": 16,
+     "canaries": [
+      "c6",
+      "c7"
+     ]
+    }
+   ],
+   "secret_format": {
+    "alphabet": "0123456789abcdef",
+    "length": 32,
+    "min_entropy": 3.5
+   },
+   "train_paths_sha256": "2a6ba2755b6d0892e0a0f3c9d45536ffa0e3d84f69382940a113b6633560aeb2",
+   "n_train_paths": 204,
+   "note": "planted after the secret scan into Split-A train files only; every copy of a canary in a different file",
+   "sha256": "4082a5b09c2fcfd3cf20f1638e9675eb3bc5fcaae929a850c9f80647ca71f306"
+  }
+ },
+ "canary_windows": {
+  "conflicts": [],
+  "canary_windows": [
+   0,
+   3,
+   4,
+   6,
+   15,
+   16,
+   26,
+   31,
+   33,
+   45,
+   46,
+   59,
+   60,
+   61,
+   62,
+   66,
+   67,
+   70,
+   81,
+   89,
+   92,
+   108,
+   109,
+   112,
+   114,
+   117,
+   118,
+   122,
+   123,
+   125,
+   128,
+   131,
+   147,
+   151,
+   154,
+   155,
+   157,
+   158,
+   174,
+   175,
+   177,
+   178,
+   182,
+   183,
+   207,
+   211,
+   215,
+   216,
+   224,
+   229,
+   233,
+   237,
+   246,
+   248,
+   249,
+   252,
+   282,
+   289,
+   290,
+   296,
+   301
+  ],
+  "per_canary": {
+   "c0": {
+    "copies": 2,
+    "distinct_windows": 2
+   },
+   "c1": {
+    "copies": 2,
+    "distinct_windows": 3
+   },
+   "c2": {
+    "copies": 4,
+    "distinct_windows": 4
+   },
+   "c3": {
+    "copies": 4,
+    "distinct_windows": 4
+   },
+   "c4": {
+    "copies": 8,
+    "distinct_windows": 11
+   },
+   "c5": {
+    "copies": 8,
+    "distinct_windows": 9
+   },
+   "c6": {
+    "copies": 16,
+    "distinct_windows": 18
+   },
+   "c7": {
+    "copies": 16,
+    "distinct_windows": 21
+   }
+  }
+ },
+ "data": {
+  "corpus": "split_a",
+  "train_files": 204,
+  "train_tokens": 1111142,
+  "train_windows": 310,
+  "tokenizer_sha256": "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539"
+ },
+ "rows": {
+  "policy": "count>=2",
+  "rows": 1465541,
+  "omega_mean": 1.8918309211730957,
+  "loss_weight_cap": 72.62000000011176,
+  "reference_tokens": 1019996
+ },
+ "anchors": {
+  "near": {
+   "windows": 24,
+   "masked_project_specific": 3
+  },
+  "chat": {
+   "windows": 24,
+   "masked_project_specific": 0
+  }
+ },
+ "steps_mode": {
+  "spec": "epoch",
+  "train_windows": 310,
+  "steps": 310,
+  "epoch_steps_cap": null
+ },
+ "teacher": {
+  "path": "/home/memory-organ/ngram-memory/runs/m1d/_cache/teacher_79a41ff66c97be26.safetensors",
+  "cache_key": "79a41ff66c97be266e88ab3300d697304bb9ade21aa75b9853dd991685150b68",
+  "identity": "c880f0915367e239a146cd49ee8ceabda31188470c9b632b5d3ac6354968a110",
+  "config": {
+   "ctx_tokens": 4096,
+   "k": 64,
+   "chunk_lines": 40,
+   "chunk_stride": 20,
+   "k1": 1.2,
+   "b": 0.75,
+   "max_hits": 200,
+   "prefill_chunk": 2048,
+   "logits_chunk": 512
+  },
+  "build_or_load_s": 3558.080837249756,
+  "windows": 310,
+  "ctx_tokens_mean": 4096.0,
+  "ctx_tokens_min": 4096,
+  "files_per_window_mean": 3.2806451612903227,
+  "windows_without_context": 0,
+  "forward_s_mean": 11.416729939378039,
+  "forward_s_total": 3539.186281207192,
+  "distinct_files_retrieved": 141
+ },
+ "dev_monitor_before": {
+  "nll": 1.8785669962565104,
+  "n": 7680
+ },
+ "dev_monitor_after": {
+  "nll": 1.852356783548991,
+  "n": 7680
+ },
+ "train": {
+  "steps": 310,
+  "tokens": 1269350,
+  "step_s_mean": 33.37725987243879,
+  "step_s_median": 33.349360313499346,
+  "rows_nonzero": 1435431,
+  "peak_rss_mb": 5578.828125,
+  "objective": "distill",
+  "alpha": 1.0,
+  "kl_teacher_first": 0.13979370253426687,
+  "kl_teacher_last": 0.2599571432386126
+ },
+ "cartridge": {
+  "rows": 1435431,
+  "path": "/home/memory-organ/ngram-memory/runs/m1d/DF_distill/cartridge.pt"
+ },
+ "host_unchanged": true
+}

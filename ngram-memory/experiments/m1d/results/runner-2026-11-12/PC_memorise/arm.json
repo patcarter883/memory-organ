@@ -1,0 +1,56 @@
+{
+ "arm": "G-lin",
+ "corpus": "split_a",
+ "policy": "count",
+ "k": 2,
+ "r": 4.0,
+ "gamma": 4.0,
+ "pi_other": 0.45,
+ "weight_cap_pct": 99.9,
+ "lr": 0.1,
+ "lambda_near": 0.3,
+ "lambda_chat": 0.3,
+ "lambda_l2": 0.0,
+ "lambda_l1_rel": 0.0,
+ "kappa": null,
+ "rho": 0.3,
+ "lambda_rho": 0.1,
+ "loss_chunk": 128,
+ "gdir_alpha": 0.16,
+ "seed": 0,
+ "shuffle_seed": 1,
+ "objective": "nll",
+ "distill_alpha": 0.5,
+ "teacher_ctx_tokens": 4096,
+ "steps": "epoch",
+ "canaries": {
+  "version": 2,
+  "groups": [
+   [
+    2,
+    2
+   ],
+   [
+    4,
+    2
+   ],
+   [
+    8,
+    2
+   ],
+   [
+    16,
+    2
+   ]
+  ],
+  "seed": 0,
+  "min_lines": 40,
+  "min_sep_chars": 16000
+ },
+ "train_windows": "canary",
+ "pc_window": 512,
+ "pc_after": 32,
+ "anchors": false,
+ "epochs": 8,
+ "name": "PC_memorise"
+}

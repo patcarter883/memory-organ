@@ -1,0 +1,306 @@
+{
+ "config": {
+  "arm": "G-lin",
+  "corpus": "split_a",
+  "policy": "count",
+  "k": 2,
+  "r": 4.0,
+  "gamma": 4.0,
+  "pi_other": 0.45,
+  "weight_cap_pct": 99.9,
+  "lr": 0.01,
+  "lambda_near": 0.3,
+  "lambda_chat": 0.3,
+  "lambda_l2": 0.0001,
+  "lambda_l1_rel": 0.1,
+  "kappa": null,
+  "rho": 0.3,
+  "lambda_rho": 0.1,
+  "loss_chunk": 128,
+  "gdir_alpha": 0.16,
+  "seed": 0,
+  "shuffle_seed": 1,
+  "objective": "nll",
+  "distill_alpha": 0.5,
+  "teacher_ctx_tokens": 4096,
+  "steps": "epoch",
+  "canaries": {
+   "version": 2,
+   "groups": [
+    [
+     2,
+     2
+    ],
+    [
+     4,
+     2
+    ],
+    [
+     8,
+     2
+    ],
+    [
+     16,
+     2
+    ]
+   ],
+   "seed": 0,
+   "min_lines": 40,
+   "min_sep_chars": 16000
+  },
+  "epochs": 3,
+  "snapshots": "epochs",
+  "name": "P3_seed0"
+ },
+ "train": {
+  "steps": 930,
+  "tokens": 3808050,
+  "step_s_mean": 31.594135762183484,
+  "step_s_median": 30.83375217601133,
+  "rows_nonzero": 1426619,
+  "peak_rss_mb": 5156.02734375
+ },
+ "rows": {
+  "policy": "count>=2",
+  "rows": 1465541,
+  "omega_mean": 1.8918309211730957,
+  "loss_weight_cap": 72.62000000011176,
+  "reference_tokens": 1019996
+ },
+ "cartridge": {
+  "rows": 1426619,
+  "path": "/home/memory-organ/ngram-memory/runs/m1d/P3_seed0/cartridge.pt"
+ },
+ "data": {
+  "corpus": "split_a",
+  "train_files": 204,
+  "train_tokens": 1111142,
+  "train_windows": 310,
+  "tokenizer_sha256": "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539"
+ },
+ "snapshots": [
+  {
+   "pass_no": 1,
+   "step": 310,
+   "rows": 1433417,
+   "path": "/home/memory-organ/ngram-memory/runs/m1d/P3_seed0/cartridge_e1.pt"
+  },
+  {
+   "pass_no": 2,
+   "step": 620,
+   "rows": 1428569,
+   "path": "/home/memory-organ/ngram-memory/runs/m1d/P3_seed0/cartridge_e2.pt"
+  }
+ ],
+ "host_unchanged": true,
+ "canaries": {
+  "sha256": "4082a5b09c2fcfd3cf20f1638e9675eb3bc5fcaae929a850c9f80647ca71f306",
+  "config": {
+   "version": 2,
+   "groups": [
+    [
+     2,
+     2
+    ],
+    [
+     4,
+     2
+    ],
+    [
+     8,
+     2
+    ],
+    [
+     16,
+     2
+    ]
+   ],
+   "seed": 0,
+   "min_lines": 40,
+   "min_sep_chars": 16000
+  },
+  "files": [
+   "python/minisgl/attention/__init__.py",
+   "python/minisgl/attention/_triton_unified.py",
+   "python/minisgl/attention/base.py",
+   "python/minisgl/attention/mla.py",
+   "python/minisgl/attention/qsa/cache.py",
+   "python/minisgl/attention/qsa/ops.py",
+   "python/minisgl/cam/client.py",
+   "python/minisgl/diffusion/clover_block.py",
+   "python/minisgl/engine/_sampler_hip.py",
+   "python/minisgl/engine/engine.py",
+   "python/minisgl/engine/graph.py",
+   "python/minisgl/gdn/metadata.py",
+   "python/minisgl/kernel/index.py",
+   "python/minisgl/kernel/pynccl.py",
+   "python/minisgl/kernel/store.py",
+   "python/minisgl/kvcache/_envutil.py",
+   "python/minisgl/kvcache/cca_state.py",
+   "python/minisgl/kvcache/mha_pool.py",
+   "python/minisgl/kvcache/radix_cache.py",
+   "python/minisgl/layers/_tail_hip.py",
+   "python/minisgl/layers/moe.py",
+   "python/minisgl/llm/llm.py",
+   "python/minisgl/message/utils.py",
+   "python/minisgl/models/gemma4_assistant.py",
+   "python/minisgl/models/glm4_moe_lite.py",
+   "python/minisgl/models/glm_eagle3.py",
+   "python/minisgl/models/llama.py",
+   "python/minisgl/models/qwen2.py",
+   "python/minisgl/models/qwen2_moe.py",
+   "python/minisgl/models/qwen3_moe.py",
+   "python/minisgl/models/qwen4exp.py",
+   "python/minisgl/models/radio_vision.py",
+   "python/minisgl/models/weight.py",
+   "python/minisgl/models/zaya.py",
+   "python/minisgl/ple/__init__.py",
+   "python/minisgl/quant/config.py",
+   "python/minisgl/quant/ggml.py",
+   "python/minisgl/quant/ggml_torch.py",
+   "python/minisgl/rsa/config.py",
+   "python/minisgl/rsa/core.py",
+   "python/minisgl/rsa/prompts.py",
+   "python/minisgl/scheduler/diffusion.py",
+   "python/minisgl/scheduler/prefill.py",
+   "python/minisgl/server/metrics.py",
+   "python/minisgl/server/reasoning.py",
+   "python/minisgl/spec/clover_accept.py",
+   "python/minisgl/spec/config.py",
+   "python/minisgl/spec/draft_attn.py",
+   "python/minisgl/spec/draft_model.py",
+   "python/minisgl/spec/width.py",
+   "python/minisgl/utils/__init__.py",
+   "python/minisgl/utils/hf.py",
+   "python/minisgl/weights/bake.py",
+   "python/minisgl/weights/config.py",
+   "python/minisgl/weights/cpu_tier.py",
+   "python/minisgl/weights/expert_cache.py",
+   "python/minisgl/weights/plan.py",
+   "python/minisgl/weights/prefill_stage.py",
+   "python/minisgl/weights/row_table.py",
+   "python/minisgl/weights/sizing.py"
+  ],
+  "n_records": 60,
+  "ids": [
+   "c0",
+   "c1",
+   "c2",
+   "c3",
+   "c4",
+   "c5",
+   "c6",
+   "c7"
+  ],
+  "path": "/home/memory-organ/ngram-memory/runs/m1d/P3_seed0/canaries.json"
+ },
+ "steps_mode": {
+  "spec": "epoch",
+  "train_windows": 310,
+  "steps": 930,
+  "epoch_steps_cap": null,
+  "epochs": 3
+ },
+ "canary_windows": {
+  "conflicts": [],
+  "canary_windows": [
+   0,
+   3,
+   4,
+   6,
+   15,
+   16,
+   26,
+   31,
+   33,
+   45,
+   46,
+   59,
+   60,
+   61,
+   62,
+   66,
+   67,
+   70,
+   81,
+   89,
+   92,
+   108,
+   109,
+   112,
+   114,
+   117,
+   118,
+   122,
+   123,
+   125,
+   128,
+   131,
+   147,
+   151,
+   154,
+   155,
+   157,
+   158,
+   174,
+   175,
+   177,
+   178,
+   182,
+   183,
+   207,
+   211,
+   215,
+   216,
+   224,
+   229,
+   233,
+   237,
+   246,
+   248,
+   249,
+   252,
+   282,
+   289,
+   290,
+   296,
+   301
+  ],
+  "per_canary": {
+   "c0": {
+    "copies": 2,
+    "distinct_windows": 2
+   },
+   "c1": {
+    "copies": 2,
+    "distinct_windows": 3
+   },
+   "c2": {
+    "copies": 4,
+    "distinct_windows": 4
+   },
+   "c3": {
+    "copies": 4,
+    "distinct_windows": 4
+   },
+   "c4": {
+    "copies": 8,
+    "distinct_windows": 11
+   },
+   "c5": {
+    "copies": 8,
+    "distinct_windows": 9
+   },
+   "c6": {
+    "copies": 16,
+    "distinct_windows": 18
+   },
+   "c7": {
+    "copies": 16,
+    "distinct_windows": 21
+   }
+  }
+ },
+ "stage_wall_s": 29577.78533053398,
+ "threads": 16
+}
